@@ -1,0 +1,64 @@
+Velo — third-party notices
+
+The MIT license in LICENSE applies to Velo's original work. Bundled third-party
+software, models, fonts, and data retain their own terms. This notice does not
+grant rights in third-party marks or imply endorsement.
+
+Native terminal core (licenses/native/)
+---------------------------------------
+Velo links libghostty-vt 1.0.1 statically into libvelocore.so. The pinned
+source archive is identified by native/build.zig.zon. Ghostty is MIT;
+Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors.
+
+The Android VT build uses simdutf 9.0.0 (Apache-2.0 OR MIT), Google Highway
+1.2.0 (Apache-2.0 OR BSD-3-Clause), Wuffs 0.4.0-alpha.10 (Apache-2.0 OR MIT),
+and uucode 0.2.0 (MIT) with Unicode data (Unicode License V3). Both upstream
+alternatives are reproduced where applicable. See also Bjoern Hoehrmann's
+UTF-8 decoder notice and the X.Org rgb color table notice in the same directory.
+The build uses Zig 0.17.1 and Android NDK 30.0.16248370; the Zig license and
+NDK notices are included for toolchain contributions to shipped code.
+
+Embedded Tailscale and SSH (licenses/go/)
+----------------------------------------
+libtailscale.so includes github.com/tailscale/libtailscale at dacde75057ff
+(BSD-3-Clause) and tailscale.com v1.104.1 (BSD-3-Clause), the Go runtime and
+standard library (Go 1.27.1), and Go modules used by the Android target. The notice tree
+includes each module's version and original license and, where present, patent
+notice. It also preserves notices for the Go standard library's vendored
+x/crypto, x/net, and x/text. See native/tailscale/go.mod for module pins.
+
+Android libraries (licenses/android/)
+-------------------------------------
+See licenses/android/RELEASE-RUNTIME.md for the resolved release AAR/JAR
+inputs, exact versions, license classifications, and APK evidence. AndroidX,
+Kotlin and most open-source runtime inputs are Apache-2.0. Checker Framework
+qualifiers are MIT. Preserve the component-specific license and notice files,
+including the Eclipse Jakarta Dependency Injection notice.
+CameraX Camera Core 1.6.2 embeds BSD-3-Clause libyuv in
+libimage_processing_util_jni.so; retain libyuv-LICENSE.txt and
+libyuv-PATENTS.txt.
+
+The QR decoder uses ZXing Core 3.5.4 (com.google.zxing:core), licensed under
+the Apache License, Version 2.0. Copyright ZXing authors. The upstream project
+also credits Barcode4J contributors, including Jeremias Märki and Dietmar Bürkle.
+See licenses/android/zxing-core-3.5.4-LICENSE.txt and
+licenses/android/zxing-core-3.5.4-NOTICE.txt.
+
+Bundled fonts (licenses/fonts/)
+------------------------------
+The font-specific notices accompany the binaries in app/src/main/assets/fonts/.
+See PROVENANCE.txt in that directory for upstream releases and checksums. The
+following upstream faces carry the SIL Open Font License 1.1 notices below.
+
+  Cascadia Code 2407.24          CascadiaCode-OFL.txt
+  D2Coding Ligature 1.4.0        D2Coding-OFL.txt, Nanum-OFL.txt
+  Fira Code 6.2                 FiraCode-OFL.txt
+  JetBrains Mono 2.304          JetBrainsMono-OFL.txt
+  Noto Emoji COLRv1 2.051        Noto-LICENSE.txt
+
+Use these fonts under the OFL, not the app's MIT license. Bundling with Velo
+is allowed with the original copyright and license; do not sell the fonts
+on their own or use reserved names for modified versions without permission.
+NAVER's D2Coding is based on Nanum Barun Gothic. See Powerline-MIT.txt
+for the basic Powerline symbols, originally drawn by Fabrizio Schiavi.
+Jetendard 0.1.0 is not redistributed. Its saved selection resolves to D2Coding.

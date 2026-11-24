@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The SSH values (shared_prefs/velo-ssh.xml) stay on this device: the phone key, the imported
+     keys and the saved passwords are sealed with this device's Keystore key, which no other
+     device has, and the public lines and host keys belong with those keys. Everything else
+     follows the defaults. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="velo-ssh.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="velo-ssh.xml" />
+    </device-transfer>
+</data-extraction-rules>

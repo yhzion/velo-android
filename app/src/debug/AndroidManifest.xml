@@ -1,0 +1,45 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: every component of ui/theme on one screen, over a moving test pattern.
+             adb shell am start -n io.github.yhzion.velo/.ui.theme.GalleryActivity \
+                 [-e appearance system|light|dark] [-e open menu|dialog|popover|palette] [-e scroll DP] -->
+        <activity
+            android:name=".ui.theme.GalleryActivity"
+            android:exported="true"
+            android:label="Velo Gallery"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|density|uiMode" />
+        <!-- Debug builds only: the start screen in a made-up state, no node and no connection.
+             adb shell am start -n io.github.yhzion.velo/.ui.StartPreviewActivity \
+                 [-e state login|waiting|starting|failed|looking|found|nothingfound] [-e appearance system|light|dark] [-e size small|medium|large] -->
+        <activity
+            android:name=".ui.StartPreviewActivity"
+            android:exported="true"
+            android:label="Velo Start Preview"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|density|uiMode" />
+        <!-- Debug builds only: the layout of the screen in front, for the window-size e2e (LayoutProbe.kt).
+             adb shell am broadcast -a io.github.yhzion.velo.debug.PROBE -p io.github.yhzion.velo -e id N -->
+        <receiver
+            android:name=".debug.LayoutProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.yhzion.velo.debug.PROBE" />
+            </intent-filter>
+        </receiver>
+        <!-- Debug builds only: which composables recompose, for the recomposition e2e (RecomposeProbe.kt).
+             adb shell am broadcast -a io.github.yhzion.velo.debug.RECOMPOSE -p io.github.yhzion.velo -e id N -e op start|report -->
+        <receiver
+            android:name=".debug.RecomposeProbeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.yhzion.velo.debug.RECOMPOSE" />
+            </intent-filter>
+        </receiver>
+        <provider
+            android:name=".debug.LayoutProbeInstaller"
+            android:authorities="io.github.yhzion.velo.debug.layoutprobe"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,0 +1,22 @@
+build/
+.gradle/
+.kotlin/
+local.properties
+*.keystore
+*.jks
+*.apk
+*.hprof
+__pycache__/
+node_modules/
+native/.zig-cache/
+native/zig-out/
+native/zig-pkg/
+.worktrees/
+.superpowers/
+.omp/
+.openchrome/
+# Legacy local artwork; remove any old generated overrides before building Velo.
+/app/src/debug/res/mipmap-*/ic_launcher_foreground.png
+/app/src/debug/res/values/ic_launcher_background.xml
+/app/src/release/res/mipmap-*/ic_launcher_foreground.webp
+/app/src/release/res/values/ic_launcher_background.xml

@@ -1,0 +1,65 @@
+name: Pull request check (native)
+
+# The host-native tests of release.yml, on the pull request instead of after the tag (#379).
+# Only when native/ changes; pr-check-android.yml covers the Android unit tests. The repository
+# is on GitHub Free, so draft pull requests and other paths start no job: the release workflow
+# runs the same tests on the tag. No secrets, no artifacts.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'native/**'
+      - '.github/workflows/pr-check-native.yml'
+
+permissions:
+  contents: read
+# The draft state is part of the group: a late draft run (its job skipped) must not cancel the
+# run of the pull request that is ready.
+concurrency:
+  group: pr-check-native-${{ github.event.pull_request.number }}-${{ github.event.pull_request.draft }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  zig-test:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # zig and the NDK as release.yml pins them; keep the two in step. The host tests need the
+      # NDK only for jni.h, and without it `zig build test` leaves out test-jni silently.
+      - name: Install zig and the NDK
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -eu
+          curl -fsSLo zig.tar.xz https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz
+          echo '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a  zig.tar.xz' | sha256sum -c -
+          tar xf zig.tar.xz
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'ndk;30.0.16248370'
+          ndk=$ANDROID_HOME/ndk/30.0.16248370
+          test -f "$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/jni.h"
+          echo "ANDROID_NDK_HOME=$ndk" >> "$GITHUB_ENV"
+          echo "$PWD/zig-x86_64-linux-0.17.1" >> "$GITHUB_PATH"
+
+      - name: Fetch native dependencies
+        working-directory: native
+        run: |
+          # Apart from the tests, and again when it fails: in the v2.9.7 run the build runner
+          # died twice before the tests began, while it was still getting dependencies (#339).
+          for attempt in 1 2 3; do
+            if zig build --fetch; then exit 0; fi
+            echo "::warning::zig build --fetch failed (attempt $attempt of 3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      - name: Run host-native tests
+        working-directory: native
+        run: zig build test

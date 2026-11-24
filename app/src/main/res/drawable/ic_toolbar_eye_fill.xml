@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The eye of ic_toolbar_eye filled in: Rex for Mac's Activity button draws eye.fill while Activity is on.
+     The almond is ic_toolbar_eye's outline at its outer edge; a ring around the pupil stays open. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M1,12 C3.7,7 7.6,4.6 12,4.6 C16.4,4.6 20.3,7 23,12 C20.3,17 16.4,19.4 12,19.4 C7.6,19.4 3.7,17 1,12 Z M12,7.8 A4.2,4.2 0 1,0 12.01,7.8 Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M12,9.2 A2.8,2.8 0 1,1 11.99,9.2 Z" />
+</vector>

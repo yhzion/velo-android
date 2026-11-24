@@ -1,0 +1,5 @@
+<resources>
+    <item name="focus_terminal_pane" type="id" />
+    <item name="open_terminal_link" type="id" />
+    <item name="copy_terminal_link" type="id" />
+</resources>

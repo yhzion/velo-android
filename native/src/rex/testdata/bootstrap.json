@@ -1,0 +1,205 @@
+{
+ "type": "response",
+ "id": "1",
+ "seq": 0,
+ "payload": {
+  "client_id": "client:00000000-0000-7000-b000-00000000000c",
+  "server_status": {
+   "pid": 4213,
+   "instance_id": "00000000-0000-4000-9000-00000000001b",
+   "host_id": "00000000-0000-4000-8000-000000000000",
+   "started_at": "2000-01-01T00:00:00.123456789Z",
+   "exit_empty": false,
+   "session_count": 3,
+   "tailscale": {
+    "state": "running",
+    "dns_name": "rex.test.example",
+    "account": {
+     "login_name": "demo_user@example.com"
+    },
+    "tailnet_name": "demo_user@example.com",
+    "allow_tailnet_members": false,
+    "https": {
+     "state": "available",
+     "url": "https://rex.test.example"
+    }
+   },
+   "api_revision": 18,
+   "config": {
+    "generation": 1,
+    "hash": ""
+   },
+   "listeners": [
+    {
+     "endpoint": "unix:///run/user/1234/rex/server.sock",
+     "addresses": [
+      "/run/user/1234/rex/server.sock"
+     ],
+     "transport": "unix",
+     "admission": "peer_credentials",
+     "primary": true
+    },
+    {
+     "endpoint": "login-server:///run/user/1234/rex/login-server.sock",
+     "addresses": [
+      "/run/user/1234/rex/login-server.sock"
+     ],
+     "transport": "unix",
+     "admission": "login_server"
+    }
+   ]
+  },
+  "attach_all": {
+   "sessions": [
+    {
+     "session_id": "session:00000000-0000-7000-9000-000000000002",
+     "label": "work"
+    },
+    {
+     "session_id": "session:00000000-0000-7000-a000-000000000003",
+     "label": "qa"
+    },
+    {
+     "session_id": "session:00000000-0000-7000-9000-000000000004",
+     "label": "corelane-fixture"
+    }
+   ]
+  },
+  "selected_session": null,
+  "attached_sessions": [
+   {
+    "session": {
+     "session_id": "session:00000000-0000-7000-9000-000000000004",
+     "label": "corelane-fixture"
+    },
+    "view": {
+     "revision": 5,
+     "session_id": "session:00000000-0000-7000-9000-000000000004",
+     "label": "corelane-fixture",
+     "active_window_id": "window:00000000-0000-7000-a000-000000000006",
+     "windows": [
+      {
+       "window_id": "window:00000000-0000-7000-a000-000000000006",
+       "label": "Window 00000006",
+       "focused_block_id": "block:00000000-0000-7000-a000-000000000005",
+       "layers": [
+        {
+         "layer_id": "layer:00000000-0000-7000-9000-000000000007",
+         "kind": "tiled",
+         "bounds": [
+          0,
+          0,
+          1,
+          1
+         ],
+         "layout": {
+          "rect": [
+           0,
+           0,
+           1,
+           1
+          ],
+          "split": {
+           "split_id": "split:00000000-0000-7000-a000-000000000009",
+           "direction": "horizontal",
+           "ratio": 0.5,
+           "before": {
+            "rect": [
+             0,
+             0,
+             0.5,
+             1
+            ],
+            "split": {
+             "split_id": "split:00000000-0000-7000-8000-00000000000b",
+             "direction": "vertical",
+             "ratio": 0.5,
+             "before": {
+              "rect": [
+               0,
+               0,
+               0.5,
+               0.5
+              ],
+              "block_id": "block:00000000-0000-7000-a000-000000000005"
+             },
+             "after": {
+              "rect": [
+               0,
+               0.5,
+               0.5,
+               0.5
+              ],
+              "block_id": "block:00000000-0000-7000-9000-00000000000a"
+             }
+            }
+           },
+           "after": {
+            "rect": [
+             0.5,
+             0,
+             0.5,
+             1
+            ],
+            "block_id": "block:00000000-0000-7000-a000-000000000008"
+           }
+          }
+         },
+         "blocks": [
+          {
+           "block_id": "block:00000000-0000-7000-a000-000000000005",
+           "label": "shell",
+           "creator_name": "com.superlogical.terminal",
+           "flavor": "com.superlogical.terminal.shell",
+           "host_id": "00000000-0000-4000-8000-000000000000"
+          },
+          {
+           "block_id": "block:00000000-0000-7000-9000-00000000000a",
+           "label": "shell",
+           "creator_name": "com.superlogical.terminal",
+           "flavor": "com.superlogical.terminal.shell",
+           "host_id": "00000000-0000-4000-8000-000000000000"
+          },
+          {
+           "block_id": "block:00000000-0000-7000-a000-000000000008",
+           "label": "shell",
+           "creator_name": "com.superlogical.terminal",
+           "flavor": "com.superlogical.terminal.shell",
+           "host_id": "00000000-0000-4000-8000-000000000000"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "data_tickets": [
+   {
+    "session_id": "session:00000000-0000-7000-9000-000000000004",
+    "block_id": "block:00000000-0000-7000-a000-000000000005",
+    "data_ref_id": "terminal",
+    "subprotocol": "rex.data.terminal.v1",
+    "ticket": "REDACTED",
+    "expires_in_ms": 60000
+   },
+   {
+    "session_id": "session:00000000-0000-7000-9000-000000000004",
+    "block_id": "block:00000000-0000-7000-9000-00000000000a",
+    "data_ref_id": "terminal",
+    "subprotocol": "rex.data.terminal.v1",
+    "ticket": "REDACTED",
+    "expires_in_ms": 60000
+   },
+   {
+    "session_id": "session:00000000-0000-7000-9000-000000000004",
+    "block_id": "block:00000000-0000-7000-a000-000000000008",
+    "data_ref_id": "terminal",
+    "subprotocol": "rex.data.terminal.v1",
+    "ticket": "REDACTED",
+    "expires_in_ms": 60000
+   }
+  ]
+ }
+}

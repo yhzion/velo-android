@@ -1,0 +1,12 @@
+// Usage: gradle -I dev/release-runtime.init.gradle :app:printReleaseRuntime
+// Report resolved runtime artifacts (not BOMs, constraints or requested versions).
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.project(':app')
+    app.tasks.register('printReleaseRuntime') {
+        doLast {
+            app.configurations.releaseRuntimeClasspath.incoming.artifacts.artifacts
+                .collect { it.id.componentIdentifier.displayName }.toSorted().unique()
+                .each { println("RUNTIME ${it}") }
+        }
+    }
+}

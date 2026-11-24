@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="updates" path="updates/" />
+    <!-- Copies of the remotes' files that a tap opens in another app (RemoteFileOpener). -->
+    <cache-path name="remote_files" path="remote-files/" />
+</paths>

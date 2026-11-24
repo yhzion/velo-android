@@ -1,0 +1,51 @@
+{
+ "status": {
+  "Version": "1.104.2-example",
+  "BackendState": "Running",
+  "AuthURL": "",
+  "TailscaleIPs": [
+   "192.0.2.40",
+   "2001:db8:1::1"
+  ],
+  "Self": {
+   "ID": "example-self",
+   "HostName": "velo",
+   "DNSName": "velo.tailnet.example.",
+   "OS": "android",
+   "Online": true,
+   "TailscaleIPs": [
+    "192.0.2.40"
+   ]
+  },
+  "MagicDNSSuffix": "tailnet.example",
+  "CurrentTailnet": {
+   "Name": "tailnet.example",
+   "MagicDNSSuffix": "tailnet.example",
+   "MagicDNSEnabled": true
+  },
+  "Peer": {
+   "nodekey:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+    "ID": "example-workstation",
+    "HostName": "workstation",
+    "DNSName": "workstation.tailnet.example.",
+    "OS": "freebsd",
+    "Online": true,
+    "TailscaleIPs": ["198.51.100.10"],
+    "Active": true,
+    "ExitNode": false,
+    "Expired": false
+   },
+   "nodekey:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+    "ID": "example-build-agent",
+    "HostName": "build-agent",
+    "DNSName": "build-agent.tailnet.example.",
+    "OS": "freebsd",
+    "Online": false,
+    "TailscaleIPs": ["198.51.100.20"],
+    "Active": true,
+    "ExitNode": false,
+    "Expired": false
+   }
+  }
+ }
+}

@@ -1,0 +1,57 @@
+name: Pull request check (Android)
+
+# The Android unit tests of release.yml, on the pull request instead of after the tag (#379).
+# Only when app/ or the Gradle build files change; pr-check-native.yml covers native/. The
+# repository is on GitHub Free, so draft pull requests and other paths start no job: the release
+# workflow runs the same tests on the tag. No secrets, no signing, no artifacts.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/pr-check-android.yml'
+
+permissions:
+  contents: read
+# The draft state is part of the group: a late draft run (its job skipped) must not cancel the
+# run of the pull request that is ready.
+concurrency:
+  group: pr-check-android-${{ github.event.pull_request.number }}-${{ github.event.pull_request.draft }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit-test:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Gradle, the Android platform and JDK 25 as release.yml pins them; keep the two in step.
+      # No zig, Go or NDK: see the test step.
+      - name: Install Gradle and the Android platform
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -eu
+          curl -fsSLo gradle.zip https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
+          echo 'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  gradle.zip' | sha256sum -c -
+          unzip -q gradle.zip
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-37.1' 'build-tools;36.0.0'
+          echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+          printf '%s\n' "$PWD/gradle-9.6.0/bin" "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
+
+      # The JVM unit tests do not load the native libraries. zigCore and tailscale cross-compile
+      # libvelocore.so and libtailscale.so for the APK (with zig, Go and the NDK), which is most of
+      # the build time; the release workflow still builds both.
+      - name: Run Android unit tests
+        run: gradle --no-daemon --no-scan :app:testDebugUnitTest -x zigCore -x tailscale

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The build gives the first instrumentation the runner build.gradle.kts names
+         (testInstrumentationRunner) and keeps the others: keep the first one's name the same as
+         that runner, and add others after it.
+         adb shell am instrument -w io.github.yhzion.velo.test/io.github.yhzion.velo.InsetsReaderInstrumentation -->
+    <instrumentation
+        android:name="io.github.yhzion.velo.ui.TerminalEditorInstrumentation"
+        android:targetPackage="io.github.yhzion.velo" />
+    <instrumentation
+        android:name="io.github.yhzion.velo.InsetsReaderInstrumentation"
+        android:targetPackage="io.github.yhzion.velo" />
+    <instrumentation
+        android:name="io.github.yhzion.velo.ImeRoomInstrumentation"
+        android:targetPackage="io.github.yhzion.velo" />
+    <!-- adb shell am instrument -w io.github.yhzion.velo.test/io.github.yhzion.velo.GlyphRasterizerInstrumentation -->
+    <instrumentation
+        android:name="io.github.yhzion.velo.GlyphRasterizerInstrumentation"
+        android:targetPackage="io.github.yhzion.velo" />
+</manifest>

@@ -1,0 +1,172 @@
+name: Android release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+concurrency: release-${{ github.ref }}
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    # Only the private archive has an automatic release lane. Public candidates stay local.
+    if: github.repository_id == '1462789754' && github.event.created && !github.event.deleted
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      tag-object: ${{ steps.source.outputs.tag-object }}
+      artifact: ${{ steps.upload.outputs.artifact-id }}
+      version-code: ${{ steps.payload.outputs.version-code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check tag, VERSION and main ancestry
+        id: source
+        run: |
+          set -eu
+          commit=$(git rev-parse HEAD)
+          [[ $(git rev-parse "$GITHUB_REF^{commit}") == "$commit" ]]
+          [[ $(git rev-parse "$GITHUB_SHA^{commit}") == "$commit" ]]
+          git merge-base --is-ancestor "$commit" refs/remotes/origin/main
+          bash .github/scripts/release-version.sh "$GITHUB_REF_NAME" "$(cat VERSION)" "$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "tag-object=$(git rev-parse "$GITHUB_REF")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: native/tailscale/go.mod
+          cache: false
+
+      - name: Install native and Android toolchains
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -eu
+          curl -fsSLo zig.tar.xz https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz
+          echo '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a  zig.tar.xz' | sha256sum -c -
+          tar xf zig.tar.xz
+          curl -fsSLo gradle.zip https://services.gradle.org/distributions/gradle-9.6.0-bin.zip
+          echo 'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01  gradle.zip' | sha256sum -c -
+          unzip -q gradle.zip
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-37.1' 'build-tools;36.0.0' 'ndk;30.0.16248370'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
+          printf '%s\n' "$PWD/zig-x86_64-linux-0.17.1" "$PWD/gradle-9.6.0/bin" "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch native dependencies
+        working-directory: native
+        run: |
+          # Fetch separately so transient dependency failures can be retried before testing.
+          for attempt in 1 2 3; do
+            if zig build --fetch; then exit 0; fi
+            echo "::warning::zig build --fetch failed (attempt $attempt of 3)"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      - name: Run host-native tests
+        working-directory: native
+        run: zig build test
+
+      - name: Run Android unit tests and resolve release dependencies before signing
+        run: gradle --no-daemon --no-scan :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Sign offline and verify the APK signer
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -eu -o pipefail
+          : "${RELEASE_KEYSTORE_BASE64:?Missing keystore}" "${RELEASE_STORE_PASSWORD:?Missing store password}" \
+            "${RELEASE_KEY_ALIAS:?Missing key alias}" "${RELEASE_KEY_PASSWORD:?Missing key password}"
+          umask 077
+          export RELEASE_STORE_FILE
+          RELEASE_STORE_FILE=$(mktemp "$RUNNER_TEMP/release.XXXXXXXX")
+          trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
+          unset RELEASE_KEYSTORE_BASE64
+          expected=$(keytool -exportcert -keystore "$RELEASE_STORE_FILE" -storepass:env RELEASE_STORE_PASSWORD \
+            -alias "$RELEASE_KEY_ALIAS" | sha256sum | cut -d' ' -f1)
+          gradle --offline --no-daemon --no-scan :app:assembleRelease
+          unset RELEASE_STORE_PASSWORD RELEASE_KEY_PASSWORD RELEASE_KEY_ALIAS
+          apk=app/build/outputs/apk/release/app-release.apk
+          certs=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")
+          signer=$(sed -nE 's/^Signer #[0-9]+ certificate SHA-256 digest: ([[:xdigit:]]+)$/\1/p' <<< "$certs")
+          [[ $signer == "$expected" ]] || { echo 'Unexpected APK signing certificate'; exit 1; }
+
+      - name: Verify release payload, fonts and notices, then checksum the final bytes
+        id: payload
+        env:
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -eu
+          apk=app/build/outputs/apk/release/app-release.apk
+          badging=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")
+          # Read the package record, not an arbitrary string elsewhere in the badging.
+          record=$(grep '^package: ' <<< "$badging")
+          package_pattern="^package: name='io\.github\.yhzion\.velo' versionCode='([0-9]+)' versionName='([^']+)'( |$)"
+          [[ $record =~ $package_pattern ]] || { echo 'Unexpected APK package record'; exit 1; }
+          code=${BASH_REMATCH[1]} version=${BASH_REMATCH[2]}
+          [[ $code == "$RELEASE_VERSION_CODE" && $version == "${GITHUB_REF_NAME#v}" ]] || { echo 'Unexpected APK version'; exit 1; }
+          grep -Fxq "native-code: 'arm64-v8a'" <<< "$badging"
+          unzip -tq "$apk" lib/arm64-v8a/libvelocore.so lib/arm64-v8a/libtailscale.so
+          # Check the allowed font inventory as well as the notice and font bytes from the tagged source.
+          python3 .github/scripts/verify-apk-notices.py "$apk" "$SOURCE_COMMIT"
+          mkdir "$RUNNER_TEMP/assets"
+          name="velo-$GITHUB_REF_NAME-arm64-v8a.apk"
+          cp "$apk" "$RUNNER_TEMP/assets/$name"
+          cd "$RUNNER_TEMP/assets"
+          sha256sum "$name" > "$name.sha256"
+          echo "version-code=$code" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: upload
+        with:
+          name: signed-apk-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/assets/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    if: github.repository_id == '1462789754'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact }}
+          path: assets
+          merge-multiple: true
+      - name: Publish both assets to the existing tag
+        working-directory: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          TAG_OBJECT: ${{ needs.build.outputs.tag-object }}
+          APK_VERSION_CODE: ${{ needs.build.outputs.version-code }}
+        run: |
+          set -eu
+          name="velo-$GITHUB_REF_NAME-arm64-v8a.apk"
+          sha256sum --strict --check "$name.sha256"
+          # A build or a rerun can outlive the tag or a rewrite of main.
+          [[ $(gh api "repos/$GH_REPO/git/ref/tags/$GITHUB_REF_NAME" --jq .object.sha) == "$TAG_OBJECT" ]]
+          status=$(gh api "repos/$GH_REPO/compare/$COMMIT...main" --jq .status)
+          [[ $status == identical || $status == ahead ]]
+          flags=(--latest)
+          if [[ $GITHUB_REF_NAME == *-* ]]; then flags=(--prerelease --latest=false); fi
+          gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" \
+            --verify-tag --title "$GITHUB_REF_NAME" "${flags[@]}" --generate-notes \
+            --notes "<!-- android-version-code: ${APK_VERSION_CODE:?Missing APK versionCode} -->"

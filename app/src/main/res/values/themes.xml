@@ -1,0 +1,13 @@
+<resources>
+    <!-- Match VeloPalettes.dark.chrome.surface before Compose starts, even on a light device. -->
+    <color name="velo_window_background">#0F1015</color>
+    <style name="Theme.Velo" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowBackground">@color/velo_window_background</item>
+        <item name="android:windowSplashScreenBackground">@color/velo_window_background</item>
+        <item name="android:statusBarColor">@color/velo_window_background</item>
+        <item name="android:navigationBarColor">@color/velo_window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
