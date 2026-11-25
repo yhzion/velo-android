@@ -6,10 +6,12 @@ import androidx.compose.ui.graphics.Color
 // Every colour of the app; the corner radii, sizes and text styles are in Metrics.kt. The values
 // are read from images of Rex for iOS; docs/design-tokens.md gives, for each token, the image and
 // the pixel it was read from. The id after a value (D12, L06, MB2, …) names the image in that
-// file. A value no image shows is marked "derived" with what it is derived from.
+// file. A value no image shows is marked "derived" with what it is derived from. A value the
+// redesign canvas sets names its board (Tokens, Controls, Overlays); the redesign keeps the dark
+// values read from the images and adds the sheet's group and the raised card.
 
 /**
- * The colours of one kind of surface and of what is drawn on it. An appearance has four
+ * The colours of one kind of surface and of what is drawn on it. An appearance has five
  * ([VeloColors]); a screen area reads the group of the surface it sits on, never a colour of
  * another group.
  */
@@ -43,8 +45,10 @@ class SurfaceColors(
     val ok: Color,
     /** Connecting, starting, waiting for the user. */
     val warning: Color,
-    /** Failed or not connected; destructive actions, as a mark and as text. */
+    /** Failed or not connected; a destructive action, as a mark, an outline or a fill. */
     val danger: Color,
+    /** A destructive action and an error, as text: an outlined button's label, a field's error line, a menu item. */
+    val dangerText: Color,
     /** Text on a [danger] fill (a destructive confirm button). */
     val onDanger: Color,
 )
@@ -61,6 +65,12 @@ class VeloColors(
     val chrome: SurfaceColors,
     /** Surfaces that open over the panes: menus, dialogs, popovers, the command palette. */
     val overlay: SurfaceColors,
+    /** Settings: chrome's fill with the sidebar's controls (redesign, Tokens board). */
+    val sheet: SurfaceColors,
+    /** A card that stands out of the sheet or the start screen (redesign: "raised"). Its content keeps the colours of the surface around it. */
+    val raised: Color,
+    /** A paragraph inside a card or a dialog: between text and secondary (redesign: "textOnRaised"). */
+    val textOnRaised: Color,
     /**
      * What is behind an overlay, as it looks under the scrim, where the overlay is exactly its
      * [SurfaceColors.surface]: the ground the surface colour was measured over.
@@ -109,6 +119,8 @@ object VeloPalettes {
     private val OkOnDark = Color(0xFF30D158)
     private val WarningOnDark = Color(0xFFFF9F0A)
     private val DangerOnDark = Color(0xFFFF453A)
+    /** Destructive text on a dark surface. Redesign: the Controls board's outlined button and field error. */
+    private val DangerTextOnDark = Color(0xFFFF6B61)
 
     /** The overview backdrop and the gutters between panes: the same in both appearances. */
     private val Backdrop = SurfaceColors(
@@ -127,6 +139,7 @@ object VeloPalettes {
         ok = OkOnDark, // derived: the iOS system green of the dark appearance
         warning = WarningOnDark, // derived: the iOS system orange of the dark appearance
         danger = DangerOnDark, // derived: the iOS system red of the dark appearance
+        dangerText = DangerTextOnDark, // derived: the sheet's
         onDanger = Color(0xFF000000), // derived: as onAccent
     )
 
@@ -149,6 +162,7 @@ object VeloPalettes {
             ok = OkOnDark, // derived: the iOS system green of the dark appearance
             warning = WarningOnDark, // derived: the iOS system orange of the dark appearance
             danger = DangerOnDark, // derived: the iOS system red of the dark appearance
+            dangerText = DangerTextOnDark, // derived: the sheet's
             onDanger = Color(0xFF0B0C11), // derived: the surface
         ),
         chrome = SurfaceColors(
@@ -167,6 +181,7 @@ object VeloPalettes {
             ok = OkOnDark, // derived: the iOS system green of the dark appearance
             warning = WarningOnDark, // derived: the iOS system orange of the dark appearance
             danger = DangerOnDark, // derived: the iOS system red of the dark appearance
+            dangerText = DangerTextOnDark, // derived: the sheet's, on the same fill
             onDanger = Color(0xFF0B0C11), // derived
         ),
         overlay = SurfaceColors(
@@ -175,7 +190,7 @@ object VeloPalettes {
             secondary = Color(0xFFC2C3C9), // derived: AK row chevron #A8AAB1, lightened to 4.5 over the lightest the material gets
             disabled = Color(0xFF8B8E98), // derived: halfway from the surface to secondary
             glass = Color(0xFF393D49), // AK field and grouped card
-            glassEdge = Color(0xFF727588), // AK close disc top rim
+            glassEdge = Color(0xFF727588), // AK close disc top rim. The Overlays board rims a field with glassSelected, #4A4D5C: 1.248 over a bright terminal
             onGlass = Color(0xFFFCFEFF), // derived: text
             glassSelected = Color(0xFF4A4D5C), // AK close disc, the lighter control on the sheet
             selected = Color(0xFF4A4E59), // derived: lighter than the material over any backdrop
@@ -184,13 +199,35 @@ object VeloPalettes {
             onAccent = Color(0xFF0B0C11), // derived
             ok = OkOnDark, // derived: the iOS system green of the dark appearance
             warning = WarningOnDark, // derived: the iOS system orange of the dark appearance
-            danger = Color(0xFFFF9994), // derived: the dark red lightened to 4.5 as text over the lightest the material gets
+            danger = Color(0xFFFF9994), // derived: the dark red lightened to 4.5 as text over the lightest the material gets (Tokens board "dangerOnOverlay"); #FF453A is 2.98 as a mark over a bright terminal
+            dangerText = Color(0xFFFF9994), // Tokens board "dangerOnOverlay": the Overlays board's destructive menu item
             onDanger = Color(0xFF0B0C11), // derived
         ),
+        sheet = SurfaceColors(
+            surface = Color(0xFF0F1015), // Tokens board "chrome": the settings' fill, as chrome's
+            text = Color(0xFFF3F4F9), // Tokens board "text", as the sidebar's
+            secondary = Color(0xFF8C8F94), // Tokens board "secondary"
+            disabled = Color(0xFF5F6064), // Tokens board "disabled"
+            glass = Color(0xFF24262B), // Tokens board "glass": buttons, fields, the segmented track
+            glassEdge = Color(0xFF383C42), // Tokens board "glassEdge"
+            onGlass = Color(0xFFF3F4F9), // Controls board: the label of a secondary button and of the selected cell
+            glassSelected = Color(0xFF3A3D44), // Tokens board "glassSelected": the selected cell, a switch that is off
+            selected = Color(0xFF1D1E23), // Tokens board "selected": the selected row, a disabled button
+            divider = Color(0xFF2B2C30), // Tokens board "divider": group borders and hairlines
+            accent = Color(0xFF63A2F6), // Tokens board "accent": links, a switch that is on, the primary button
+            onAccent = Color(0xFF0B0C11), // Tokens board "onAccent"
+            ok = OkOnDark, // Tokens board "ok"
+            warning = WarningOnDark, // Tokens board "warning"
+            danger = DangerOnDark, // Tokens board "danger": a field's error ring, an outlined button's rim at 50 %, a destructive dialog's confirm
+            dangerText = DangerTextOnDark, // Controls board: the outlined destructive button and a field's error line
+            onDanger = Color(0xFF0B0C11), // derived: the Overlays board writes white on the red, 3.4; dark text reaches 5.7
+        ),
+        raised = Color(0xFF15171D), // Tokens board "raised", the one value the redesign adds
+        textOnRaised = Color(0xFFC2C3C9), // Tokens board "textOnRaised", the overlay's secondary
         overlayAnchor = Color(0xFF15161B), // AK the screen above the sheet
         overlayLight = 0.10f, // derived: no image shows an overlay over a bright picture; the most, with overlayTint, at which every text keeps 4.5 over any colour
         overlayTint = 0.45f, // derived: as overlayLight
-        scrim = Color(0x66000000), // derived: AK against PK, two screenshots: under the sheet the header title reads 55 % and its disc 66 % of their values; black at 40 %
+        scrim = Color.Black.copy(alpha = 0.45f), // Tokens and Overlays boards: black at 45 % (AK against PK read 40 %)
         paneFocus = Color(0xB37FA6F5), // derived: chrome's accent at 70 %, the strength the app uses today
     )
 }
@@ -201,6 +238,26 @@ internal object ReferencePalettes {
     private val OkOnDark = Backdrop.ok
     private val WarningOnDark = Backdrop.warning
     private val DangerOnDark = Backdrop.danger
+
+    private val LightChrome = SurfaceColors(
+        surface = Color(0xFFF9F9F9), // L06 pane card, L20 key bar strip
+        text = Color(0xFF151616), // M01 pane header title
+        secondary = Color(0xFF626164), // L01 pane header subtitle
+        disabled = Color(0xFFA7A7A7), // derived: the glass rim, the lightest grey the Duo draws on this surface
+        glass = Color(0xFFF5F5F5), // L06 rail discs, L01 tab capsule
+        glassEdge = Color(0xFFA7A7A7), // M01 back disc rim
+        onGlass = Color(0xFF2D2D2F), // L06 rail "…" dots
+        glassSelected = Color(0xFFD4D2D3), // L01 tab capsule, selected cell
+        selected = Color(0xFFE5E5E5), // derived: halfway from glass to its selected cell
+        divider = Color(0xFFC7C7CA), // L06 layout thumbnail, the cell that is not selected
+        accent = Color(0xFF336FB1), // L06 layout thumbnail, selected cell
+        onAccent = Color(0xFFFFFFFF), // derived
+        ok = Color(0xFF248A3D), // derived: the iOS system green of the light appearance, darker variant
+        warning = Color(0xFFC93400), // derived: the iOS system orange, darker variant
+        danger = Color(0xFFD70015), // derived: the iOS system red, darker variant
+        dangerText = Color(0xFFD70015), // derived: as danger
+        onDanger = Color(0xFFFFFFFF), // derived
+    )
 
     val light = VeloColors(
         dark = false,
@@ -221,26 +278,10 @@ internal object ReferencePalettes {
             ok = OkOnDark, // derived: the iOS system green of the dark appearance
             warning = WarningOnDark, // derived: the iOS system orange of the dark appearance
             danger = DangerOnDark, // derived: the iOS system red of the dark appearance
+            dangerText = DangerOnDark, // derived: as danger
             onDanger = Color(0xFF000000), // derived
         ),
-        chrome = SurfaceColors(
-            surface = Color(0xFFF9F9F9), // L06 pane card, L20 key bar strip
-            text = Color(0xFF151616), // M01 pane header title
-            secondary = Color(0xFF626164), // L01 pane header subtitle
-            disabled = Color(0xFFA7A7A7), // derived: the glass rim, the lightest grey the Duo draws on this surface
-            glass = Color(0xFFF5F5F5), // L06 rail discs, L01 tab capsule
-            glassEdge = Color(0xFFA7A7A7), // M01 back disc rim
-            onGlass = Color(0xFF2D2D2F), // L06 rail "…" dots
-            glassSelected = Color(0xFFD4D2D3), // L01 tab capsule, selected cell
-            selected = Color(0xFFE5E5E5), // derived: halfway from glass to its selected cell
-            divider = Color(0xFFC7C7CA), // L06 layout thumbnail, the cell that is not selected
-            accent = Color(0xFF336FB1), // L06 layout thumbnail, selected cell
-            onAccent = Color(0xFFFFFFFF), // derived
-            ok = Color(0xFF248A3D), // derived: the iOS system green of the light appearance, darker variant
-            warning = Color(0xFFC93400), // derived: the iOS system orange, darker variant
-            danger = Color(0xFFD70015), // derived: the iOS system red, darker variant
-            onDanger = Color(0xFFFFFFFF), // derived
-        ),
+        chrome = LightChrome,
         overlay = SurfaceColors(
             surface = Color(0xFFECEDF1), // MB1 sheet
             text = Color(0xFF18191E), // MB1 body text
@@ -257,12 +298,28 @@ internal object ReferencePalettes {
             ok = Color(0xFF1E7B34), // derived: chrome's green darkened to 3 on a selected row
             warning = Color(0xFFC93400), // derived: chrome's
             danger = Color(0xFFB80012), // derived: chrome's red darkened to 4.5 as text over the darkest the material gets
+            dangerText = Color(0xFFB80012), // derived: as danger
             onDanger = Color(0xFFFFFFFF), // derived
         ),
+        sheet = LightChrome, // derived: the redesign draws no light settings
+        raised = Color(0xFFFFFFFF), // derived: a step lighter than chrome
+        textOnRaised = Color(0xFF3C3C40), // derived: between chrome's text and secondary
         overlayAnchor = Color(0xFFBDBEC2), // MB1 backdrop behind the sheet
         overlayLight = 0.10f, // derived: Dark's; here too the most at which every text keeps 4.5 over any colour
         overlayTint = 0.45f, // derived: as overlayLight
         scrim = Color(0x3B000000), // M03 against M01: the pane behind the menu is dimmed by black at 23 %
         paneFocus = Color(0xB363A2F6), // derived: the backdrop's accent at 70 %, as Dark's strength; chrome's #336FB1 reads 2.46 on black
     )
+}
+
+/**
+ * The tint of each settings category's icon tile, under a white line icon (redesign, Controls
+ * board, "분류 아이콘"). The same in both appearances.
+ */
+object CategoryTints {
+    val appearance = Color(0xFF5B4FC4)
+    val keyboard = Color(0xFF3E4A5E)
+    val notifications = Color(0xFF9A3B62)
+    val remotes = Color(0xFF2F6B57)
+    val about = Color(0xFF2F5E9E)
 }

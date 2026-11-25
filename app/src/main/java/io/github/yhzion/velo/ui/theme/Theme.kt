@@ -22,6 +22,8 @@ private val LocalSurface = staticCompositionLocalOf { VeloPalettes.dark.chrome }
 private val LocalRadii = staticCompositionLocalOf { VeloRadii() }
 private val LocalSizes = staticCompositionLocalOf { VeloSizes() }
 private val LocalType = staticCompositionLocalOf { VeloType() }
+private val LocalSpace = staticCompositionLocalOf { VeloSpace() }
+private val LocalUiSize = staticCompositionLocalOf { UiSize.Large }
 /** The colour chosen for the focused pane's edge (Appearance → Active pane), or null for the palette's. Not static: only its readers recompose when it changes. */
 private val LocalPaneHighlight = compositionLocalOf<Color?> { null }
 
@@ -35,6 +37,14 @@ object VeloTheme {
     val radii: VeloRadii @Composable @ReadOnlyComposable get() = LocalRadii.current
     val sizes: VeloSizes @Composable @ReadOnlyComposable get() = LocalSizes.current
     val type: VeloType @Composable @ReadOnlyComposable get() = LocalType.current
+    /** The redesign's spacing steps, 4 to 24 at Medium. */
+    val space: VeloSpace @Composable @ReadOnlyComposable get() = LocalSpace.current
+    /** The Size setting the tokens are drawn at. */
+    val size: UiSize @Composable @ReadOnlyComposable get() = LocalUiSize.current
+
+    /** A length a redesign board gives at Medium, at the current size ([mediumAt]): for a board's number that no token holds. */
+    @Composable @ReadOnlyComposable
+    fun medium(value: Dp): Dp = mediumAt(LocalUiSize.current, value)
 
     /** The edge of the pane that takes the keys, and its split handles: the chosen colour at the palette's strength. */
     val paneFocus: Color @Composable get() = LocalPaneHighlight.current?.copy(alpha = colors.paneFocus.alpha) ?: colors.paneFocus
@@ -54,15 +64,17 @@ fun VeloTheme(size: UiSize = UiSize.Large, paneHighlight: Color? = null, content
     val sizes = remember(size) { veloSizes(size) }
     val type = remember(size) { veloType(size) }
     val radii = remember(size) { veloRadii(size) }
+    val space = remember(size) { veloSpace(size) }
     CompositionLocalProvider(
         LocalSizes provides sizes, LocalType provides type, LocalRadii provides radii, LocalPaneHighlight provides paneHighlight,
+        LocalSpace provides space, LocalUiSize provides size,
     ) {
         VeloSurface(VeloTheme.colors.chrome, content)
     }
 }
 
 /**
- * [content] sits on the surface whose colours are [colors]: one of the four groups of
+ * [content] sits on the surface whose colours are [colors]: one of the five groups of
  * [VeloTheme.colors]. Components read their colours from it ([VeloTheme.surface]), and so do
  * Material components.
  */

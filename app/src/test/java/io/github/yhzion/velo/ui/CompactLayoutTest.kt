@@ -58,9 +58,11 @@ class CompactLayoutTest {
 
     @Test fun theSidebarCoversThePanesWhenLessThanFourHundredEightyDpWouldBeLeft() {
         assertTrue(covers(600f, 900f))
-        // 954 - 366 - 68 - 2*10 - 2*10 = exactly 480 left: enough.
-        assertFalse(covers(954f, 700f))
-        assertTrue(covers(953f, 700f))
+        // The sidebar, the rail and a gap on each side of both, and exactly 480 left: enough.
+        val s = VeloSizes()
+        val edge = MinPanesBesideSidebarDp + s.sidebar.value + s.rail.value + 4 * s.gap.value
+        assertFalse(covers(edge + 0.01f, 700f))
+        assertTrue(covers(edge - 1f, 700f))
     }
 
     @Test fun everyPaletteCommandButTheToggleAndDialogsClosesTheSidebar() {
