@@ -471,7 +471,7 @@ fun TagBadge(text: String, modifier: Modifier = Modifier) {
         text, modifier.clip(rounded(VeloTheme.radii.badge)).background(VeloTheme.surface.glass)
             .padding(horizontal = VeloTheme.medium(9.dp), vertical = VeloTheme.space.s4),
         style = type.caption.copy(fontSize = type.eyebrow.fontSize, lineHeight = type.eyebrow.lineHeight),
-        color = VeloTheme.colors.textOnRaised, maxLines = 1,
+        color = VeloTheme.colors.textOnRaised, maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }
 
