@@ -2,11 +2,13 @@ package io.github.yhzion.velo
 
 import android.app.Activity
 import android.app.Instrumentation
+import android.graphics.Paint
 import android.os.Bundle
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 /**
  * The glyph rasterizer reads its font files when they are first needed, and [GlyphRasterizer.prefetch] may read them
@@ -32,6 +34,7 @@ class GlyphRasterizerInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = runCatching {
             readsNothingUntilAsked()
+            cellsKeepTheProportionsOfTheirFont()
             drawsAsOneThreadWould(TerminalFont.JETBRAINS)
             drawsAsOneThreadWould(TerminalFont.CASCADIA_CODE)
             followsAChangeOfFont()
@@ -132,5 +135,23 @@ class GlyphRasterizerInstrumentation : Instrumentation() {
         reading.join(TimeUnit.SECONDS.toMillis(60))
         val extra = readFiles(r) - keeps(TerminalFont.FIRA_CODE)
         check(extra.isEmpty()) { "a font left during a prefetch stays read: $extra" }
+    }
+
+    /**
+     * The core makes a cell 0.6 of the font size wide and [GlyphRasterizer.lineHeight] of it high, and the rasterizer
+     * fills the width with the face's 'M'. A cell must then be as many widths high as the face's line is 'M' advances,
+     * or a face narrower than 0.6 em is drawn larger than its row and squeezed into it: D2Coding's 'M' is 0.5 em.
+     */
+    private fun cellsKeepTheProportionsOfTheirFont() {
+        val r = GlyphRasterizer(targetContext.assets)
+        for (font in listOf(TerminalFont.JETBRAINS, TerminalFont.FIRA_CODE, TerminalFont.CASCADIA_CODE, TerminalFont.D2CODING)) {
+            r.font = font
+            r.rasterize("한".toByteArray(), false, false, 18, 38, 2) // Leaves a stretched paint behind.
+            val paint = Paint().apply { typeface = r.regularFaceOf(font); textSize = 100f }
+            val fm = paint.fontMetrics
+            val face = (fm.descent - fm.ascent + fm.leading) / paint.measureText("M")
+            val cell = r.lineHeight / 0.6f
+            check(abs(cell - face) < 0.001f) { "${font.id}: a cell is $cell widths high, the face's line $face 'M' advances" }
+        }
     }
 }

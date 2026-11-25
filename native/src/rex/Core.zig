@@ -904,7 +904,8 @@ pub const Core = struct {
 
     // Settings.
     font_sp: f32 = default_font_sp,
-    /// Line height in em of the font the host draws (setting `fontLineHeight`).
+    /// Cell height in em of the font size: the line of the font the host draws, at the size
+    /// whose 'M' fills a cell 0.6 em wide (setting `fontLineHeight`).
     line_height: f32 = 1.2,
     /// Margin around each terminal grid in px (setting `panePaddingPx`).
     pad_px: f32 = 0,

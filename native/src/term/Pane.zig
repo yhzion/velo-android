@@ -376,7 +376,8 @@ pub const Pane = struct {
 
     // View state (protected by `lock`).
     font_px: f32 = 28,
-    /// Cell height in em: the terminal font's own line height.
+    /// Cell height in em of the font size: the terminal font's line at the size whose 'M'
+    /// fills a cell 0.6 em wide (setting `fontLineHeight`).
     line_height: f32 = 1.2,
     scale: f32 = 1,
     /// Empty margin in px around the terminal grid at the scroll origin.
@@ -774,7 +775,7 @@ pub const Pane = struct {
     pub const CellSize = struct { w: u32, h: u32 };
 
     /// Local cell size: font size × scale; width is the monospace advance (0.6 em),
-    /// height the font's line height. Caller holds the lock.
+    /// height `line_height`. Caller holds the lock.
     pub fn cellSizeLocked(self: *const Pane) CellSize {
         const px = self.font_px * self.scale;
         return .{
