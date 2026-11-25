@@ -63,7 +63,7 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## License
 
-Velo's original code and assets are licensed under the [MIT License](LICENSE). Third-party components in the source tree and APK retain their own licenses and terms; see [NOTICE](NOTICE).
+Velo's original code and assets are licensed under the [MIT License](LICENSE). Third-party components in the source tree and APK retain their own licenses and terms; see [NOTICE](NOTICE) and the license texts in [licenses/](licenses/). The app shows the same texts offline under **Settings → About → Open source licenses**.
 
 ## Acknowledgements
 

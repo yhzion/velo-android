@@ -53,6 +53,8 @@ import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.Tailnet
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.isSshLocator
+import io.github.yhzion.velo.findLicense
+import io.github.yhzion.velo.licenseParent
 import io.github.yhzion.velo.ui.theme.AttentionBadge
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.CloseButton
@@ -111,7 +113,10 @@ private enum class SettingsCategory(val title: String, @DrawableRes val icon: In
     About("About", R.drawable.ic_settings_about),
 }
 
-private enum class SettingsLevel(val title: String) { Device("This Device"), Font("Terminal Font"), Updates("Updates"), SshKey(SSH_KEY_ROW) }
+private enum class SettingsLevel(val title: String) {
+    Device("This Device"), Font("Terminal Font"), Updates("Updates"), SshKey(SSH_KEY_ROW),
+    Licenses("Open source licenses"), License("License"),
+}
 
 /**
  * The settings, as a workspace panel over the screen. On the unfolded screen the categories are
@@ -124,6 +129,9 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
     val sizes = VeloTheme.sizes
     var category by rememberSaveable { mutableStateOf<SettingsCategory?>(null) }
     var level by rememberSaveable { mutableStateOf<SettingsLevel?>(null) }
+    // The open license page: a component's id, or a Go module's inside the Go modules page.
+    var license by rememberSaveable { mutableStateOf<String?>(null) }
+    val licensed = license?.takeIf { level == SettingsLevel.License }?.let(::findLicense)
     val scrollStates = rememberSaveableStateHolder()
     val context = LocalContext.current
     val about = remember(context) {
@@ -137,11 +145,17 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
     val listShown = expanded || (category == null && level == null)
     val detailShown = expanded || category != null || level != null
     val back: (() -> Unit)? = when {
+        // A license page goes back to the page that listed it: the Go modules, or all licenses.
+        level == SettingsLevel.License -> ({
+            val parent = license?.let(::licenseParent)
+            if (parent != null) license = parent.id else level = SettingsLevel.Licenses
+        })
         level != null -> ({ level = null })
         !expanded && category != null -> ({ category = null })
         else -> null
     }
     val title = when {
+        licensed != null -> licensed.name
         level != null -> level!!.title
         !expanded && category != null -> shown.title
         else -> "Settings"
@@ -171,17 +185,22 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
                     }
                     if (expanded) Spacer(Modifier.fillMaxHeight().width(sizes.edge).background(VeloTheme.surface.divider))
                     if (detailShown) {
-                        scrollStates.SaveableStateProvider(level?.name ?: shown.name) {
+                        // Each license page keeps its own place in its text.
+                        scrollStates.SaveableStateProvider(licensed?.let { "License:${it.id}" } ?: level?.name ?: shown.name) {
                             val detail = Modifier.weight(1f).fillMaxHeight().padding(horizontal = sizes.overlayPadding)
-                            // The font list scrolls itself, so its level is not inside the sheet's scroll.
+                            // The font list and a license's text scroll themselves, so their levels are not inside the sheet's scroll.
                             if (level == SettingsLevel.Font) TerminalFontSettings(app, detail.padding(top = sizes.menuPadding))
+                            else if (licensed != null) LicenseDetail(licensed, open = { license = it }, modifier = detail)
                             else Column(
                                 detail.verticalScroll(rememberScrollState()).padding(bottom = sizes.overlayPadding),
                             ) {
                                 if (level == SettingsLevel.Device) DeviceSettings(app)
                                 else if (level == SettingsLevel.Updates) AppUpdateSettings()
                                 else if (level == SettingsLevel.SshKey) SshKeySettings(app.sshSecrets)
-                                else when (shown) {
+                                // A license that is no longer listed falls back to the list.
+                                else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) {
+                                    OpenSourceLicenseList(open = { license = it; level = SettingsLevel.License })
+                                } else when (shown) {
                                     SettingsCategory.Appearance -> AppearanceSettings(app, openFont = { category = shown; level = SettingsLevel.Font })
                                     SettingsCategory.Keyboard -> KeyboardSettings(app.settings)
                                     SettingsCategory.Notifications -> ActivitySettings(app)
@@ -193,6 +212,8 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
                                         }
                                         GroupDivider()
                                         UpdatesRow(onClick = { category = shown; level = SettingsLevel.Updates })
+                                        GroupDivider()
+                                        ListRow("Open source licenses", onClick = { category = shown; level = SettingsLevel.Licenses })
                                     }
                                 }
                             }
