@@ -22,6 +22,7 @@ import io.github.yhzion.velo.LicenseComponent
 import io.github.yhzion.velo.LicenseText
 import io.github.yhzion.velo.OpenSourceLicenses
 import io.github.yhzion.velo.licenseBlocks
+import io.github.yhzion.velo.reflowLicense
 import io.github.yhzion.velo.licenseGroups
 import io.github.yhzion.velo.licenseSubtitle
 import io.github.yhzion.velo.readNotice
@@ -73,7 +74,7 @@ internal fun LicenseDetail(component: LicenseComponent, open: (String) -> Unit, 
     val notices by produceState<List<LoadedNotice>?>(null, component.id) {
         value = withContext(Dispatchers.IO) {
             component.texts.map { text ->
-                val blocks = try { licenseBlocks(readNotice(text.asset, context.assets::open)) } catch (_: IOException) { null }
+                val blocks = try { licenseBlocks(reflowLicense(readNotice(text.asset, context.assets::open))) } catch (_: IOException) { null }
                 LoadedNotice(text, blocks)
             }
         }

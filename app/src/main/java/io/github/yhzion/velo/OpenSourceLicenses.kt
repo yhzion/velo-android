@@ -198,6 +198,44 @@ fun readNotice(asset: String, open: (String) -> InputStream): String = open(asse
  * hundreds of kilobytes) lays out a screen at a time. Joined with newlines they give [text] back.
  * A line longer than a block is a block of its own.
  */
+/**
+ * [text] with its hard-wrapped prose joined into one line per paragraph, so that the screen wraps it at
+ * its own width instead of breaking an 80-column line again in the middle. A line runs on into the next
+ * when both are text, the line is long enough to have been wrapped (40 characters or more) and does not
+ * end with a colon, and the next one does not start a list item and continues the paragraph's indent: the
+ * same indent as the line before it, or deeper than the list item the paragraph started with (the Apache
+ * License hangs an item's text under its number). Everything else, blank lines, headings, lists and short
+ * "Name: value" lines, keeps its break.
+ */
+fun reflowLicense(text: String): String {
+    val out = mutableListOf<String>()
+    var lastLength = 0
+    var lastIndent = 0
+    var itemIndent = -1 // The indent of the list item the current output line starts with, else -1.
+    for (line in text.replace("\r\n", "\n").split('\n')) {
+        val previous = out.lastOrNull()
+        val indent = indentOf(line)
+        val continues = indent == lastIndent || (itemIndent >= 0 && indent > itemIndent)
+        val runsOn = previous != null && previous.isNotBlank() && line.isNotBlank() && continues &&
+            lastLength >= 40 && !previous.trimEnd().endsWith(':') && !startsListItem(line)
+        if (runsOn) {
+            out[out.lastIndex] = previous!!.trimEnd() + " " + line.trim()
+        } else {
+            out += line
+            itemIndent = if (startsListItem(line)) indent else -1
+        }
+        lastLength = line.trim().length
+        lastIndent = indent
+    }
+    return out.joinToString("\n")
+}
+
+private fun indentOf(line: String) = line.length - line.trimStart().length
+
+private val listItem = Regex("""^([-*•]|\(?[0-9]{1,3}[.)]|\([a-z]{1,3}\))\s""")
+
+private fun startsListItem(line: String) = listItem.containsMatchIn(line.trimStart())
+
 fun licenseBlocks(text: String, maxChars: Int = 4000): List<String> {
     val blocks = mutableListOf<String>()
     val block = StringBuilder()
