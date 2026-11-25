@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import io.github.yhzion.velo.DiscoveredServer
 import io.github.yhzion.velo.TailnetState
+import androidx.compose.runtime.saveable.SaverScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -10,6 +11,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StartScreenTest {
+    @Test fun aComputerBeingOpenedIsKeptWhenTheActivityIsMadeAgain() {
+        val opening = StartOpening("mac", "https://mac.tail.ts.net:8443")
+        val saved = with(StartOpeningSaver) { SaverScope { true }.save(opening) }
+        assertEquals(opening, StartOpeningSaver.restore(saved!!))
+        assertNull(with(StartOpeningSaver) { SaverScope { true }.save(null) })
+    }
+
     @Test fun aWantedLoginOpensTheNodesLoginPage() {
         assertEquals(TailnetLoginStep.Open("https://login.example/1"), tailnetLoginStep(wanted = true, TailnetState.NeedsLogin("https://login.example/1")))
     }

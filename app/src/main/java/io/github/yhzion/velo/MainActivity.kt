@@ -42,6 +42,7 @@ import io.github.yhzion.velo.ui.Splash
 import io.github.yhzion.velo.ui.SplashSeen
 import io.github.yhzion.velo.ui.StartOpening
 import io.github.yhzion.velo.ui.StartOpeningDelayMs
+import io.github.yhzion.velo.ui.StartOpeningSaver
 import io.github.yhzion.velo.ui.StartScreen
 import io.github.yhzion.velo.ui.openingView
 import io.github.yhzion.velo.ui.showSplash
@@ -157,7 +158,8 @@ class MainActivity : ComponentActivity() {
         var tailscale by rememberSaveable { mutableStateOf(false) }
         var pairing by remember { mutableStateOf(false) }
         // A computer the start screen's Connect saved, while its first connection is under way (step 3).
-        var opening by remember { mutableStateOf<StartOpening?>(null) }
+        // Kept when the activity is made again, as the connection is: else the workspace would take step 3's place.
+        var opening by rememberSaveable(stateSaver = StartOpeningSaver) { mutableStateOf<StartOpening?>(null) }
         var openingSlow by remember(opening) { mutableStateOf(false) }
         opening?.let { LaunchedEffect(it) { delay(StartOpeningDelayMs); openingSlow = true } }
         BackHandler(settings && !pairing) { settings = false }

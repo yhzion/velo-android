@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -346,6 +347,12 @@ fun openingProgress(elapsedMs: Long): Float = 0.9f - 0.85f * exp(-elapsedMs / 40
 /** A computer the start screen's Connect saved while its first connection is under way ([openingView]). */
 @Immutable
 data class StartOpening(val name: String, val url: String)
+
+/** Keeps a [StartOpening] when the activity is made again (a font size change): step 3 and its Cancel stay. */
+val StartOpeningSaver = Saver<StartOpening?, ArrayList<String>>(
+    save = { o -> o?.let { arrayListOf(it.name, it.url) } },
+    restore = { (name, url) -> StartOpening(name, url) },
+)
 
 /** What the start card shows and what its buttons do: [StartScreen] reads it from the node, a preview makes it up. */
 class StartCardModel(
