@@ -1,6 +1,6 @@
 # Android releases
 
-The [release workflow](../.github/workflows/release.yml) automatically builds and publishes only in the existing private archive, repository ID `1462789754`. A new repository cannot run either job, regardless of its name or visibility. Build, sign and audit public candidates locally; do not upload unapproved candidates or their evidence to Actions.
+The [release workflow](../.github/workflows/release.yml) builds, signs, verifies and publishes a release when a `v*` tag is pushed to `yhzion/velo-android`, repository ID `1470994129`. It runs in no other repository: a fork, a copy under another name and the private archive (`1462789754`) skip both jobs. The first public release, v2.9.18, was built and signed locally as described [below](#first-public-apk-verify-privately-before-approval); later releases come from the workflow.
 
 ## Set up release signing
 
@@ -23,7 +23,7 @@ Velo uses ZXing Core for [on-device QR scanning](../README.md#qr-scanning-and-pr
 
 ## Choose a version and tag
 
-Plan the first stable public release as `v2.9.18`, code `3000036`, using public build number `1`. The archive's largest published code was `3000035`, confirmed by its v2.9.17 APK and published release markers (including prereleases). Before building and again before publishing, check the highest code of every build intended for in-place upgrade. Freeze archive releases during that interval or rebuild and reverify if the candidate no longer exceeds the highest code. Reserve the next public build number for each later candidate; never publish a code at or below one already distributed.
+The first stable public release was `v2.9.18`, code `3000036`, public build number `1`. The archive's largest published code was `3000035`, confirmed by its v2.9.17 APK and published release markers (including prereleases). The workflow continues that sequence with its run number: its run 1 was the v2.9.18 tag, which it skipped, so its first release is run 2, code `3000037`. Never publish a code at or below one already distributed.
 
 Put the intended `X.Y.Z` in the root `VERSION`, without a leading `v` or a suffix, and merge it into `main` after review. The base version must be greater than `2.5.3`. You can publish multiple prereleases and then a stable release with the same base version.
 
@@ -35,7 +35,7 @@ Use the original v2.9.17 keystore for package `io.github.yhzion.velo`. The new r
 | Preview | `v2.5.4-preview.1` | Prerelease, not Latest |
 | Edge | `v2.5.4-edge.2` | Prerelease, not Latest |
 
-Use ASCII decimals without leading zeros. Minor and patch range from 0 to 999; the prerelease number ranges from 1 to 999,999,999. Suffixes are lowercase; other suffixes and `+build` metadata are not accepted. The following tag commands apply only to the archive's normal release lane, not public candidates or the source cutover.
+Use ASCII decimals without leading zeros. Minor and patch range from 0 to 999; the prerelease number ranges from 1 to 999,999,999. Suffixes are lowercase; other suffixes and `+build` metadata are not accepted. The following commands tag `main` and start the release workflow.
 
 ```sh
 git switch main && git pull --ff-only
@@ -45,13 +45,13 @@ git tag -a "$tag" -m "$tag" && git push origin "refs/tags/$tag"
 
 ## Android version codes
 
-The version script removes the leading `v` from the tag to produce `versionName`. The archive uses `3,000,000 + GITHUB_RUN_NUMBER`; a local public candidate uses `3,000,035 + public build number`. Each repository has one increasing sequence across channels. Keep a record of reserved public versions and codes. The Android upper bound is 2,100,000,000.
+The version script removes the leading `v` from the tag to produce `versionName`. The workflow uses `3,000,035 + GITHUB_RUN_NUMBER`, the public sequence; the archive used `3,000,000 + GITHUB_RUN_NUMBER`. Each repository has one increasing sequence across channels. A rerun keeps its run number and a new tag push takes the next one, so a failed release leaves a gap in the codes, never a reuse. The Android upper bound is 2,100,000,000.
 
 The build job passes `RELEASE_VERSION_NAME` and `RELEASE_VERSION_CODE` together to both the initial build and the offline signed build. A local build without either variable uses `VERSION` and `major × 1,000,000 + minor × 1,000 + patch`.
 
 ## Verify the release
 
-The archive workflow checks that the tag matches `VERSION` and points to a commit in `main`'s history, then runs native and Android unit tests. It verifies the signed APK's certificate, package name, version, ABI and libraries. The archive workflow and public APK verifier both enforce the allowed font inventory and compare every packaged font and notice with the specified source commit before checksumming the final bytes. Before publishing, the workflow checks the checksum, tag object, and `main` ancestry again. The release body contains generated change notes and the APK's code on its own line, for example `<!-- android-version-code: 3000042 -->`. When editing the body, leave exactly one such marker unchanged.
+The workflow checks that the tag matches `VERSION` and points to a commit in `main`'s history, then runs native and Android unit tests. It checks that the APK is signed with the key in the secrets, then runs the [public APK verifier](../.github/scripts/verify-public-apk.sh): the original v2.9.17 signer certificate, package name, version and code, ABI and libraries, the allowed font inventory, and every packaged font and notice against the source commit. Then it checksums the final bytes. Before publishing, the workflow checks the checksum, tag object, and `main` ancestry again. The release body contains generated change notes and the APK's code on its own line, for example `<!-- android-version-code: 3000042 -->`. When editing the body, leave exactly one such marker unchanged.
 
 Download the APK and `.sha256` file to the same directory, then run `sha256sum -c "velo-${tag}-arm64-v8a.apk.sha256"` with `tag` set to the downloaded tag. Use `apksigner verify --print-certs` to compare the APK certificate digest with the expected signing certificate. To check only the tag and version rules without a tag or signing key, run `bash .github/scripts/test-release-version.sh`.
 
@@ -60,6 +60,8 @@ Run `python3 .github/scripts/test-verify-apk-notices.py` to test the font and no
 If a debug build uses the same package name as the release, Android will not install the release over it because the signatures differ. Record any settings you need before uninstalling the debug build; uninstalling erases its data. Subsequent releases signed with the same release key can update the installation in place.
 
 ## First public APK: verify privately before approval
+
+This is how v2.9.18 was built and published. Later releases come from the workflow; do not publish a local build, as its build number would collide with the workflow's run numbers.
 
 1. On the owner's trusted workstation, use a fresh checkout of the exact reviewed commit with `VERSION` set to the approved release version. Install the toolchains documented for the archive workflow. Run the following with the original keystore path and key alias supplied locally as `keystore` and `key_alias`; `apksigner` prompts for passwords, so do not pass passwords in arguments or put them in the checkout. The signing step does not contact GitHub.
 

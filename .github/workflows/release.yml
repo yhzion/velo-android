@@ -12,8 +12,9 @@ defaults:
 
 jobs:
   build:
-    # Only the private archive has an automatic release lane. Public candidates stay local.
-    if: github.repository_id == '1462789754' && github.event.created && !github.event.deleted
+    # Only yhzion/velo-android releases, by its repository ID: a fork or the private archive
+    # (1462789754) has neither the signing key nor the update feed users follow.
+    if: github.repository_id == '1470994129' && github.event.created && !github.event.deleted
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -36,7 +37,8 @@ jobs:
           [[ $(git rev-parse "$GITHUB_REF^{commit}") == "$commit" ]]
           [[ $(git rev-parse "$GITHUB_SHA^{commit}") == "$commit" ]]
           git merge-base --is-ancestor "$commit" refs/remotes/origin/main
-          bash .github/scripts/release-version.sh "$GITHUB_REF_NAME" "$(cat VERSION)" "$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          # The public code sequence, after the archive's 3000035: run 1 was the v2.9.18 tag, built by hand as 3000036.
+          bash .github/scripts/release-version.sh "$GITHUB_REF_NAME" "$(cat VERSION)" "$GITHUB_RUN_NUMBER" yhzion/velo-android >> "$GITHUB_ENV"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "tag-object=$(git rev-parse "$GITHUB_REF")" >> "$GITHUB_OUTPUT"
 
@@ -117,10 +119,9 @@ jobs:
           [[ $record =~ $package_pattern ]] || { echo 'Unexpected APK package record'; exit 1; }
           code=${BASH_REMATCH[1]} version=${BASH_REMATCH[2]}
           [[ $code == "$RELEASE_VERSION_CODE" && $version == "${GITHUB_REF_NAME#v}" ]] || { echo 'Unexpected APK version'; exit 1; }
-          grep -Fxq "native-code: 'arm64-v8a'" <<< "$badging"
-          unzip -tq "$apk" lib/arm64-v8a/libvelocore.so lib/arm64-v8a/libtailscale.so
-          # Check the allowed font inventory as well as the notice and font bytes from the tagged source.
-          python3 .github/scripts/verify-apk-notices.py "$apk" "$SOURCE_COMMIT"
+          # The original v2.9.17 signer, the public code, ABI and libraries, the allowed font inventory, and the
+          # notice and font bytes from the tagged source: the checks a local candidate passed before v2.9.18.
+          bash .github/scripts/verify-public-apk.sh "$apk" "$GITHUB_REF_NAME" "$GITHUB_RUN_NUMBER" "$SOURCE_COMMIT"
           mkdir "$RUNNER_TEMP/assets"
           name="velo-$GITHUB_REF_NAME-arm64-v8a.apk"
           cp "$apk" "$RUNNER_TEMP/assets/$name"
@@ -138,7 +139,7 @@ jobs:
           retention-days: 1
 
   publish:
-    if: github.repository_id == '1462789754'
+    if: github.repository_id == '1470994129'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
