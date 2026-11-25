@@ -114,4 +114,12 @@ class RailStatusTest {
         org.junit.Assert.assertNull(railPage(listOf("a", "b"), null))
         org.junit.Assert.assertNull(railPage(listOf("a", "b"), "gone"))
     }
+
+    @Test fun whileTheWheelTurnsTheRailCountsTheTabInFront() {
+        // The rail has one counter: while a long press turns the wheel it follows the tab in front, not the shown one.
+        org.junit.Assert.assertEquals(RailPage(3, 4), railPage(listOf("a", "b", "c", "d"), "b", front = 2))
+        // No wheel (front -1) or a front past the tabs: the shown tab.
+        org.junit.Assert.assertEquals(RailPage(2, 4), railPage(listOf("a", "b", "c", "d"), "b", front = -1))
+        org.junit.Assert.assertEquals(RailPage(2, 4), railPage(listOf("a", "b", "c", "d"), "b", front = 9))
+    }
 }
