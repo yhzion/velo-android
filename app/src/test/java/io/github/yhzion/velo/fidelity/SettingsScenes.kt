@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.fidelity
 
+import io.github.yhzion.velo.SshKeyTool
 import io.github.yhzion.velo.ui.RemoteDraft
 import androidx.compose.ui.platform.LocalConfiguration
 import io.github.yhzion.velo.PaneAlertKind
@@ -85,7 +86,9 @@ internal class FakeSettingsHost(val context: Context) : SettingsHost {
     override fun setTailnet(on: Boolean) {}
     override fun setTailnetName(name: String) {}
     override fun logoutTailnet() {}
-    override val sshSecrets = SshSecrets(context.getSharedPreferences("fidelity-ssh", Context.MODE_PRIVATE), FakeSealer(), FakeKeys())
+    /** The key tool: the test one, whose phone key is the SetSsh block's. */
+    val keyTool = BoardKeys()
+    override val sshSecrets = SshSecrets(context.getSharedPreferences("fidelity-ssh", Context.MODE_PRIVATE), FakeSealer(), keyTool)
     var releases: List<AppRelease> = emptyList()
     /** What else happens while the page checks. */
     var onCheck: () -> Unit = {}
@@ -194,7 +197,12 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
         SettingsScene(SettingsRoute(SettingsCategory.Remotes, open = SettingsOpen(addingRemote = draft))) { sshSecrets.publicLine() }
     },
     "settings-tailscale" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.Device)) },
-    "settings-ssh" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.SshKey)) },
+    "settings-ssh" to {
+        SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.SshKey)) {
+            sshSecrets.publicLine()
+            sshSecrets.importKey(keyTool.fake.imported.first, null)
+        }
+    },
     "settings-about" to { SettingsScene(SettingsRoute(SettingsCategory.About)) },
     // The board keeps About's dot on the Updates page, which marks the release it shows as seen: a later
     // check found a newer build than the page shows, so the dot stays.
@@ -244,3 +252,11 @@ private fun FakeSettingsHost.boardNotifications() {
         }
     }
 }
+
+/** The test key tool, but the phone key it makes is about as long as the one the SetSsh block shows. */
+internal class BoardKeys(val fake: FakeKeys = FakeKeys()) : SshKeyTool by fake {
+    override fun generate(comment: String): Pair<String, String> = fake.generate(comment).first to BoardPhoneKey
+}
+
+// The board's line without its ellipsis, so that it is a key with a fingerprint.
+private const val BoardPhoneKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK7v1Qm3xR9tY2b velo-phone"

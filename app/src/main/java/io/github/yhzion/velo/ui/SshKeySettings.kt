@@ -1,5 +1,43 @@
 package io.github.yhzion.velo.ui
 
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.IntrinsicSize
+import kotlin.coroutines.CoroutineContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.text
+import io.github.yhzion.velo.ui.theme.textAt
+import io.github.yhzion.velo.ui.theme.rounded
+import io.github.yhzion.velo.ui.theme.paragraph
+import io.github.yhzion.velo.ui.theme.monoAt
+import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.groupBleed
+import io.github.yhzion.velo.ui.theme.VeloMenu
+import io.github.yhzion.velo.ui.theme.RaisedCard
+import io.github.yhzion.velo.ui.theme.MenuItem
+import io.github.yhzion.velo.ui.theme.ButtonKind
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,7 +45,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
@@ -32,7 +69,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -304,11 +340,12 @@ private fun readKeyFile(context: Context, uri: Uri): String? = try {
  * file after the keys kept; "Replace key…" makes a new phone key, after asking; Remove forgets an
  * imported key, after asking. Keystore and key work run off the main thread; a key being
  * imported and its passphrase are kept in memory only, while their dialog is open. Keys that
- * cannot be read now are read again when the page is shown again.
+ * cannot be read now are read again when the page is shown again. The keys are read and changed
+ * on [io].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun SshKeySettings(secrets: SshSecrets) {
+internal fun SshKeySettings(secrets: SshSecrets, io: CoroutineContext = Dispatchers.IO) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sizes = VeloTheme.sizes
@@ -316,7 +353,7 @@ internal fun SshKeySettings(secrets: SshSecrets) {
     // Each change of the keys reads them again.
     var reads by remember { mutableIntStateOf(0) }
     val list by produceState<KeyList>(KeyList.Loading, reads) {
-        value = withContext(Dispatchers.IO) { readKeys(secrets::keys) }
+        value = withContext(io) { readKeys(secrets::keys) }
     }
     // Back on screen: keys the Keystore could not open are tried again.
     LifecycleResumeEffect(Unit) {
@@ -339,7 +376,7 @@ internal fun SshKeySettings(secrets: SshSecrets) {
         problem = null
         scope.launch {
             // The bcrypt KDF of an OpenSSH key can take seconds, and holds the secrets' lock.
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(io) {
                 try {
                     secrets.importKey(pem, passphrase)
                 } catch (e: Exception) {
@@ -373,7 +410,7 @@ internal fun SshKeySettings(secrets: SshSecrets) {
             busy = true
             problem = null
             scope.launch {
-                val pem = withContext(Dispatchers.IO) { readKeyFile(context, uri) }
+                val pem = withContext(io) { readKeyFile(context, uri) }
                 if (pem == null) {
                     busy = false
                     problem = KeyPageProblem(SshSecrets.NOT_A_KEY, KeyChange.Import)
@@ -387,7 +424,7 @@ internal fun SshKeySettings(secrets: SshSecrets) {
         busy = true
         problem = null
         scope.launch {
-            val failure = withContext(Dispatchers.IO) {
+            val failure = withContext(io) {
                 try {
                     work()
                     null
@@ -436,33 +473,36 @@ internal fun SshKeySettings(secrets: SshSecrets) {
     val shown = list
     val rows = (shown as? KeyList.Ready)?.keys?.let(::keyRows).orEmpty()
     val pageActions = keyPageActions(shown)
-    val column = Modifier.padding(vertical = sizes.overlayPadding)
-    GroupHeader(PHONE_KEY_HEADER)
-    GroupCard {
-        Column(column, verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
-            when (shown) {
-                is KeyList.Ready -> rows.firstOrNull { it.key.phone }?.let { KeyBlock(it, titled = false, busy = busy, onAction = ::act) }
-                // One node while the keys load and after they could not be read: it says so by a change.
-                else -> LiveText(if (shown == KeyList.Unavailable) KEYS_UNAVAILABLE else "", c.secondary)
-            }
-            Text(AUTHORIZED_KEYS_TEXT, color = c.secondary)
-            if (KeyPageAction.Replace in pageActions) VeloButton(KeyPageAction.Replace.label, { act(KeyPageAction.Replace) }, enabled = !busy)
-            // Under Replace: its failure, and every failure while the keys are not listed.
-            LiveText(problemUnder(KeyPageGroup.PhoneKey, problem, shown), c.danger)
-        }
-    }
-    if (shown is KeyList.Ready) {
-        GroupHeader(IMPORTED_KEYS_HEADER)
-        GroupCard {
-            Column(column, verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
-                rows.filter { !it.key.phone }.forEachIndexed { index, row ->
-                    if (index > 0) GroupDivider()
-                    KeyBlock(row, titled = true, busy = busy, onAction = ::act)
+    val space = VeloTheme.space
+    Column(Modifier.fillMaxWidth().testTag("ssh-content").padding(bottom = space.s24)) {
+        GroupHeader(PHONE_KEY_HEADER, Modifier.testTag("ssh-phone-key-header"), first = true)
+        val phone = rows.firstOrNull { it.key.phone }
+        if (phone != null) PhoneKeyCard(phone, ::act)
+        // One node while the keys load and after they could not be read: it says so by a change.
+        else LiveText(if (shown == KeyList.Unavailable) KEYS_UNAVAILABLE else "", c.secondary)
+        Text(AUTHORIZED_KEYS_TEXT, Modifier.fillMaxWidth().testTag("ssh-install-hint").padding(start = VeloTheme.medium(6.dp), end = VeloTheme.medium(6.dp), top = VeloTheme.medium(10.dp)),
+            style = VeloTheme.type.caption.paragraph(1.5.em), color = c.secondary)
+        if (shown is KeyList.Ready) {
+            GroupHeader(IMPORTED_KEYS_HEADER, Modifier.testTag("ssh-imported-header"))
+            GroupCard(Modifier.testTag("ssh-imported-group")) {
+                rows.forEachIndexed { index, row ->
+                    // Named by its place among the keys logins offer, the phone key being the first.
+                    if (!row.key.phone) {
+                        ImportedKeyRow(row, (index + 1).toString(), busy, ::act)
+                        GroupDivider(full = true)
+                    }
                 }
-                keysNote(rows.size)?.let { Text(it, color = c.secondary) }
-                if (KeyPageAction.Import in pageActions) VeloButton(KeyPageAction.Import.label, { act(KeyPageAction.Import) }, enabled = !busy)
-                LiveText(problemUnder(KeyPageGroup.ImportedKeys, problem, shown), c.danger)
+                keysNote(rows.size)?.let { Text(it, Modifier.padding(vertical = space.s12), style = VeloTheme.type.caption, color = c.secondary) }
+                // Import and Remove say why they failed on the Import row, which a screen reader is told about.
+                if (KeyPageAction.Import in pageActions) ImportKeyRow(enabled = !busy, problemUnder(KeyPageGroup.ImportedKeys, problem, shown)) { act(KeyPageAction.Import) }
             }
+        }
+        if (KeyPageAction.Replace in pageActions) Column(Modifier.padding(top = space.s24), verticalArrangement = Arrangement.spacedBy(space.s8)) {
+            VeloButton(KeyPageAction.Replace.label, { act(KeyPageAction.Replace) }, Modifier.fillMaxWidth(), enabled = !busy, tag = "ssh-replace-key-button")
+            // Under Replace: what it costs, or its failure and every failure while the keys are not listed.
+            val failure = problemUnder(KeyPageGroup.PhoneKey, problem, shown)
+            LiveText(failure.ifEmpty { keyPageQuestion(KeyPageAction.Replace)?.text.orEmpty() }, if (failure.isEmpty()) c.secondary else c.danger,
+                Modifier.testTag("ssh-replace-key-caption").padding(horizontal = space.s8), centered = true)
         }
     }
 
@@ -507,23 +547,119 @@ internal fun SshKeySettings(secrets: SshSecrets) {
 }
 
 /**
- * One key: its name ([titled], for an imported key; the phone key's is its group's heading), its
- * line, its fingerprint and its buttons. The buttons that change the keys wait while [busy].
+ * This phone's key in its card: its type and fingerprint, its line, then Copy install command
+ * (convenience B), and Copy and Share. Every button names the key for a screen reader.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KeyBlock(row: KeyRow, titled: Boolean, busy: Boolean, onAction: (KeyRow, KeyAction) -> Unit) {
-    val sizes = VeloTheme.sizes
+private fun PhoneKeyCard(row: KeyRow, onAction: (KeyRow, KeyAction) -> Unit) {
     val c = VeloTheme.surface
-    if (titled) Text(row.name, Modifier.semantics { heading() }, style = VeloTheme.type.bodyStrong, color = c.text)
-    CodeBlock(row.key.publicLine)
-    Text(row.key.fingerprint, style = VeloTheme.type.caption.copy(fontFamily = FontFamily.Monospace), color = c.secondary)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(sizes.menuPadding), verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
-        // Remove asks first ([removeKeyQuestion]), where the destructive button is.
-        for (action in row.actions) VeloButton(action.label, { onAction(row, action) },
-            Modifier.semantics { contentDescription = keyActionDescription(action, row) }, enabled = action != KeyAction.Remove || !busy)
+    val space = VeloTheme.space
+    fun Modifier.said(action: KeyAction) = semantics { contentDescription = keyActionDescription(action, row) }
+    RaisedCard(Modifier.testTag("ssh-phone-key-card"), padding = VeloTheme.medium(18.dp) + VeloTheme.sizes.edge) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.s12)) {
+            Box(Modifier.size(VeloTheme.medium(44.dp)).clip(rounded(space.s12)).background(c.glass), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Key, null, Modifier.size(VeloTheme.medium(22.dp)), tint = c.text)
+            }
+            // As wide as its words, at most the rest of the row, as the board sets them.
+            Column(Modifier.weight(1f, fill = false).width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp))) {
+                Text(keyType(row.key), Modifier.fillMaxWidth().testTag("ssh-phone-key-type"), style = textAt(18f, FontWeight.SemiBold), color = c.text)
+                Text(cardFingerprint(row.key), Modifier.fillMaxWidth().testTag("ssh-phone-key-fingerprint"), style = monoAt(12.5f), color = c.secondary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        // Broken anywhere, as the board breaks a key; a screen reader reads the line itself, and Copy copies it.
+        Text(
+            breakAnywhere(row.key.publicLine),
+            Modifier.fillMaxWidth().testTag("ssh-public-key").clip(rounded(VeloTheme.medium(10.dp))).background(VeloTheme.colors.backdrop.surface)
+                .border(VeloTheme.sizes.edge, c.divider, rounded(VeloTheme.medium(10.dp))).padding(space.s12)
+                .clearAndSetSemantics { text = AnnotatedString(row.key.publicLine) },
+            style = monoAt(12f).paragraph(1.5.em), color = VeloTheme.colors.textOnRaised,
+        )
+        VeloButton(KeyAction.CopyInstallCommand.label, { onAction(row, KeyAction.CopyInstallCommand) }, Modifier.fillMaxWidth().said(KeyAction.CopyInstallCommand),
+            kind = ButtonKind.Primary, tag = "ssh-copy-install-command")
+        Row(horizontalArrangement = Arrangement.spacedBy(space.s8)) {
+            VeloButton(KeyAction.Copy.label, { onAction(row, KeyAction.Copy) }, Modifier.weight(1f).said(KeyAction.Copy), row = true, tag = "ssh-copy-key")
+            VeloButton(KeyAction.Share.label, { onAction(row, KeyAction.Share) }, Modifier.weight(1f).said(KeyAction.Share), row = true, tag = "ssh-share-key")
+        }
     }
 }
+
+/**
+ * An imported key: its name over its type and fingerprint, and Remove, which asks first. A tap on
+ * the key opens what the phone key shows as buttons: copy its line, or copy or share the command
+ * that installs it. Remove waits while [busy]. [place] names the row's parts for tests.
+ */
+@Composable
+private fun ImportedKeyRow(row: KeyRow, place: String, busy: Boolean, onAction: (KeyRow, KeyAction) -> Unit) {
+    val c = VeloTheme.surface
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        Modifier.groupBleed().testTag("ssh-imported-key-row-$place").fillMaxWidth().heightIn(min = VeloTheme.medium(64.dp))
+            .padding(start = VeloTheme.space.s16, end = VeloTheme.space.s8, top = VeloTheme.space.s8, bottom = VeloTheme.space.s8),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s12),
+    ) {
+        Box(Modifier.weight(1f)) {
+            Column(
+                Modifier.fillMaxWidth().clickable(onClickLabel = "Copy or share ${row.spoken}", role = Role.Button) { menu = true },
+                verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp)),
+            ) {
+                Text(row.name, Modifier.fillMaxWidth().testTag("ssh-imported-key-name-$place").semantics { heading() }, style = VeloTheme.type.body, color = c.text,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(keySummary(row.key), Modifier.fillMaxWidth().testTag("ssh-imported-key-fingerprint-$place"), style = monoAt(12.5f), color = c.secondary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            VeloMenu(menu, { menu = false }) {
+                for (action in row.actions - KeyAction.Remove) MenuItem(action.label, {
+                    menu = false
+                    onAction(row, action)
+                }, Modifier.semantics { contentDescription = keyActionDescription(action, row) })
+            }
+        }
+        if (KeyAction.Remove in row.actions) VeloButton(
+            KeyAction.Remove.label, { onAction(row, KeyAction.Remove) },
+            Modifier.semantics { contentDescription = keyActionDescription(KeyAction.Remove, row) },
+            kind = ButtonKind.Text, row = true, enabled = !busy, danger = true, tag = "ssh-imported-key-remove-$place",
+        )
+    }
+}
+
+/**
+ * Import a key…: the imported keys' last row, in the accent, as Add Remote… is the remotes'. Under
+ * its words it says why the last import or removal failed ([problem], "" for none). The row is a
+ * polite live region that is always there, so a screen reader is told when its words change, as
+ * [LiveText] is; with nothing to say the row is as the board draws it.
+ */
+@Composable
+private fun ImportKeyRow(enabled: Boolean, problem: String, onClick: () -> Unit) {
+    val c = VeloTheme.surface
+    val ink = if (enabled) c.accent else c.disabled
+    val label = KeyPageAction.Import.label
+    Row(
+        Modifier.groupBleed().testTag("ssh-import-key-button").fillMaxWidth().heightIn(min = VeloTheme.medium(56.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clearAndSetSemantics {
+                liveRegion = LiveRegionMode.Polite
+                role = Role.Button
+                contentDescription = if (problem.isEmpty()) label else "$label $problem"
+                if (!enabled) disabled()
+                onClick { onClick(); true }
+            }
+            .groupInset().padding(end = VeloTheme.space.s4),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
+    ) {
+        Icon(Icons.Default.Add, null, Modifier.size(VeloTheme.medium(20.dp)), tint = ink)
+        Column(Modifier.padding(vertical = if (problem.isEmpty()) 0.dp else VeloTheme.space.s8)) {
+            Text(label, style = VeloTheme.type.body, fontWeight = FontWeight.Medium, color = ink)
+            if (problem.isNotEmpty()) Text(problem, style = VeloTheme.type.caption.paragraph(1.45.em), color = c.danger)
+        }
+    }
+}
+
+/** [line] for the eye only, with a break allowed after every character (the board's word-break: break-all). */
+private fun breakAnywhere(line: String): String = line.toList().joinToString("\u200B")
+
+/** The type of [key] as its card says it: the first word of its line without `ssh-` or a curve ("ed25519", "rsa", "ecdsa"). */
+internal fun keyType(key: SshKey): String = keySummary(key).substringBefore(" · ")
 
 /**
  * A line a screen reader reads out when it changes: why the keys cannot be read, or why the last
@@ -535,11 +671,11 @@ private fun KeyBlock(row: KeyRow, titled: Boolean, busy: Boolean, onAction: (Key
  * change again.
  */
 @Composable
-private fun LiveText(text: String, color: Color) {
-    Text(text, Modifier.fillMaxWidth().clearAndSetSemantics {
+private fun LiveText(text: String, color: Color, modifier: Modifier = Modifier, centered: Boolean = false) {
+    Text(text, Modifier.fillMaxWidth().then(modifier).clearAndSetSemantics {
         liveRegion = LiveRegionMode.Polite
         if (text.isNotEmpty()) contentDescription = text
-    }, color = color)
+    }, style = VeloTheme.type.caption.paragraph(1.45.em), color = color, textAlign = if (centered) TextAlign.Center else null)
 }
 
 /** The SSH group's row in Settings → Remotes: it opens [SshKeySettings]. */

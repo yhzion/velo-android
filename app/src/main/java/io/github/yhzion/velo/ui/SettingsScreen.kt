@@ -296,7 +296,7 @@ private fun SettingsPageContent(
         top()
         if (level == SettingsLevel.Device) DeviceSettings(host)
         else if (level == SettingsLevel.Updates) AppUpdateSettings(host)
-        else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets)
+        else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets, host.io)
         // A license that is no longer listed falls back to the list.
         else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) OpenSourceLicenseList(host.licenses, open = openLicense)
         else when (category) {

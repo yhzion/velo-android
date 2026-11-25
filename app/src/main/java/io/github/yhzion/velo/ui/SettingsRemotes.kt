@@ -73,6 +73,12 @@ fun keySummary(key: SshKey): String {
     return listOfNotNull(type, shown).joinToString(" · ")
 }
 
+/** The phone key's fingerprint on its card: the first twelve and the last five of its digest, or all of a short one. */
+fun cardFingerprint(key: SshKey): String {
+    val print = key.fingerprint.removePrefix("SHA256:")
+    return if (print.length <= 17) key.fingerprint else "SHA256:${print.take(12)}…${print.takeLast(5)}"
+}
+
 /** The colour of the Tailscale row's dot: green while the node runs, amber while it waits, red on an error; none while off. */
 @Composable
 private fun tailnetDot(state: TailnetState, paused: Boolean): Color? {
