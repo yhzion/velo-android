@@ -20,4 +20,10 @@ class KeySummaryTest {
         assertEquals("ed25519 · SHA256:abcdefgh", keySummary(key("ssh-ed25519 AAAA", "SHA256:abcdefgh")))
         assertEquals("ed25519", keySummary(key("ssh-ed25519 AAAA", "")))
     }
+
+    @Test fun theKeyCardShowsTheFirstTwelveAndTheLastFiveOfTheFingerprint() {
+        assertEquals("SHA256:9fQ2pXv7mR1d…Lk3Lw", cardFingerprint(key("ssh-ed25519 AAAA", "SHA256:9fQ2pXv7mR1dabcdefghijklmnopqrstuvwLk3Lw")))
+        assertEquals("SHA256:abcdefgh", cardFingerprint(key("ssh-ed25519 AAAA", "SHA256:abcdefgh")))
+        assertEquals("", cardFingerprint(key("ssh-ed25519 AAAA", "")))
+    }
 }

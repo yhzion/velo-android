@@ -373,6 +373,8 @@ enum class ButtonKind { Primary, Secondary, Destructive, Text }
 fun VeloButton(
     text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
     small: Boolean = false, icon: Painter? = null, iconAtEnd: Boolean = false, row: Boolean = false,
+    /** A [ButtonKind.Text] button's words in the red, for one that removes (an imported key's Remove). */
+    danger: Boolean = false,
     /** The test tag of the drawn button, inside the least touch target. */
     tag: String? = null,
 ) {
@@ -391,7 +393,7 @@ fun VeloButton(
         !enabled -> c.disabled
         kind == ButtonKind.Primary -> c.onAccent
         kind == ButtonKind.Secondary -> c.onGlass
-        kind == ButtonKind.Destructive -> c.dangerText
+        kind == ButtonKind.Destructive || danger -> c.dangerText
         else -> c.accent
     }
     val height = when {
@@ -408,10 +410,10 @@ fun VeloButton(
         else -> VeloTheme.space.s20
     }
     // The caller's modifier goes inside the least touch target: a small button's box (its test tag, its semantics) is
-    // the button drawn, 40 high, while the row still gives it 48 to take a tap. Words alone are as tall as the boards
-    // draw them, 44: Compose's hit testing still takes a touch 48 wide around them.
+    // the button drawn, 40 high, while the row still gives it 48 to take a tap. Words alone and row buttons are as tall
+    // as the boards draw them, 44: Compose's hit testing still takes a touch 48 wide around them.
     Row(
-        (if (words) Modifier else Modifier.minimumInteractiveComponentSize()).then(modifier)
+        (if (words || row) Modifier else Modifier.minimumInteractiveComponentSize()).then(modifier)
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
             .heightIn(min = height).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
