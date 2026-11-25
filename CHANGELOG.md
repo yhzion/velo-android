@@ -4,8 +4,13 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- A short splash plays when Velo starts. With animations turned off, it shows its last picture without moving.
+- When a computer you picked takes a while to open, the start screen shows that it is opening, with Cancel.
+
 ### Changed
 - Settings and dialogs use refreshed colours, cards and controls.
+- The start screen shows its three steps with the current one's card, side by side on the unfolded Fold.
 
 ### Fixed
 - License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.

@@ -14,12 +14,12 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.UiSize
 
 /** The states of the start card a preview can show, by the name given with `-e state`. */
-enum class StartPreviewState { Login, Waiting, Starting, Failed, Looking, Found, NothingFound }
+enum class StartPreviewState { Login, Waiting, Starting, Failed, Looking, Found, NothingFound, Opening }
 
 /**
  * Debug builds only. The start screen ([StartScreenBody]) in a state made up from the intent, with no node and no
  * connection, so that every state can be seen in every window size:
- * `-e state login|waiting|starting|failed|looking|found|nothingfound`,
+ * `-e state login|waiting|starting|failed|looking|found|nothingfound|opening`,
  * `-e size small|medium|large`. Its buttons do nothing.
  */
 class StartPreviewActivity : ComponentActivity() {
@@ -62,7 +62,7 @@ private fun previewModel(state: StartPreviewState): StartCardModel {
         StartPreviewState.Waiting -> StartStep.LogIn(url)
         StartPreviewState.Starting -> StartStep.Starting
         StartPreviewState.Failed -> StartStep.Failed("AlreadyStarted")
-        StartPreviewState.Looking, StartPreviewState.Found, StartPreviewState.NothingFound -> StartStep.Found
+        StartPreviewState.Looking, StartPreviewState.Found, StartPreviewState.NothingFound, StartPreviewState.Opening -> StartStep.Found
     }
     val found = if (state == StartPreviewState.Found) PreviewServers else emptyList()
     val note = when (state) {
@@ -74,6 +74,7 @@ private fun previewModel(state: StartPreviewState): StartCardModel {
         step = step, waitingFor = if (state == StartPreviewState.Waiting) url else null, unopened = null,
         connectedAs = if (step == StartStep.Found) "Connected as velo.tailnet.example" else null,
         found = found, note = note, searching = false,
-        logIn = {}, loginPageAgain = { url }, cancelWait = {}, tryAgain = {}, searchAgain = {}, connect = {}, getRex = { true },
+        logIn = {}, loginPageAgain = { url }, tryAgain = {}, searchAgain = {}, connect = {}, getRex = { true },
+        opening = if (state == StartPreviewState.Opening) PreviewServers.first().name else null, openingProgress = 0.62f,
     )
 }

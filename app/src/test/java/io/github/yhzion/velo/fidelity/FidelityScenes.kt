@@ -24,4 +24,5 @@ val FidelityScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
             Column(Modifier.fillMaxSize().padding(horizontal = VeloTheme.sizes.overlayPadding)) { AppUpdateSettings() }
         }
     },
+    *StartSplashScenes.toList().toTypedArray(),
 )
