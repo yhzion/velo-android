@@ -4,32 +4,24 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.11.0 - 2026-11-26
+
 ### Added
 - A short splash plays when Velo starts. With animations turned off, it shows its last picture without moving.
 - When a computer you picked takes a while to open, the start screen shows that it is opening, with Cancel.
-- On an unfolded Fold the sidebar can stay beside the panes: choose Dock Sidebar Beside Panes in the command palette. Velo remembers the choice.
+- On an unfolded Fold the sidebar can stay beside the panes: choose Dock Sidebar Beside Panes in the command palette.
 - The rail shows which tab of the session you are on, such as 2 / 4.
-- Open source licenses lists the program logos on tab tiles (Simple Icons) with their licenses.
 
 ### Changed
-- Settings and dialogs use refreshed colours, cards and controls.
-- The start screen shows its three steps with the current one's card, side by side on the unfolded Fold.
+- Velo has a refreshed look: new colours, cards, controls and spacing on every screen. Menus no longer dim the screen.
 - Tabs in the sidebar show their program's logo, stacked for a tab split into panes, with a dot for a result you have not seen yet.
-- The sidebar, rail, key bar and the line under the panes use refreshed colours and spacing, and every key of the key bar fits on a phone's screen.
-- About shows Velo's card, Updates and the licenses; Updates shows what a new version brings above its settings and when Velo last checked.
-- Appearance shows the focused pane's edge on two small panes above its colours, and a sample of the terminal's font under its size.
-- Terminal Font sorts fonts into built in, on this device and imported, shows the chosen font in a sample, and says which fonts draw Korean or were imported.
-- Keyboard shows the key bar as it looks above its keys, and Edit order lists the keys with arrows that move each one.
-- Notifications groups each kind of alert with its colour, its notification and its sound, and Background shows whether the battery lets Velo run.
-- Remotes shows the Tailscale node's state and the SSH key's fingerprint on their rows, and Add Remote… is the last row of the saved remotes.
-- Add Remote starts on the address, scans a QR code from a button in the address field, and shows what an address looks like.
-- Menus open without dimming the screen behind them.
-- Tailscale shows the node's state on a chip, its name with Rename, and its addresses with a button that copies each.
-- SSH key shows this phone's key in a card with Copy install command, Copy and Share; an imported key shows Remove, and a tap on it copies or shares it.
-- On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
+- Every key of the key bar fits on a phone's screen.
+- The start screen shows its three steps with the current one's card, side by side on the unfolded Fold.
+- On an unfolded Fold, Settings keeps its categories beside the open page.
+- Updates shows what a new version brings and when Velo last checked. Open source licenses lists the program logos.
+- Add Remote… is the last row of the saved remotes, and Add Remote scans a QR code from a button in the address field.
 
 ### Fixed
-- The rail shows the tab counter once, and it follows the tab in front while you turn the tab wheel.
 - License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.
 
 ## 2.10.1 - 2026-11-25
