@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.10.1 - 2026-11-25
+
 ### Changed
 - Codex tabs show a C on their white tile instead of an X.
 
