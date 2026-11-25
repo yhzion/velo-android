@@ -85,7 +85,7 @@ internal fun BackgroundSettings(host: SettingsHost) {
 /**
  * Asked once, the first time a remote is connected: whether Velo may stay connected off screen.
  * Allow turns the setting on and opens Android's battery request when it is still needed; Not now
- * turns it off. Settings → Program activity changes the answer later.
+ * turns it off. Settings → Notifications → Background changes the answer later.
  */
 @Composable
 internal fun BackgroundPrompt(app: AppController) {
@@ -101,7 +101,7 @@ internal fun BackgroundPrompt(app: AppController) {
             settings.saveBackgroundAsked()
             if (!app.background.unrestricted()) ask.askUnrestricted(app.background)
         },
-        text = "$BackgroundExplanation $UnrestrictedExplanation You can change this in Settings → Program activity.",
+        text = "$BackgroundExplanation $UnrestrictedExplanation You can change this in Settings → Notifications → Background.",
         cancelText = "Not now",
     )
 }

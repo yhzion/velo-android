@@ -71,7 +71,7 @@ class Settings(
         private set
     var activityVolume by mutableFloatStateOf(prefs.getFloat("activityVolume", 1f))
         private set
-    /** Stay connected while the app is off screen, so notifications arrive (Settings → Program activity). */
+    /** Stay connected while the app is off screen, so notifications arrive (Settings → Notifications → Background). */
     var stayConnected by mutableStateOf(prefs.getBoolean("stayConnected", true))
         private set
     /** The first-connection prompt about background running was answered or dismissed. */
