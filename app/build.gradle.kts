@@ -83,6 +83,8 @@ android {
     }
     buildFeatures { compose = true }
     packaging { jniLibs { useLegacyPackaging = false } }
+    // Robolectric reads the merged resources; the fidelity capture tests (docs/fidelity.md) need them.
+    testOptions { unitTests { isIncludeAndroidResources = true } }
     sourceSets["main"].assets.directories.add(noticeAssets.get().asFile.path)
     sourceSets["main"].jniLibs.directories.add(layout.buildDirectory.dir("zig/jniLibs").get().asFile.path)
     sourceSets["main"].jniLibs.directories.add(layout.buildDirectory.dir("tailscale/jniLibs").get().asFile.path)
@@ -102,6 +104,29 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     testImplementation("junit:junit:4.13.2")
+    // Fidelity measurement (docs/fidelity.md): test classpath only, never in a release build.
+    testImplementation(platform("androidx.compose:compose-bom:2026.11.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.robolectric:robolectric:4.18.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.79.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.79.0")
+}
+
+// The fidelity capture (FidelityCaptureTest) draws every app scene at each redesign board's size,
+// which takes minutes, so it runs only when asked: -Pvelo.fidelity.out=<dir> (tools/fidelity/fidelity.py).
+val fidelityOut = providers.gradleProperty("velo.fidelity.out").orNull
+tasks.withType<Test>().configureEach {
+    if (fidelityOut == null) {
+        exclude("**/fidelity/FidelityCaptureTest*")
+    } else {
+        systemProperty("velo.fidelity.out", fidelityOut)
+        systemProperty("roborazzi.test.record", "true")
+        for (name in listOf("velo.fidelity.plan", "velo.fidelity.screens")) {
+            providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }
+        }
+        inputs.property("velo.fidelity.out", fidelityOut)
+        outputs.upToDateWhen { false }
+    }
 }
 
 // The Zig core (native/) builds libvelocore.so, linking libghostty-vt statically.
