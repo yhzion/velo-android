@@ -331,8 +331,8 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `switchInset` | 2 at Medium | From a switch's track to its knob (Controls board). |
 | `sliderTrack` | 4 at Medium | A slider's track (Controls board). |
 | `sliderKnob` | 28 at Medium | A slider's knob (Controls board). |
-| `sheetWidth` | 820 | Maximum width of the settings sheet on wide windows. Derived from its proportion within a 1088dp reference window. |
-| `sheetList` | 236 | The list of categories beside the details in the settings sheet. derived: as `sheetWidth`. |
+| `sheetWidth` | 820 at Medium | Maximum width of the settings sheet on wide windows. Derived from its proportion within a 1088dp reference window; the canvas fills the unfolded Fold8 (805). |
+| `sheetList` | 236 at Medium | The list of categories beside the details in the settings sheet (the redesign's settings boards). |
 | `statusIcon` | 16 | A tab's state icon, and the height of its working dots (1.5 times as wide). derived: the app's size today. |
 | `markIcon`, `markTile` | 14, 20 | A program's icon beside a tab's caption, and in a row's tile. derived: the app's size today. |
 | `gauge`, `gaugeStroke` | 46 at Medium, 4.3 | The rail's battery gauge (Rail board) and ring stroke; the stroke is based on the proportions of M01's status ring. |

@@ -161,10 +161,10 @@ class VeloSizes(
     val sliderTrack: Dp = medium(4f),
     /** A slider's knob (Controls board: 28). */
     val sliderKnob: Dp = medium(28f),
-    /** The widest the settings sheet grows on the unfolded screen. derived: the mockup the owner chose (A), 820 of 1088. */
-    val sheetWidth: Dp = 820.dp,
-    /** The list of categories beside the details in the settings sheet. derived: as [sheetWidth]. */
-    val sheetList: Dp = 236.dp,
+    /** The widest the settings sheet grows on the unfolded screen, at Medium. derived: the mockup the owner chose (A), 820 of 1088; the canvas fills the unfolded Fold8's 805. */
+    val sheetWidth: Dp = medium(820f),
+    /** The list of categories beside the details in the settings sheet (the redesign's settings, 236 at Medium). */
+    val sheetList: Dp = medium(236f),
     /** A tab's state icon, and the height of its working dots. derived: the app's size today. */
     val statusIcon: Dp = 16.dp,
     /** A program's icon beside a tab's caption. derived: the app's size today. */

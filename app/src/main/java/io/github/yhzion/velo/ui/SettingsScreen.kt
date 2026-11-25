@@ -79,10 +79,29 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.RowIconButton
 import io.github.yhzion.velo.ui.theme.SettingRow
 import io.github.yhzion.velo.ui.theme.UiSize
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import io.github.yhzion.velo.LicenseComponent
+import io.github.yhzion.velo.ui.theme.Capsule
+import io.github.yhzion.velo.ui.theme.CategoryIcon
+import io.github.yhzion.velo.ui.theme.CategoryTints
+import io.github.yhzion.velo.ui.theme.MinKey
+import io.github.yhzion.velo.ui.theme.rounded
 import kotlin.math.roundToInt
 
-// Settings remains a modal over the originating screen. Navigation borrows the workspace
-// sidebar; the detail area uses pane chrome, with glass reserved for interactive controls.
+// Settings is a modal over the originating screen (OverlayHost). On a phone and the folded
+// screen it fills the window: the categories first, each opening a page with Back in its header.
+// On the unfolded screen it is a sheet: the categories beside the open page, a page under a
+// category with a back row above its title (the redesign's settings boards).
 
 /**
  * This Device's own screen: the Tailscale node's controls. The sidebar's This Device row opens
@@ -107,49 +126,77 @@ internal fun TailscaleScreen(host: SettingsHost, onBack: () -> Unit) {
 
 private const val TAILSCALE_MACHINES_URL = "https://console.tailscale.com/admin/machines"
 
-/** Settings categories with their colored icons. */
-private enum class SettingsCategory(val title: String, @DrawableRes val icon: Int) {
-    Appearance("Appearance", R.drawable.ic_settings_appearance),
-    Keyboard("Keyboard", R.drawable.ic_settings_keyboard),
-    Notifications("Notifications", R.drawable.ic_settings_notifications),
-    Remotes("Remotes", R.drawable.ic_settings_remotes),
-    About("About", R.drawable.ic_settings_about),
+/** The settings categories: the line icon on the tile of its tint, and what the category holds (canvas SetNav block). */
+internal enum class SettingsCategory(val title: String, val id: String, @DrawableRes val icon: Int, val summary: String) {
+    Appearance("Appearance", "appearance", R.drawable.ic_category_appearance, "Size, highlight color, font"),
+    Keyboard("Keyboard", "keyboard", R.drawable.ic_category_keyboard, "Key bar, typing, tap gestures"),
+    Notifications("Notifications", "notifications", R.drawable.ic_category_notifications, "Alerts, sounds, background"),
+    Remotes("Remotes", "remotes", R.drawable.ic_category_remotes, "Tailscale, SSH key, saved"),
+    // About's line is the installed version and the release found ([aboutSummary]).
+    About("About", "about", R.drawable.ic_category_about, ""),
+    ;
+
+    val tint: Color get() = when (this) {
+        Appearance -> CategoryTints.appearance
+        Keyboard -> CategoryTints.keyboard
+        Notifications -> CategoryTints.notifications
+        Remotes -> CategoryTints.remotes
+        About -> CategoryTints.about
+    }
 }
 
-private enum class SettingsLevel(val title: String) {
-    Device("This Device"), Font("Terminal Font"), Updates("Updates"), SshKey(SSH_KEY_ROW),
+/** The pages under a category, by their title. */
+internal enum class SettingsLevel(val title: String) {
+    Device("Tailscale"), Font("Terminal Font"), Updates("Updates"), SshKey(SSH_KEY_ROW),
     Licenses("Open source licenses"), License("License"),
 }
 
+/** About's line in the categories: the installed version, and the newer release found, if any. */
+internal fun aboutSummary(version: String, available: String?): String =
+    "Version $version" + (available?.let { " · $it available" } ?: "")
+
 /**
- * The settings, as a workspace panel over the screen. On the unfolded screen the categories are
- * beside the one that is open; on the folded screen the categories come first and a category
- * takes their place. This Device, Terminal Font and SSH key open inside the sheet. Back goes up one level;
- * the close button, a tap beside the sheet and Back at the top close it ([onClose]).
+ * Where the settings open: a [category], a [level] under it, the [license] a license page shows.
+ * Without a category, the folded screen shows the categories and the unfolded one Appearance.
+ */
+internal data class SettingsRoute(
+    val category: SettingsCategory? = null,
+    val level: SettingsLevel? = null,
+    val license: String? = null,
+)
+
+/**
+ * The settings, as a modal over the screen ([SettingsPanel]). Back goes up one level; the close
+ * button, a tap beside the sheet on the unfolded screen and Back at the top close it ([onClose]).
  */
 @Composable
 fun SettingsSheet(app: AppController, onClose: () -> Unit) = SettingsSheet(remember(app) { AppSettingsHost(app) }, onClose)
 
 @Composable
 internal fun SettingsSheet(host: SettingsHost, onClose: () -> Unit) {
+    OverlayHost(onDismissRequest = onClose) { SettingsPanel(host, onClose) }
+}
+
+/**
+ * The settings themselves, opened at [start]. On the unfolded screen the categories are beside
+ * the one that is open; on the folded screen and a phone the categories come first and a category
+ * takes their place. Terminal Font, Tailscale, SSH key, Updates and the licenses open as pages
+ * under their category.
+ */
+@Composable
+internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: SettingsRoute = SettingsRoute()) {
     val sizes = VeloTheme.sizes
-    var category by rememberSaveable { mutableStateOf<SettingsCategory?>(null) }
-    var level by rememberSaveable { mutableStateOf<SettingsLevel?>(null) }
+    var category by rememberSaveable { mutableStateOf(start.category) }
+    var level by rememberSaveable { mutableStateOf(start.level) }
     // The open license page: a component's id, or a Go module's inside the Go modules page.
-    var license by rememberSaveable { mutableStateOf<String?>(null) }
+    var license by rememberSaveable { mutableStateOf(start.license) }
     val licensed = license?.takeIf { level == SettingsLevel.License }?.let(::findLicense)
     val scrollStates = rememberSaveableStateHolder()
-    val context = LocalContext.current
-    val about = remember(context) {
-        val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        "${context.applicationInfo.loadLabel(context.packageManager)} ${info.versionName} (${info.longVersionCode})"
-    }
 
     val window = LocalConfiguration.current
     val expanded = !isCompact(window.screenWidthDp.toFloat(), window.screenHeightDp.toFloat())
     val shown = category ?: SettingsCategory.Appearance
-    val listShown = expanded || (category == null && level == null)
-    val detailShown = expanded || category != null || level != null
+    val home = !expanded && category == null && level == null
     val back: (() -> Unit)? = when {
         // A license page goes back to the page that listed it: the Go modules, or all licenses.
         level == SettingsLevel.License -> ({
@@ -163,71 +210,254 @@ internal fun SettingsSheet(host: SettingsHost, onClose: () -> Unit) {
     val title = when {
         licensed != null -> licensed.name
         level != null -> level!!.title
-        !expanded && category != null -> shown.title
-        else -> "Settings"
+        else -> shown.title
+    }
+    // On the unfolded screen a page under a category names the page Back returns to.
+    val above = when {
+        level == SettingsLevel.License -> licensed?.let { licenseParent(it.id)?.name } ?: SettingsLevel.Licenses.title
+        level != null -> shown.title
+        else -> null
+    }
+    val context = LocalContext.current
+    val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
+    val status = rememberUpdateStatus()
+    val installed = rememberInstalledCode()
+    val nav = NavState(
+        selected = shown.takeIf { expanded }, about = aboutSummary(version, status.available(installed)),
+        dot = status.unseen(installed), onSelect = { category = it; level = null },
+    )
+    BackHandler(enabled = back != null) { back?.invoke() }
+
+    @Composable
+    fun Page(top: @Composable () -> Unit, modifier: Modifier, scrolls: (@Composable (Modifier, @Composable () -> Unit) -> Unit)) {
+        // Each page keeps its own place; each license page keeps its own place in its text.
+        scrollStates.SaveableStateProvider(licensed?.let { "License:${it.id}" } ?: level?.name ?: shown.name) {
+            SettingsPageContent(host, shown, level, licensed, top, modifier, scrolls,
+                openLevel = { category = shown; level = it }, openLicense = { license = it; level = SettingsLevel.License })
+        }
     }
 
-    OverlayHost(onDismissRequest = onClose) {
-        BackHandler(enabled = back != null) { back?.invoke() }
-        SettingsPanelSurface(
-            Modifier.align(Alignment.Center).padding(sizes.overlayMargin)
-                .then(if (expanded) Modifier.widthIn(max = sizes.sheetWidth) else Modifier)
-                .fillMaxSize(),
+    Box(Modifier.fillMaxSize().testTag("screen-settings")) {
+        if (expanded) SettingsPanelSurface(
+            Modifier.align(Alignment.Center).padding(VeloTheme.space.s8).widthIn(max = sizes.sheetWidth).fillMaxSize().testTag("settings-sheet"),
         ) {
             Column(Modifier.fillMaxSize()) {
-                SheetHeader(title, back, onClose)
-                GroupDivider()
+                SheetHeader(onClose)
                 Row(Modifier.fillMaxWidth().weight(1f)) {
-                    if (listShown) {
-                        VeloSurface(VeloTheme.colors.sidebar) {
-                            scrollStates.SaveableStateProvider("categories") {
-                                CategoryList(
-                                    selected = shown.takeIf { expanded }, chevrons = !expanded,
-                                    onSelect = { category = it; level = null },
-                                    modifier = if (expanded) Modifier.width(sizes.sheetList) else Modifier.weight(1f),
-                                )
-                            }
-                        }
+                    scrollStates.SaveableStateProvider("categories") {
+                        Box(
+                            Modifier.testTag("settings-nav-column").width(sizes.sheetList + sizes.edge).fillMaxHeight()
+                                .background(VeloTheme.colors.sidebar.surface).drawEndLine(VeloTheme.surface.divider),
+                        ) { CategoryList(nav, chevrons = false, Modifier.width(sizes.sheetList).verticalScroll(rememberScrollState())) }
                     }
-                    if (expanded) Spacer(Modifier.fillMaxHeight().width(sizes.edge).background(VeloTheme.surface.divider))
-                    if (detailShown) {
-                        // Each license page keeps its own place in its text.
-                        scrollStates.SaveableStateProvider(licensed?.let { "License:${it.id}" } ?: level?.name ?: shown.name) {
-                            val detail = Modifier.weight(1f).fillMaxHeight().padding(horizontal = sizes.overlayPadding)
-                            // The font list and a license's text scroll themselves, so their levels are not inside the sheet's scroll.
-                            if (level == SettingsLevel.Font) TerminalFontSettings(host, detail.padding(top = sizes.menuPadding))
-                            else if (licensed != null) LicenseDetail(licensed, open = { license = it }, modifier = detail)
-                            else Column(
-                                detail.verticalScroll(rememberScrollState()).padding(bottom = sizes.overlayPadding),
-                            ) {
-                                if (level == SettingsLevel.Device) DeviceSettings(host)
-                                else if (level == SettingsLevel.Updates) AppUpdateSettings()
-                                else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets)
-                                // A license that is no longer listed falls back to the list.
-                                else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) {
-                                    OpenSourceLicenseList(open = { license = it; level = SettingsLevel.License })
-                                } else when (shown) {
-                                    SettingsCategory.Appearance -> AppearanceSettings(host, openFont = { category = shown; level = SettingsLevel.Font })
-                                    SettingsCategory.Keyboard -> KeyboardSettings(host.settings)
-                                    SettingsCategory.Notifications -> ActivitySettings(host)
-                                    SettingsCategory.Remotes -> RemoteSettings(host, openDevice = { level = SettingsLevel.Device },
-                                        openSshKey = { category = shown; level = SettingsLevel.SshKey })
-                                    SettingsCategory.About -> GroupCard(Modifier.padding(top = sizes.menuPadding)) {
-                                        Box(Modifier.fillMaxWidth().heightIn(min = sizes.row), contentAlignment = Alignment.CenterStart) {
-                                            Text(about)
-                                        }
-                                        GroupDivider()
-                                        UpdatesRow(onClick = { category = shown; level = SettingsLevel.Updates })
-                                        GroupDivider()
-                                        ListRow("Open source licenses", onClick = { category = shown; level = SettingsLevel.Licenses })
-                                    }
-                                }
+                    val top: @Composable () -> Unit = { PageTitle(title, above, back) }
+                    Page(top, Modifier.weight(1f).fillMaxHeight().testTag("settings-detail").padding(horizontal = VeloTheme.space.s24)) { modifier, content ->
+                        Column(modifier.verticalScroll(rememberScrollState())) { content() }
+                    }
+                }
+            }
+        } else SettingsPanelSurface(Modifier.fillMaxSize(), fullScreen = true) {
+            Column(Modifier.fillMaxSize()) {
+                if (home) HomeHeader(onClose) else PageHeader(title, back ?: {}, onClose)
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    if (home) scrollStates.SaveableStateProvider("categories") {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            Column(Modifier.testTag("settings-detail").padding(start = VeloTheme.space.s16, end = VeloTheme.space.s16, top = VeloTheme.space.s8)) {
+                                CategoryList(nav, chevrons = true, Modifier.fillMaxWidth())
                             }
                         }
+                    } else Page({}, Modifier.testTag("settings-detail").padding(start = VeloTheme.space.s16, end = VeloTheme.space.s16, top = VeloTheme.space.s4)) { modifier, content ->
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) { Column(modifier) { content() } }
                     }
                 }
             }
         }
+    }
+}
+
+/** A line along the end of what this draws: the border between the categories and the page. */
+private fun Modifier.drawEndLine(color: Color) = drawBehind {
+    val x = if (layoutDirection == LayoutDirection.Ltr) size.width - density / 2 else density / 2
+    drawLine(color, Offset(x, 0f), Offset(x, size.height), density)
+}
+
+/** A line along the bottom of what this draws: the border under a header. */
+private fun Modifier.drawBottomLine(color: Color) = drawBehind {
+    drawLine(color, Offset(0f, size.height - density / 2), Offset(size.width, size.height - density / 2), density)
+}
+
+/**
+ * The page of [category] or of the [level] under it. [top] goes first (the page's title on the
+ * unfolded screen); [scrolls] lays out a page that does not scroll itself. The font list and a
+ * license's text scroll themselves, so they take [modifier] and [top] themselves.
+ */
+@Composable
+private fun SettingsPageContent(
+    host: SettingsHost, category: SettingsCategory, level: SettingsLevel?, licensed: LicenseComponent?,
+    top: @Composable () -> Unit, modifier: Modifier, scrolls: @Composable (Modifier, @Composable () -> Unit) -> Unit,
+    openLevel: (SettingsLevel) -> Unit, openLicense: (String) -> Unit,
+) {
+    if (level == SettingsLevel.Font) TerminalFontSettings(host, modifier, top)
+    else if (licensed != null) LicenseDetail(licensed, open = openLicense, modifier = modifier, top = top, io = host.io)
+    else scrolls(modifier) {
+        top()
+        if (level == SettingsLevel.Device) DeviceSettings(host)
+        else if (level == SettingsLevel.Updates) AppUpdateSettings(host)
+        else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets)
+        // A license that is no longer listed falls back to the list.
+        else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) OpenSourceLicenseList(open = openLicense)
+        else when (category) {
+            SettingsCategory.Appearance -> AppearanceSettings(host, openFont = { openLevel(SettingsLevel.Font) })
+            SettingsCategory.Keyboard -> KeyboardSettings(host.settings)
+            SettingsCategory.Notifications -> ActivitySettings(host)
+            SettingsCategory.Remotes -> RemoteSettings(host, openDevice = { openLevel(SettingsLevel.Device) },
+                openSshKey = { openLevel(SettingsLevel.SshKey) })
+            SettingsCategory.About -> AboutSettings(openUpdates = { openLevel(SettingsLevel.Updates) },
+                openLicenses = { openLevel(SettingsLevel.Licenses) })
+        }
+    }
+}
+
+/** The title of the open page beside the categories; a page under a category has a row back to [above] over it. */
+@Composable
+private fun PageTitle(title: String, above: String?, back: (() -> Unit)?) {
+    val c = VeloTheme.surface
+    if (above != null && back != null) {
+        Row(
+            Modifier.padding(top = VeloTheme.space.s8).offset(x = -VeloTheme.medium(10.dp)).testTag("settings-back")
+                .heightIn(min = VeloTheme.medium(44.dp).coerceAtLeast(MinKey)).clip(Capsule)
+                .clickable(role = Role.Button, onClickLabel = "Back", onClick = back)
+                .padding(start = VeloTheme.medium(2.dp), end = VeloTheme.medium(10.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp)),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, Modifier.size(VeloTheme.space.s20), tint = c.accent)
+            Text(above, style = VeloTheme.type.value, color = c.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    Text(
+        title,
+        Modifier.fillMaxWidth().testTag("settings-page-title")
+            .padding(top = if (above != null) 0.dp else VeloTheme.medium(18.dp), bottom = VeloTheme.medium(if (above != null) 6.dp else 2.dp))
+            .semantics { heading() },
+        style = VeloTheme.type.pageTitle, color = c.text,
+    )
+}
+
+/** The top of the unfolded sheet: "Settings" and the close button. */
+@Composable
+private fun SheetHeader(onClose: () -> Unit) {
+    val c = VeloTheme.surface
+    Row(
+        Modifier.testTag("settings-header").fillMaxWidth().height(VeloTheme.medium(64.dp) + VeloTheme.sizes.edge).drawBottomLine(c.divider)
+            .padding(start = VeloTheme.space.s20, end = VeloTheme.medium(10.dp), bottom = VeloTheme.sizes.edge),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Settings", Modifier.weight(1f).testTag("settings-sheet-title").semantics { heading() },
+            style = VeloTheme.type.title, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        CloseButton(onClose, Modifier.testTag("settings-close"), contentDescription = "Close Settings", small = true)
+    }
+}
+
+/** The top of the categories on the folded screen: the screen's title and the close button. */
+@Composable
+private fun HomeHeader(onClose: () -> Unit) {
+    Row(
+        Modifier.testTag("settings-header").fillMaxWidth().height(VeloTheme.medium(72.dp))
+            .padding(start = VeloTheme.space.s20, end = VeloTheme.medium(10.dp), top = VeloTheme.space.s8, bottom = VeloTheme.space.s8),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8),
+    ) {
+        Text("Settings", Modifier.weight(1f).testTag("settings-page-title").semantics { heading() },
+            style = VeloTheme.type.screenTitle, color = VeloTheme.surface.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        CloseButton(onClose, Modifier.testTag("settings-close"), contentDescription = "Close Settings")
+    }
+}
+
+/** The top of a page on the folded screen: Back, the page's title and the close button. */
+@Composable
+private fun PageHeader(title: String, back: () -> Unit, onClose: () -> Unit) {
+    val c = VeloTheme.surface
+    Row(
+        Modifier.testTag("settings-header").fillMaxWidth().height(VeloTheme.medium(64.dp)).drawBottomLine(c.divider)
+            .padding(start = VeloTheme.space.s4, end = VeloTheme.medium(10.dp), top = VeloTheme.space.s8, bottom = VeloTheme.space.s8 + VeloTheme.sizes.edge),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s4),
+    ) {
+        Box(
+            Modifier.testTag("settings-back").size(VeloTheme.sizes.control).clip(Capsule).clickable(role = Role.Button, onClick = back),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Back", Modifier.size(VeloTheme.medium(22.dp)), tint = c.text) }
+        Text(title, Modifier.weight(1f).testTag("settings-page-title").semantics { heading() },
+            style = VeloTheme.type.title, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        CloseButton(onClose, Modifier.testTag("settings-close"), contentDescription = "Close Settings", small = true)
+    }
+}
+
+/** What the categories show: the [selected] one (beside its page), About's line and its update [dot]. */
+private class NavState(val selected: SettingsCategory?, val about: String, val dot: Boolean, val onSelect: (SettingsCategory) -> Unit)
+
+/**
+ * The categories. On the folded screen ([chevrons]) each is a bordered card with what it holds
+ * under its name and a chevron; beside the page on the unfolded screen, a row whose pill marks
+ * the open one. About has the update dot while a release has not been seen (canvas SetNav block).
+ */
+@Composable
+private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
+    val c = VeloTheme.surface
+    val sizes = VeloTheme.sizes
+    val type = VeloTheme.type
+    Column(
+        modifier.testTag("settings-nav").semantics { contentDescription = "Settings categories" }
+            .then(if (chevrons) Modifier else Modifier.padding(VeloTheme.space.s8)),
+        verticalArrangement = Arrangement.spacedBy(if (chevrons) VeloTheme.space.s8 else VeloTheme.space.s4),
+    ) {
+        for (category in SettingsCategory.entries) {
+            val id = category.id
+            val selected = category == nav.selected
+            val shape = rounded(if (chevrons) VeloTheme.radii.card else VeloTheme.radii.nav)
+            Row(
+                Modifier.testTag("settings-nav-$id").fillMaxWidth()
+                    .heightIn(min = if (chevrons) sizes.row + sizes.edge * 2 else sizes.row).clip(shape)
+                    .then(if (chevrons) Modifier.border(sizes.edge, c.divider, shape) else Modifier.background(if (selected) c.selected else Color.Transparent))
+                    .selectable(selected, role = Role.Tab) { nav.onSelect(category) }
+                    .padding(horizontal = VeloTheme.space.s12 + if (chevrons) sizes.edge else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
+            ) {
+                CategoryIcon(painterResource(category.icon), category.tint, Modifier.testTag("settings-nav-$id-icon"))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(1.dp))) {
+                    Text(category.title, Modifier.fillMaxWidth().testTag("settings-nav-$id-label"), style = type.body,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (chevrons) Text(if (category == SettingsCategory.About) nav.about else category.summary,
+                        Modifier.fillMaxWidth().testTag("settings-nav-$id-summary"), style = type.caption, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (category == SettingsCategory.About && nav.dot) Box(
+                    Modifier.testTag("settings-nav-about-update-dot").size(sizes.dot).clip(Capsule).background(c.accent)
+                        .semantics { contentDescription = "Update available" },
+                )
+                if (chevrons) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(VeloTheme.space.s16), tint = c.secondary)
+            }
+        }
+    }
+}
+
+/** About: the app's version, Updates and the licenses. */
+@Composable
+private fun AboutSettings(openUpdates: () -> Unit, openLicenses: () -> Unit) {
+    val context = LocalContext.current
+    val about = remember(context) {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        "${context.applicationInfo.loadLabel(context.packageManager)} ${info.versionName} (${info.longVersionCode})"
+    }
+    GroupCard(Modifier.padding(top = VeloTheme.sizes.menuPadding)) {
+        Box(Modifier.fillMaxWidth().heightIn(min = VeloTheme.sizes.row), contentAlignment = Alignment.CenterStart) {
+            Text(about)
+        }
+        GroupDivider()
+        UpdatesRow(onClick = openUpdates)
+        GroupDivider()
+        ListRow("Open source licenses", onClick = openLicenses)
     }
 }
 
@@ -252,51 +482,6 @@ private fun UpdatesRow(onClick: () -> Unit) {
             }
         },
     )
-}
-
-/** The top of the sheet: Back where there is a level above, the title, and the close button (AK). */
-@Composable
-private fun SheetHeader(title: String, back: (() -> Unit)?, onClose: () -> Unit) {
-    val sizes = VeloTheme.sizes
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = sizes.overlayPadding, vertical = sizes.menuPadding),
-        horizontalArrangement = Arrangement.spacedBy(sizes.rowGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (back != null) GlassIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", back)
-        Text(
-            title,
-            Modifier.weight(1f).semantics { heading() },
-            style = VeloTheme.type.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
-        CloseButton(onClose, contentDescription = "Close Settings")
-    }
-}
-
-/** The categories, as rows on the sheet. The one [selected] has the pill; [chevrons] says a row opens a level. */
-@Composable
-private fun CategoryList(
-    selected: SettingsCategory?,
-    chevrons: Boolean,
-    onSelect: (SettingsCategory) -> Unit,
-    modifier: Modifier,
-) {
-    val c = VeloTheme.surface
-    val sizes = VeloTheme.sizes
-    Column(
-        modifier.fillMaxHeight().background(c.surface).verticalScroll(rememberScrollState()).padding(sizes.menuPadding),
-        verticalArrangement = Arrangement.spacedBy(sizes.cellInset),
-    ) {
-        for (category in SettingsCategory.entries) {
-            ListRow(
-                category.title, onClick = { onSelect(category) }, selected = category == selected, strong = true,
-                leading = { Image(painterResource(category.icon), null, Modifier.size(sizes.icon)) },
-                trailing = if (chevrons) {
-                    { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(sizes.iconSmall), tint = c.secondary) }
-                } else null,
-            )
-        }
-    }
 }
 
 private val PaneStyles = listOf("comfortable", "compact")

@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -107,16 +108,20 @@ internal fun LayoutCoordinates.onScreen(): IntRect {
 // Group cards and choice tracks inside Settings are laid out on opaque pane chrome.
 internal val LocalSettingsPanel = staticCompositionLocalOf { false }
 
-/** Settings sits above the workspace, but is opaque: only its rim catches the light. Its content is on the sheet's colours. */
+/**
+ * Settings sits above the workspace, but is opaque. On the unfolded screen it is a sheet with the
+ * sheet radius and a ring of the divider (the redesign's settings, 20); [fullScreen], on a folded
+ * screen or a phone, it fills the window without either. Its content is on the sheet's colours.
+ */
 @Composable
-internal fun SettingsPanelSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+internal fun SettingsPanelSurface(modifier: Modifier = Modifier, fullScreen: Boolean = false, content: @Composable () -> Unit) {
     val sheet = VeloTheme.colors.sheet
     val sizes = VeloTheme.sizes
-    val shape = rounded(VeloTheme.radii.paneCompact)
+    val shape = if (fullScreen) RectangleShape else rounded(VeloTheme.radii.sheet)
     VeloSurface(sheet) {
         Box(
-            modifier.shadow(sizes.overlayShadow, shape, clip = false).clip(shape)
-                .background(sheet.surface).border(sizes.edge, glassEdge(sheet), shape)
+            modifier.then(if (fullScreen) Modifier else Modifier.shadow(sizes.overlayShadow, shape, clip = false)).clip(shape)
+                .background(sheet.surface).then(if (fullScreen) Modifier else Modifier.border(sizes.edge, sheet.divider, shape))
                 // Empty panel space, unlike the scrim, must not dismiss the sheet.
                 .pointerInput(Unit) { detectTapGestures { } },
         ) { CompositionLocalProvider(LocalSettingsPanel provides true, content = content) }

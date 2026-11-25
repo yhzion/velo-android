@@ -505,22 +505,23 @@ fun KeyChoice(key: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
 
 /**
  * The round button that closes a sheet: glass with a light line along its top (the redesign's
- * settings header, 48).
+ * settings header, 48). [small] is the plain glass disc of a page's header, 44 (the settings
+ * sheet's and a page's header); a touch still finds it 48 wide, as Compose widens a small target.
  */
 @Composable
-fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Close") {
+fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = "Close", small: Boolean = false) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     Box(
-        modifier.size(s.control).clip(Capsule)
+        modifier.size(if (small) VeloTheme.medium(44.dp).coerceAtLeast(MinKey) else s.control).clip(Capsule)
             .drawBehind {
                 // A line along the top: the rim, with the fill drawn over it one line lower.
-                drawCircle(c.glassEdge)
-                drawCircle(c.glass, center = center.copy(y = center.y + s.edge.toPx()))
+                if (!small) drawCircle(c.glassEdge)
+                drawCircle(c.glass, center = if (small) center else center.copy(y = center.y + s.edge.toPx()))
             }
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(Icons.Default.Close, contentDescription, Modifier.size(VeloTheme.space.s20), tint = c.onGlass) }
+    ) { Icon(Icons.Default.Close, contentDescription, Modifier.size(if (small) VeloTheme.medium(18.dp) else VeloTheme.space.s20), tint = c.onGlass) }
 }
 
 /**

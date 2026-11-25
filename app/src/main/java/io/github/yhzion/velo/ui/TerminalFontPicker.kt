@@ -51,7 +51,7 @@ internal fun TerminalFontSetting(settings: Settings, onOpen: () -> Unit) {
  * setting of the sheet is; the sheet's Back returns to Appearance.
  */
 @Composable
-internal fun TerminalFontSettings(host: SettingsHost, modifier: Modifier = Modifier) {
+internal fun TerminalFontSettings(host: SettingsHost, modifier: Modifier = Modifier, top: @Composable () -> Unit = {}) {
     val settings = host.settings
     val sizes = VeloTheme.sizes
     val scope = rememberCoroutineScope()
@@ -102,6 +102,7 @@ internal fun TerminalFontSettings(host: SettingsHost, modifier: Modifier = Modif
     // One scroll owner: with the IME up there may not be height left over for a nested list.
     // Keep import above the results so it is reachable even with hundreds of installed fonts.
     LazyColumn(modifier.windowInsetsPadding(WindowInsets.screenIme), contentPadding = PaddingValues(bottom = sizes.overlayPadding)) {
+        item { top() }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
                 VeloTextField(query, { query = it }, placeholder = "Search fonts")
