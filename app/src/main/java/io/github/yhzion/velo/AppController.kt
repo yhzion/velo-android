@@ -131,6 +131,12 @@ class Settings(
     /** The node has run with its login: at a start the connections wait for it ([HostConnection]). */
     var tailnetRan = prefs.getBoolean("tailnetRan", false)
         private set
+    /**
+     * The open sidebar sits beside the panes where it would cover them but there is room for both
+     * (the unfolded screen upright, WsOpenDocked); false keeps it over them. A narrower window ignores it.
+     */
+    var sidebarDocked by mutableStateOf(prefs.getBoolean("sidebarDocked", false))
+        private set
 
     fun saveKeepScreenOn(value: Boolean) {
         keepScreenOn = value
@@ -148,6 +154,7 @@ class Settings(
         v.custom?.let { edit.putString("paneHighlightCustom", hexOf(it)) }
         edit.apply()
     }
+    fun saveSidebarDocked(v: Boolean) { sidebarDocked = v; prefs.edit().putBoolean("sidebarDocked", v).apply() }
     fun saveCapsuleCorner(v: CapsuleCorner) { capsuleCorner = v; prefs.edit().putString("capsuleCorner", v.saved).apply() }
     fun saveKeyBar(v: List<String>) { keyBar = v; prefs.edit().putString("keyBar", v.joinToString(",")).putBoolean("keyBarOrdered", true).apply() }
     fun saveHaptics(v: Boolean) { haptics = v; prefs.edit().putBoolean("haptics", v).apply() }

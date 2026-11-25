@@ -100,16 +100,16 @@ class VeloSizes(
     val tabTile: Dp = medium(30f),
     /** The search field and a field in a dialog (D12 45.3, L06 50.2). */
     val field: Dp = 48.dp,
-    /** The sidebar (D12 365.9). */
-    val sidebar: Dp = 366.dp,
-    /** The rail. derived: a control and a gap on each side; the Duo's rail (109) is built around its camera. */
-    val rail: Dp = 68.dp,
-    /** The key bar strip (L20 62.7). */
-    val keyBar: Dp = 63.dp,
+    /** The sidebar beside the panes (WsOpenDocked board: 320; D12 365.9). */
+    val sidebar: Dp = medium(320f),
+    /** The rail (Rail board: 60, a control and 6 on each side); the Duo's rail (109) is built around its camera. */
+    val rail: Dp = medium(60f),
+    /** The key bar strip (KeyBar board: 56). */
+    val keyBar: Dp = medium(56f),
     /** The least width of a key (D12 label pitch 50.5). */
     val key: Dp = 50.dp,
-    /** A key that has its own capsule (D12 46.6, 47.3). */
-    val keyHeight: Dp = 47.dp,
+    /** A key's height in the strip (KeyBar board: 48). */
+    val keyHeight: Dp = medium(48f),
     /** Between panes, and between panes and the screen's edge (Tokens board: 8). */
     val gap: Dp = medium(8f),
     /** Between pane cards and adjacent chrome in Compact style. */
@@ -272,7 +272,8 @@ fun veloSizes(size: UiSize): VeloSizes {
         tabTile = base.tabTile.s(),
         field = base.field.at(MinTouch),
         sidebar = base.sidebar.s(),
-        rail = maxOf(base.rail.s(), control + gap * 2),
+        // A control and the Rail board's 6 on each side, whatever the size.
+        rail = maxOf(base.rail.s(), control + medium(6f) * (2 * f)),
         keyBar = maxOf(base.keyBar.s(), keyHeight + (base.keyBar - base.keyHeight) * f),
         key = base.key.at(MinKey),
         keyHeight = keyHeight,

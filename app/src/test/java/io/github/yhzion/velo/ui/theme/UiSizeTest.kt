@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.ui.theme
 
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -64,7 +65,8 @@ class UiSizeTest {
     @Test fun theRailHoldsAControlAndTheBarHoldsItsKeys() {
         for (size in UiSize.entries) {
             val s = veloSizes(size)
-            assertTrue("$size rail", s.rail >= s.control + s.gap * 2)
+            // The Rail board: a control with 6 on each side at Medium.
+            assertTrue("$size rail", s.rail.value >= s.control.value + mediumAt(size, 6.dp).value * 2 - 0.01f)
             assertTrue("$size keyBar", s.keyBar > s.keyHeight)
         }
     }

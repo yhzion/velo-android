@@ -1096,13 +1096,55 @@ const val MinPanesBesideSidebarDp = 480f
 fun sidebarCoversPanes(widthDp: Float, heightDp: Float, sidebarDp: Float, railDp: Float, gapDp: Float, outerDp: Float): Boolean =
     isCompact(widthDp, heightDp) || widthDp - sidebarDp - railDp - 2 * gapDp - 2 * outerDp < MinPanesBesideSidebarDp
 
-const val ToggleSidebarCommand = "Toggle Sidebar"
+/**
+ * The least width the panes keep beside a docked sidebar: the bar phone's pane column (309 at
+ * Medium) and a little less, which programs are written for. The unfolded screen upright leaves 409.
+ */
+const val MinPanesDockedDp = 300f
+
+/** Where the open sidebar goes: over the panes, which it hides, or beside them. */
+enum class SidebarPlace { Covers, Beside }
+
+/** The width the panes keep beside the sidebar: the window less the sidebar, the rail, a gap beside each and the outer margins. */
+fun dockedPanesWidth(widthDp: Float, sidebarDp: Float, railDp: Float, gapDp: Float, outerDp: Float): Float =
+    widthDp - sidebarDp - railDp - 2 * gapDp - 2 * outerDp
 
 /**
- * Palette commands that leave the sidebar that covers the panes open: the toggle itself and
- * the commands that open a dialog about one of the sidebar's rows (a remote, a session or a tab).
+ * Whether the user may dock the sidebar beside the panes (WsOpenDocked): where it would cover them
+ * ([sidebarCoversPanes]) on a window that is not [isCompact], and the panes keep [MinPanesDockedDp]
+ * beside it. That is the unfolded screen upright; the bar phone and the folded screen never dock.
  */
-val SidebarKeepingCommands = setOf(ToggleSidebarCommand, AddRemoteCommand, RemoveRemoteCommand, RenameSessionCommand, RenameTabCommand)
+fun sidebarDockable(widthDp: Float, heightDp: Float, sidebarDp: Float, railDp: Float, gapDp: Float, outerDp: Float): Boolean =
+    !isCompact(widthDp, heightDp) && sidebarCoversPanes(widthDp, heightDp, sidebarDp, railDp, gapDp, outerDp) &&
+        dockedPanesWidth(widthDp, sidebarDp, railDp, gapDp, outerDp) >= MinPanesDockedDp
+
+/**
+ * Where the open sidebar goes: beside the panes where they keep [MinPanesBesideSidebarDp], or where
+ * the user [docked] it and it is [sidebarDockable]; over them anywhere else.
+ */
+fun sidebarPlace(widthDp: Float, heightDp: Float, sidebarDp: Float, railDp: Float, gapDp: Float, outerDp: Float, docked: Boolean): SidebarPlace = when {
+    !sidebarCoversPanes(widthDp, heightDp, sidebarDp, railDp, gapDp, outerDp) -> SidebarPlace.Beside
+    docked && sidebarDockable(widthDp, heightDp, sidebarDp, railDp, gapDp, outerDp) -> SidebarPlace.Beside
+    else -> SidebarPlace.Covers
+}
+
+const val ToggleSidebarCommand = "Toggle Sidebar"
+const val DockSidebarCommand = "Dock Sidebar Beside Panes"
+const val UndockSidebarCommand = "Undock Sidebar"
+
+/** The palette's docking command: only where the window can dock ([sidebarDockable]), the one that changes what is [docked]. */
+fun dockCommand(dockable: Boolean, docked: Boolean): String? = when {
+    !dockable -> null
+    docked -> UndockSidebarCommand
+    else -> DockSidebarCommand
+}
+
+/**
+ * Palette commands that leave the sidebar that covers the panes open: the toggle itself, docking
+ * it (it moves beside the panes) and the commands that open a dialog about one of the sidebar's
+ * rows (a remote, a session or a tab).
+ */
+val SidebarKeepingCommands = setOf(ToggleSidebarCommand, DockSidebarCommand, AddRemoteCommand, RemoveRemoteCommand, RenameSessionCommand, RenameTabCommand)
 
 /** [commands] with [close] run after each one not in [SidebarKeepingCommands]: what they change is behind the sidebar that covers the panes. */
 fun closingSidebarAfter(commands: List<PaletteCommand>, close: () -> Unit): List<PaletteCommand> =
