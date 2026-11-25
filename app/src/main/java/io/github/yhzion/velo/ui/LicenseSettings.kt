@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -132,11 +133,20 @@ private fun LicenseRows(components: List<LicenseComponent>, open: (String) -> Un
                     if (version != null) Text(version, Modifier.fillMaxWidth().testTag("license-version-$id"), style = textAt(12.5f),
                         color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                if (component.license.isNotEmpty()) TagBadge(component.license, Modifier.testTag("license-badge-$id"))
+                // At most half the row: a long license ("BSD-3-Clause, MIT, Apache-2.0 and others") ends in "…"
+                // and leaves the name its room. The license page shows it whole.
+                if (component.license.isNotEmpty()) TagBadge(component.license, Modifier.atMostHalfWidth().testTag("license-badge-$id"))
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(VeloTheme.medium(14.dp)), tint = c.disabled)
             }
         }
     }
+}
+
+/** At most half the width this is offered, so what comes beside it in a row keeps the other half. */
+private fun Modifier.atMostHalfWidth() = layout { measurable, constraints ->
+    val half = if (constraints.hasBoundedWidth) constraints.maxWidth / 2 else constraints.maxWidth
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = half))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
 /** A notice as the page shows it: its blocks, or null when the APK could not give it. */
