@@ -372,6 +372,8 @@ class StartCardModel(
     val logIn: (String?) -> Unit,
     /** The page "Open the login page again" opens: the node's login page, or null for a new one ([loginPageAgain]). */
     val loginPageAgain: () -> String?,
+    /** Stops waiting for the browser: the card asks to log in again ([TailnetLogin.cancel]). */
+    val cancelWait: () -> Unit = {},
     val tryAgain: () -> Unit,
     val searchAgain: () -> Unit,
     val connect: (DiscoveredServer) -> Unit,
@@ -416,7 +418,7 @@ fun StartScreen(
         step = step, waitingFor = login.waitingFor, unopened = login.unopened, connectedAs = connectedAsLine(state),
         found = found, note = foundNote(found.size, Tailnet.paused, Tailnet.sweepsFinished), searching = Tailnet.searching,
         logIn = { url -> if (url != null) login.open(uri, url) else login.start() },
-        loginPageAgain = { loginPageAgain(Tailnet.state) },
+        loginPageAgain = { loginPageAgain(Tailnet.state) }, cancelWait = login::cancel,
         tryAgain = { app.setTailnet(true) }, searchAgain = { Tailnet.sweepSoon() },
         connect = onConnect,
         getRex = { try { uri.openUri(RexInstallationUrl); true } catch (_: IllegalArgumentException) { false } },
@@ -712,6 +714,7 @@ private fun WaitingCard(model: StartCardModel) {
         Text("Finish logging in in the browser, then come back to Velo. This screen moves on by itself.",
             Modifier.fillMaxWidth().testTag("login-wait-body"), style = paragraph(16f), color = VeloTheme.colors.textOnRaised)
         VeloButton("Open the login page again", { model.logIn(model.loginPageAgain()) }, Modifier.fillMaxWidth().testTag("login-reopen-button"))
+        VeloButton("Cancel", model.cancelWait, Modifier.fillMaxWidth().testTag("login-wait-cancel"))
     }
 }
 
