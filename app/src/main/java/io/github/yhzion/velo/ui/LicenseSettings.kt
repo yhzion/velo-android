@@ -1,5 +1,10 @@
 package io.github.yhzion.velo.ui
 
+import androidx.compose.runtime.mutableIntStateOf
+import kotlin.math.ceil
+import androidx.compose.ui.platform.LocalDensity
+import io.github.yhzion.velo.ui.theme.textAt
+import io.github.yhzion.velo.ui.theme.rememberMono
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -165,56 +170,93 @@ internal fun LicenseDetail(
             }
         }
     }
-    val mono = textAt(12f).copy(fontFamily = FontFamily.Monospace).paragraph(1.6.em)
-    val frame = Frame(c.divider, VeloTheme.radii.group, VeloTheme.sizes.edge, VeloTheme.medium(14.dp) + VeloTheme.sizes.edge)
+    val density = LocalDensity.current
+    val mono = textAt(12f).copy(fontFamily = rememberMono()).paragraph(1.6.em)
+    // The board's line of the text, 1.6 of its size: Android sets each line on whole pixels instead.
+    val line = with(density) { (mono.fontSize * 1.6f).toPx() }
+    // The inset on whole pixels, rounded up: rounded down, the text would be a fraction wider than
+    // the board's and fit a character more on each line.
+    val inset = with(density) { ceil((VeloTheme.medium(14.dp) + VeloTheme.sizes.edge).toPx()).toDp() }
+    val frame = Frame(c.divider, VeloTheme.radii.group, VeloTheme.sizes.edge, inset)
+    @Composable
+    fun About() = DisableSelection {
+        Column(verticalArrangement = Arrangement.spacedBy(space.s12)) {
+            FlowRow(Modifier.fillMaxWidth().testTag("license-detail-badges"), horizontalArrangement = Arrangement.spacedBy(space.s8),
+                verticalArrangement = Arrangement.spacedBy(space.s8)) {
+                if (component.license.isNotEmpty()) TagBadge(component.license, Modifier.testTag("license-detail-license"))
+                if (component.version.isNotEmpty()) TagBadge(component.version, Modifier.testTag("license-detail-version"))
+                licenseUsage(component)?.let { TagBadge(it, Modifier.testTag("license-detail-usage")) }
+            }
+            component.url?.let { ProjectHome(it) }
+            if (component.parts.isNotEmpty()) {
+                GroupHeader(component.name, first = true)
+                LicenseRows(component.parts, open)
+            }
+        }
+    }
+
+    @Composable
+    fun Title(notice: LoadedNotice) = DisableSelection { GroupHeader(notice.text.title) }
+
+    @Composable
+    fun Block(text: String, tagged: Boolean, first: Boolean, last: Boolean) {
+        // A block is as tall as its lines at the board's line, so that what follows it stays in its place.
+        var lines by remember(text) { mutableIntStateOf(0) }
+        Text(
+            text,
+            Modifier.fillMaxWidth().then(if (tagged) Modifier.testTag("license-detail-text") else Modifier)
+                .drawBehind { frame.draw(this, first, last) }
+                .padding(start = frame.inset, end = frame.inset, top = if (first) frame.inset else 0.dp, bottom = if (last) frame.inset else 0.dp)
+                .heightIn(min = with(density) { ceil(lines * line).toDp() }),
+            style = mono, color = VeloTheme.colors.textOnRaised, onTextLayout = { lines = it.lineCount },
+        )
+    }
+
+    @Composable
+    fun Unread(notice: LoadedNotice) = Text("Couldn’t read ${notice.text.asset} from the app.", color = c.secondary)
+
+    @Composable
+    fun Note() = DisableSelection {
+        Text("Read from the notices bundled in the app. No network needed.",
+            Modifier.fillMaxWidth().padding(horizontal = space.s4).testTag("license-detail-offline-note"),
+            style = VeloTheme.type.caption.paragraph(1.5.em), color = c.secondary)
+    }
+
+    val loaded = notices
+    // Short texts, one block each, go in the page's one piece; a long one (the NDK's) a block at a time.
+    val whole = loaded != null && loaded.all { (it.blocks?.size ?: 0) <= 1 }
     SelectionContainer(modifier) {
         LazyColumn {
             item("top") { DisableSelection { top() } }
-            item("about") {
-                DisableSelection {
-                    Column(Modifier.testTag("license-detail-content").padding(top = space.s8), verticalArrangement = Arrangement.spacedBy(space.s12)) {
-                        FlowRow(Modifier.fillMaxWidth().testTag("license-detail-badges"), horizontalArrangement = Arrangement.spacedBy(space.s8),
-                            verticalArrangement = Arrangement.spacedBy(space.s8)) {
-                            if (component.license.isNotEmpty()) TagBadge(component.license, Modifier.testTag("license-detail-license"))
-                            if (component.version.isNotEmpty()) TagBadge(component.version, Modifier.testTag("license-detail-version"))
-                            licenseUsage(component)?.let { TagBadge(it, Modifier.testTag("license-detail-usage")) }
-                        }
-                        component.url?.let { ProjectHome(it) }
-                        if (component.parts.isNotEmpty()) {
-                            GroupHeader(component.name, first = true)
-                            LicenseRows(component.parts, open)
-                        }
+            if (whole) item("whole") {
+                Column(
+                    Modifier.fillMaxWidth().testTag("license-detail-content").padding(top = space.s8, bottom = space.s24),
+                    verticalArrangement = Arrangement.spacedBy(space.s12),
+                ) {
+                    About()
+                    for ((index, notice) in loaded.orEmpty().withIndex()) {
+                        if (component.texts.size > 1) Title(notice)
+                        val blocks = notice.blocks
+                        if (blocks == null) Unread(notice) else Block(blocks.firstOrNull().orEmpty(), index == 0, first = true, last = true)
+                    }
+                    Note()
+                }
+            } else {
+                item("about") { Column(Modifier.testTag("license-detail-content").padding(top = space.s8)) { About() } }
+                if (component.texts.isNotEmpty() && loaded == null) item("loading") {
+                    Text("Loading…", Modifier.padding(vertical = space.s12), color = c.secondary)
+                }
+                for ((index, notice) in loaded.orEmpty().withIndex()) {
+                    if (component.texts.size > 1) item("title:$index") { Title(notice) }
+                    else item("gap:$index") { Spacer(Modifier.height(space.s12)) }
+                    val blocks = notice.blocks
+                    if (blocks == null) item("error:$index") { Unread(notice) }
+                    // One frame around a text, drawn a block at a time: its top on the first block, its bottom on the last.
+                    else items(blocks.size, key = { "text:$index:$it" }) { block ->
+                        Block(blocks[block], index == 0 && block == 0, first = block == 0, last = block == blocks.lastIndex)
                     }
                 }
-            }
-            val loaded = notices
-            if (component.texts.isNotEmpty() && loaded == null) item("loading") {
-                Text("Loading…", Modifier.padding(vertical = space.s12), color = c.secondary)
-            }
-            for ((index, notice) in loaded.orEmpty().withIndex()) {
-                if (component.texts.size > 1) item("title:$index") { DisableSelection { GroupHeader(notice.text.title) } }
-                else item("gap:$index") { Spacer(Modifier.height(space.s12)) }
-                val blocks = notice.blocks
-                if (blocks == null) item("error:$index") { Text("Couldn’t read ${notice.text.asset} from the app.", color = c.secondary) }
-                // One frame around a text, drawn a block at a time: its top on the first block, its bottom on the last.
-                else items(blocks.size, key = { "text:$index:$it" }) { block ->
-                    val first = block == 0
-                    val last = block == blocks.lastIndex
-                    Text(
-                        blocks[block],
-                        Modifier.fillMaxWidth().then(if (index == 0 && first) Modifier.testTag("license-detail-text") else Modifier)
-                            .drawBehind { frame.draw(this, first, last) }
-                            .padding(start = frame.inset, end = frame.inset, top = if (first) frame.inset else 0.dp, bottom = if (last) frame.inset else 0.dp),
-                        style = mono, color = VeloTheme.colors.textOnRaised,
-                    )
-                }
-            }
-            item("end") {
-                DisableSelection {
-                    Text("Read from the notices bundled in the app. No network needed.",
-                        Modifier.fillMaxWidth().padding(top = space.s12, bottom = space.s24).padding(horizontal = space.s4).testTag("license-detail-offline-note"),
-                        style = VeloTheme.type.caption.paragraph(1.5.em), color = c.secondary)
-                }
+                item("end") { Column(Modifier.padding(top = space.s12, bottom = space.s24)) { Note() } }
             }
         }
     }

@@ -1,5 +1,7 @@
 package io.github.yhzion.velo.ui.theme
 
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import io.github.yhzion.velo.ui.keyName
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -76,6 +78,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.ui.KeyLegend
 import kotlin.math.max
+import kotlin.math.floor
+import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.roundToInt
 
 // The controls of a settings sheet, as the redesign's Controls board draws them: a group and its
@@ -139,7 +143,7 @@ fun GroupHeader(text: String, modifier: Modifier = Modifier, first: Boolean = fa
     Text(
         text,
         modifier.fillMaxWidth().padding(start = VeloTheme.medium(4.dp), end = VeloTheme.medium(4.dp), top = VeloTheme.medium(if (first) 12.dp else 20.dp), bottom = VeloTheme.space.s8)
-            .semantics { heading() },
+            .lineBox(VeloTheme.type.caption).semantics { heading() },
         style = VeloTheme.type.caption, fontWeight = FontWeight.Medium, color = VeloTheme.surface.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }
@@ -155,11 +159,11 @@ fun GroupCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
     val c = VeloTheme.surface
     val onOverlay = c === VeloTheme.colors.overlay
     val frame = if (onOverlay) Modifier.clip(rounded(VeloTheme.radii.card)).background(c.glass)
-    else rounded(VeloTheme.radii.group).let { shape -> Modifier.clip(shape).border(s.edge, c.divider, shape) }
+    else rounded(VeloTheme.radii.group).let { shape -> Modifier.clip(shape).border(hairline(), c.divider, shape) }
     val start = VeloTheme.medium(if (onOverlay) 14.dp else GroupStart)
     val end = VeloTheme.medium(if (onOverlay) 14.dp else GroupEnd)
     // On the sheet the rows sit inside the border, as the boards' do (their border adds to the group).
-    val rim = if (onOverlay) 0.dp else s.edge
+    val rim = if (onOverlay) 0.dp else hairline()
     CompositionLocalProvider(LocalGroupEnd provides end, LocalGroupStart provides start) {
         Column(modifier.fillMaxWidth().then(frame).padding(rim).padding(start = start, end = end), content = content)
     }
@@ -179,8 +183,19 @@ fun GroupDivider(modifier: Modifier = Modifier) {
             val wide = constraints.maxWidth + end.roundToPx()
             val placeable = measurable.measure(constraints.copy(minWidth = wide, maxWidth = wide))
             layout(constraints.maxWidth, placeable.height) { placeable.placeRelative(0, 0) }
-        }.height(VeloTheme.sizes.edge).background(VeloTheme.surface.divider),
+        }.height(hairline()).background(VeloTheme.surface.divider),
     )
+}
+
+/**
+ * The [VeloSizes.edge] of a group's border and dividers, on whole device pixels and rounded down,
+ * as the browser paints a 1 px border (2 device pixels at 420 dpi, not 3). Rounded up, a page of
+ * rows would grow a seventh of a dp a line.
+ */
+@Composable
+internal fun hairline(): Dp {
+    val density = LocalDensity.current
+    return with(density) { floor(VeloTheme.sizes.edge.toPx()).coerceAtLeast(1f).toDp() }
 }
 
 /** The test tag `<tag>-<part>` of a row's part, as the redesign's boards name them: `-row`, `-label`, `-switch`. */
@@ -188,12 +203,13 @@ internal fun tagged(tag: String?, part: String): Modifier = if (tag != null) Mod
 
 /**
  * A row of a [GroupCard]: [label], and its control at the end. [tag] names its parts for tests
- * (`<tag>-row`, `<tag>-label`). A control that does not fit
+ * (`<tag>-row`, `<tag>-label`). The label takes the room the control leaves, as Appearance's
+ * labels do, or with [labelFills] false only its words' width, as Keyboard's. A control that does not fit
  * beside the label (a long segmented control on the folded screen, or at large text) goes
  * under it, at the start.
  */
 @Composable
-fun SettingRow(label: String, modifier: Modifier = Modifier, tag: String? = null, control: @Composable () -> Unit) {
+fun SettingRow(label: String, modifier: Modifier = Modifier, tag: String? = null, labelFills: Boolean = true, control: @Composable () -> Unit) {
     val s = VeloTheme.sizes
     val gapDp = VeloTheme.medium(14.dp)
     Layout(
@@ -208,7 +224,8 @@ fun SettingRow(label: String, modifier: Modifier = Modifier, tag: String? = null
         val end = measurables[1].measure(loose)
         val wanted = measurables[0].maxIntrinsicWidth(Constraints.Infinity)
         val beside = wanted + gap + end.width <= constraints.maxWidth
-        val text = measurables[0].measure(loose.copy(maxWidth = if (beside) max(0, constraints.maxWidth - gap - end.width) else constraints.maxWidth))
+        val room = if (beside) max(0, constraints.maxWidth - gap - end.width) else constraints.maxWidth
+        val text = measurables[0].measure(loose.copy(minWidth = if (labelFills) room else 0, maxWidth = room))
         val content = if (beside) max(text.height, end.height) else text.height + gap / 2 + end.height
         val height = max(content, constraints.minHeight)
         layout(constraints.maxWidth, height) {
@@ -465,16 +482,21 @@ fun VeloSlider(
  */
 @Composable
 fun <T> VeloSegmented(
-    options: List<T>, selected: T, label: (T) -> String, modifier: Modifier = Modifier, optionTag: ((T) -> String)? = null, onPick: (T) -> Unit,
+    options: List<T>, selected: T, label: (T) -> String, modifier: Modifier = Modifier, optionTag: ((T) -> String)? = null,
+    /** The room at each side of a cell's words: 12, or more where the words are short (Row, Grid: 14). */
+    cellPadding: Dp = VeloTheme.space.s12,
+    /** In the settings sheet, the cells share the width the control is given (a filter as wide as its page). */
+    stretch: Boolean = false,
+    onPick: (T) -> Unit,
 ) {
     val s = VeloTheme.sizes
     fun tag(option: T) = if (optionTag != null) Modifier.testTag(optionTag(option)) else Modifier
     if (LocalSettingsPanel.current) {
-        SettingsChoices(options, selected, label, modifier, ::tag, onPick)
+        SettingsChoices(options, selected, label, modifier, ::tag, cellPadding, stretch, onPick)
         return
     }
     Layout(
-        content = { for (option in options) SegmentCell(label(option), option == selected, tag(option).fillMaxHeight()) { onPick(option) } },
+        content = { for (option in options) SegmentCell(label(option), option == selected, Modifier.fillMaxHeight(), tag(option), cellPadding) { onPick(option) } },
         modifier = modifier.height(s.control).glassControl(Capsule).selectableGroup().padding(horizontal = s.cellInset),
     ) { measurables, constraints ->
         val height = constraints.maxHeight
@@ -491,18 +513,24 @@ fun <T> VeloSegmented(
     }
 }
 
-/** One cell of a segmented control: the tap takes its whole height, the lighter glass is drawn [VeloSizes.cellInset] inside it. */
+/**
+ * One cell of a segmented control: the tap takes its whole height, the lighter glass is drawn
+ * [VeloSizes.cellInset] inside it. [tag] names the drawn cell, inside the track's rim.
+ */
 @Composable
-private fun SegmentCell(text: String, current: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun SegmentCell(text: String, current: Boolean, modifier: Modifier, tag: Modifier = Modifier, padding: Dp = VeloTheme.space.s12, onClick: () -> Unit) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     Box(
-        modifier.heightIn(min = s.control).selectable(current, role = Role.RadioButton, onClick = onClick).padding(vertical = s.cellInset)
-            .clip(Capsule).background(if (current) c.glassSelected else Color.Transparent).padding(horizontal = VeloTheme.space.s12),
+        modifier.heightIn(min = s.control).selectable(current, role = Role.RadioButton, onClick = onClick).padding(vertical = s.cellInset),
         contentAlignment = Alignment.Center,
     ) {
+        // A node of its own: a tag on the selectable node would take that node's bounds, the whole height.
+        Box(
+            Modifier.matchParentSize().then(tag).clip(Capsule).background(if (current) c.glassSelected else Color.Transparent),
+        )
         Text(
-            text, style = VeloTheme.type.control, fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
+            text, Modifier.padding(horizontal = padding), style = VeloTheme.type.control, fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
             color = if (current) c.onGlass else c.secondary, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         )
     }
@@ -511,10 +539,12 @@ private fun SegmentCell(text: String, current: Boolean, modifier: Modifier, onCl
 /** Keep choices together on the track, but wrap whole choices instead of abbreviating their names. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> SettingsChoices(options: List<T>, selected: T, label: (T) -> String, modifier: Modifier, tag: (T) -> Modifier, onPick: (T) -> Unit) {
+private fun <T> SettingsChoices(
+    options: List<T>, selected: T, label: (T) -> String, modifier: Modifier, tag: (T) -> Modifier, cellPadding: Dp, stretch: Boolean, onPick: (T) -> Unit,
+) {
     // The pill radius is half the track's height: one line reads as a capsule, two as a rounded box.
     FlowRow(modifier.glassControl(rounded(VeloTheme.radii.pill)).selectableGroup().padding(horizontal = VeloTheme.sizes.cellInset)) {
-        for (option in options) SegmentCell(label(option), option == selected, tag(option)) { onPick(option) }
+        for (option in options) SegmentCell(label(option), option == selected, if (stretch) Modifier.weight(1f) else Modifier, tag(option), cellPadding) { onPick(option) }
     }
 }
 
@@ -555,15 +585,24 @@ fun KeyChoice(key: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
     val frame = if (selected) Modifier.clip(Capsule).background(c.accent.copy(alpha = 0.16f)).border(s.edge, c.accent.copy(alpha = 0.55f), Capsule)
     else Modifier.clip(Capsule).border(s.edge, c.glassEdge, Capsule)
     Box(
-        modifier.minimumInteractiveComponentSize().heightIn(min = VeloTheme.medium(44.dp)).widthIn(min = VeloTheme.medium(44.dp)).then(frame)
+        // A key's least touch target, 44 (MinKey), as on the key bar: chips wrap in rows the boards space 8 apart.
+        modifier.heightIn(min = VeloTheme.medium(44.dp).coerceAtLeast(MinKey)).widthIn(min = VeloTheme.medium(48.dp)).then(frame)
             .selectable(selected, role = Role.Checkbox, onClick = onClick)
             .semantics { contentDescription = key }
-            .padding(horizontal = VeloTheme.medium(14.dp)),
+            // The rim takes room beside the words, as the boards' border does.
+            .padding(horizontal = VeloTheme.medium(14.dp) + s.edge),
         contentAlignment = Alignment.Center,
     ) {
-        KeyLegend(key, if (selected) c.onGlass else c.secondary)
+        val ink = if (selected) c.onGlass else c.secondary
+        // A key named in words is set as the boards set it, 14 in JetBrains Mono; an arrow keeps its icon.
+        if (key in IconKeys) KeyLegend(key, ink)
+        else Text(keyName(key), Modifier.clearAndSetSemantics {}, style = textAt(14f, FontWeight.Medium).copy(fontFamily = rememberMono()),
+            color = ink, maxLines = 1, softWrap = false)
     }
 }
+
+/** The keys the settings show as an icon ([KeyLegend]), as the boards draw their arrows; the others by name. */
+internal val IconKeys = setOf("Left", "Down", "Up", "Right", "Backspace")
 
 /**
  * The round button that closes a sheet: glass with a light line along its top (the redesign's

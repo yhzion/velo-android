@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import io.github.yhzion.velo.ui.theme.textAt
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageInfo
@@ -189,12 +190,12 @@ private fun ChannelRelease(host: SettingsHost, channel: UpdateChannel, installed
                 val label = remember(ctx) { ctx.applicationInfo.loadLabel(ctx.packageManager).toString() }
                 Column(verticalArrangement = Arrangement.spacedBy(space.s4)) {
                     Eyebrow("NEW VERSION", Modifier.fillMaxWidth().testTag("new-version-eyebrow"))
-                    Text("$label ${versionLabel(candidate.tag)}", Modifier.fillMaxWidth().testTag("new-version-title").semantics { heading() },
+                    Text("$label ${versionLabel(candidate.tag)}", Modifier.fillMaxWidth().testTag("new-version-title").lineBox(textAt(24f)).semantics { heading() },
                         style = textAt(24f, FontWeight.SemiBold), color = colors.text)
-                    Text("You have ${installed.versionName} · ${candidate.channel.name}", Modifier.fillMaxWidth().testTag("new-version-meta"),
+                    Text("You have ${installed.versionName} · ${candidate.channel.name}", Modifier.fillMaxWidth().testTag("new-version-meta").lineBox(textAt(14f)),
                         style = textAt(14f), color = colors.secondary)
                 }
-                Box(Modifier.fillMaxWidth().height(s.edge).background(colors.divider))
+                Box(Modifier.fillMaxWidth().height(hairline()).background(colors.divider))
                 WhatsNew(whatsNew(releases))
                 if (progress.isNotEmpty()) Text(progress, style = VeloTheme.type.body, color = colors.text)
                 val file = verified

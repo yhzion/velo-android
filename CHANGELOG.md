@@ -9,12 +9,14 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - When a computer you picked takes a while to open, the start screen shows that it is opening, with Cancel.
 - On an unfolded Fold the sidebar can stay beside the panes: choose Dock Sidebar Beside Panes in the command palette. Velo remembers the choice.
 - The rail shows which tab of the session you are on, such as 2 / 4.
+- Open source licenses lists the program logos on tab tiles (Simple Icons) with their licenses.
 
 ### Changed
 - Settings and dialogs use refreshed colours, cards and controls.
 - The start screen shows its three steps with the current one's card, side by side on the unfolded Fold.
 - Tabs in the sidebar show their program's logo, stacked for a tab split into panes, with a dot for a result you have not seen yet.
 - The sidebar, rail, key bar and the line under the panes use refreshed colours and spacing, and every key of the key bar fits on a phone's screen.
+- About shows Velo's card, Updates and the licenses; Updates shows what a new version brings above its settings and when Velo last checked.
 - On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
 
 ### Fixed

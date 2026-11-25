@@ -365,13 +365,14 @@ enum class ButtonKind { Primary, Secondary, Destructive, Text }
  * A button (Controls board): [ButtonKind.Primary] is filled with the accent; [ButtonKind.Secondary]
  * is glass with a rim; [ButtonKind.Destructive] is a rim of the red with red words; [ButtonKind.Text]
  * is the accent's words alone. A button that is not [enabled] is the selected fill with grey words.
- * [small] is the 40 high button of a list row, such as Connect. [icon] goes before the words, or
+ * [small] is the 40 high button of a list row, such as Connect; [row] the 44 high one at the end of
+ * a settings row, such as Edit order. [icon] goes before the words, or
  * after them with [iconAtEnd] (a link that leaves the app). Every button keeps the least touch target.
  */
 @Composable
 fun VeloButton(
     text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
-    small: Boolean = false, icon: Painter? = null, iconAtEnd: Boolean = false,
+    small: Boolean = false, icon: Painter? = null, iconAtEnd: Boolean = false, row: Boolean = false,
     /** The test tag of the drawn button, inside the least touch target. */
     tag: String? = null,
 ) {
@@ -394,15 +395,15 @@ fun VeloButton(
         else -> c.accent
     }
     val height = when {
-        words -> VeloTheme.medium(44.dp)
+        words || row -> VeloTheme.medium(44.dp)
         small -> VeloTheme.medium(40.dp)
         else -> s.control
     }
-    val style = (if (words || small) type.value else type.body)
+    val style = (if (words || small || row) type.value else type.body)
         .copy(fontWeight = if (kind == ButtonKind.Primary) FontWeight.SemiBold else FontWeight.Medium)
     val padding = when {
         words -> VeloTheme.space.s8
-        small -> VeloTheme.medium(18.dp)
+        small || row -> VeloTheme.medium(18.dp)
         else -> VeloTheme.space.s20
     }
     // The caller's modifier goes inside the least touch target: a small button's box (its test tag, its semantics) is
@@ -474,5 +475,5 @@ fun TagBadge(text: String, modifier: Modifier = Modifier) {
 /** A small heading in capitals over what it names, such as NEW VERSION (Tokens board "eyebrow"). Write [text] in capitals. */
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = VeloTheme.surface.accent) {
-    Text(text, modifier.semantics { heading() }, style = VeloTheme.type.eyebrow, color = color, maxLines = 1)
+    Text(text, modifier.lineBox(VeloTheme.type.eyebrow).semantics { heading() }, style = VeloTheme.type.eyebrow, color = color, maxLines = 1)
 }
