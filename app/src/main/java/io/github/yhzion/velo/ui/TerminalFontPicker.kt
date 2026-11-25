@@ -20,18 +20,17 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import io.github.yhzion.velo.AppController
+import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.GlyphRasterizer
 import io.github.yhzion.velo.TerminalFont
 import io.github.yhzion.velo.ui.theme.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** The Font row of Appearance: the current font, and a chevron because it opens the Terminal Font level of the sheet. */
 @Composable
-internal fun TerminalFontSetting(app: AppController, onOpen: () -> Unit) {
+internal fun TerminalFontSetting(settings: Settings, onOpen: () -> Unit) {
     val sizes = VeloTheme.sizes
     val c = VeloTheme.surface
     Row(
@@ -40,7 +39,7 @@ internal fun TerminalFontSetting(app: AppController, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Font", color = c.text)
-        Text(app.settings.font.label, Modifier.weight(1f), color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Text(settings.font.label, Modifier.weight(1f), color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.End)
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(sizes.iconSmall), tint = c.secondary)
     }
@@ -52,29 +51,30 @@ internal fun TerminalFontSetting(app: AppController, onOpen: () -> Unit) {
  * setting of the sheet is; the sheet's Back returns to Appearance.
  */
 @Composable
-internal fun TerminalFontSettings(app: AppController, modifier: Modifier = Modifier) {
+internal fun TerminalFontSettings(host: SettingsHost, modifier: Modifier = Modifier) {
+    val settings = host.settings
     val sizes = VeloTheme.sizes
     val scope = rememberCoroutineScope()
     val assets = LocalContext.current.assets
-    var all by rememberSaveable { mutableStateOf(!app.settings.font.fixedPitch) }
+    var all by rememberSaveable { mutableStateOf(!settings.font.fixedPitch) }
     var query by rememberSaveable { mutableStateOf("") }
     var choices by remember { mutableStateOf(TerminalFont.bundled) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(app.fonts) {
-        choices = withContext(Dispatchers.IO) { app.fonts.available() }
+    LaunchedEffect(host) {
+        choices = withContext(host.io) { host.fontChoices() }
         loading = false
     }
     fun use(font: TerminalFont) {
-        if (font.id == app.settings.font.id) return
-        app.settings.saveFont(font)
-        app.pushFont()
+        if (font.id == settings.font.id) return
+        settings.saveFont(font)
+        host.pushFont()
     }
-    val selected = app.settings.font
+    val selected = settings.font
     val renderer = remember(assets) { lazy { GlyphRasterizer(assets) } }
     // Each font's face, made once when its row first shows: a row draws its own name in it.
     val faces = remember(renderer) { mutableStateMapOf<String, FontFamily>() }
-    suspend fun faceOf(font: TerminalFont): FontFamily = faces[font.id] ?: withContext(Dispatchers.Default) {
+    suspend fun faceOf(font: TerminalFont): FontFamily = faces[font.id] ?: withContext(host.io) {
         val rasterizer = renderer.value
         FontFamily(synchronized(rasterizer) { rasterizer.regularFaceOf(font) })
     }.also { faces[font.id] = it }
@@ -84,8 +84,8 @@ internal fun TerminalFontSettings(app: AppController, modifier: Modifier = Modif
             loading = true
             error = null
             try {
-                val (imported, catalog) = withContext(Dispatchers.IO) {
-                    app.fonts.importFile(uri) to app.fonts.available()
+                val (imported, catalog) = withContext(host.io) {
+                    host.importFont(uri) to host.fontChoices()
                 }
                 choices = catalog
                 all = !imported.first().fixedPitch

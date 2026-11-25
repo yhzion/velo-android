@@ -89,7 +89,10 @@ import kotlin.math.roundToInt
  * it; the settings sheet shows the same controls inside itself.
  */
 @Composable
-fun TailscaleScreen(app: AppController, onBack: () -> Unit) {
+fun TailscaleScreen(app: AppController, onBack: () -> Unit) = TailscaleScreen(remember(app) { AppSettingsHost(app) }, onBack)
+
+@Composable
+internal fun TailscaleScreen(host: SettingsHost, onBack: () -> Unit) {
     val sizes = VeloTheme.sizes
     // Clear of the soft keyboard and the system bars: the node name and Log out stay reachable.
     Column(Modifier.fillMaxSize().background(VeloTheme.surface.surface).windowInsetsPadding(WindowInsets.screenSafeDrawing)
@@ -98,7 +101,7 @@ fun TailscaleScreen(app: AppController, onBack: () -> Unit) {
             GlassIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
             Text("This Device", Modifier.padding(start = sizes.rowGap).semantics { heading() }, style = VeloTheme.type.screenTitle)
         }
-        DeviceSettings(app)
+        DeviceSettings(host)
     }
 }
 
@@ -125,7 +128,10 @@ private enum class SettingsLevel(val title: String) {
  * the close button, a tap beside the sheet and Back at the top close it ([onClose]).
  */
 @Composable
-fun SettingsSheet(app: AppController, onClose: () -> Unit) {
+fun SettingsSheet(app: AppController, onClose: () -> Unit) = SettingsSheet(remember(app) { AppSettingsHost(app) }, onClose)
+
+@Composable
+internal fun SettingsSheet(host: SettingsHost, onClose: () -> Unit) {
     val sizes = VeloTheme.sizes
     var category by rememberSaveable { mutableStateOf<SettingsCategory?>(null) }
     var level by rememberSaveable { mutableStateOf<SettingsLevel?>(null) }
@@ -189,22 +195,22 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
                         scrollStates.SaveableStateProvider(licensed?.let { "License:${it.id}" } ?: level?.name ?: shown.name) {
                             val detail = Modifier.weight(1f).fillMaxHeight().padding(horizontal = sizes.overlayPadding)
                             // The font list and a license's text scroll themselves, so their levels are not inside the sheet's scroll.
-                            if (level == SettingsLevel.Font) TerminalFontSettings(app, detail.padding(top = sizes.menuPadding))
+                            if (level == SettingsLevel.Font) TerminalFontSettings(host, detail.padding(top = sizes.menuPadding))
                             else if (licensed != null) LicenseDetail(licensed, open = { license = it }, modifier = detail)
                             else Column(
                                 detail.verticalScroll(rememberScrollState()).padding(bottom = sizes.overlayPadding),
                             ) {
-                                if (level == SettingsLevel.Device) DeviceSettings(app)
+                                if (level == SettingsLevel.Device) DeviceSettings(host)
                                 else if (level == SettingsLevel.Updates) AppUpdateSettings()
-                                else if (level == SettingsLevel.SshKey) SshKeySettings(app.sshSecrets)
+                                else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets)
                                 // A license that is no longer listed falls back to the list.
                                 else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) {
                                     OpenSourceLicenseList(open = { license = it; level = SettingsLevel.License })
                                 } else when (shown) {
-                                    SettingsCategory.Appearance -> AppearanceSettings(app, openFont = { category = shown; level = SettingsLevel.Font })
-                                    SettingsCategory.Keyboard -> KeyboardSettings(app.settings)
-                                    SettingsCategory.Notifications -> ActivitySettings(app)
-                                    SettingsCategory.Remotes -> RemoteSettings(app, openDevice = { level = SettingsLevel.Device },
+                                    SettingsCategory.Appearance -> AppearanceSettings(host, openFont = { category = shown; level = SettingsLevel.Font })
+                                    SettingsCategory.Keyboard -> KeyboardSettings(host.settings)
+                                    SettingsCategory.Notifications -> ActivitySettings(host)
+                                    SettingsCategory.Remotes -> RemoteSettings(host, openDevice = { level = SettingsLevel.Device },
                                         openSshKey = { category = shown; level = SettingsLevel.SshKey })
                                     SettingsCategory.About -> GroupCard(Modifier.padding(top = sizes.menuPadding)) {
                                         Box(Modifier.fillMaxWidth().heightIn(min = sizes.row), contentAlignment = Alignment.CenterStart) {
@@ -296,10 +302,10 @@ private fun CategoryList(
 private val PaneStyles = listOf("comfortable", "compact")
 
 @Composable
-private fun ActivitySettings(app: AppController) {
-    val settings = app.settings
+private fun ActivitySettings(host: SettingsHost) {
+    val settings = host.settings
     val context = LocalContext.current
-    val system = app.notifications
+    val system = host.notifications
     var blocked by remember { mutableStateOf(emptyList<PaneAlertKind>()) }
     fun refresh() {
         system.createChannels()
@@ -328,7 +334,7 @@ private fun ActivitySettings(app: AppController) {
     }
     GroupHeader("Background")
     GroupCard {
-        BackgroundSettings(app)
+        BackgroundSettings(host)
     }
     for (kind in PaneAlertKind.entries) {
         // Rex for Mac marks each kind with its own coloured badge in Notifications.
@@ -352,7 +358,7 @@ private fun ActivitySettings(app: AppController) {
                             MenuItem(sound.name, {
                                 chooseSound = false
                                 settings.saveSound(kind, sound)
-                                if (settings.activitySounds) app.notifications.play(kind, sound, settings.activityVolume)
+                                if (settings.activitySounds) host.notifications.play(kind, sound, settings.activityVolume)
                             })
                         }
                     }
@@ -372,8 +378,8 @@ private fun alertIcon(kind: PaneAlertKind): Int = when (kind) {
 }
 
 @Composable
-private fun AppearanceSettings(app: AppController, openFont: () -> Unit) {
-    val s = app.settings
+private fun AppearanceSettings(host: SettingsHost, openFont: () -> Unit) {
+    val s = host.settings
     GroupHeader("Interface")
     GroupCard {
         SettingRow("Size") { VeloSegmented(UiSize.entries, s.uiSize, { it.name }, onPick = s::saveUiSize) }
@@ -381,7 +387,7 @@ private fun AppearanceSettings(app: AppController, openFont: () -> Unit) {
         SettingRow("Pane style") {
             VeloSegmented(PaneStyles, s.paneStyle, { it.replaceFirstChar(Char::uppercaseChar) }) {
                 s.savePaneStyle(it)
-                app.pushDisplay()
+                host.pushDisplay()
             }
         }
         GroupDivider()
@@ -391,19 +397,19 @@ private fun AppearanceSettings(app: AppController, openFont: () -> Unit) {
         GroupDivider()
         Toggle("Keep screen on while using Velo", s.keepScreenOn, s::saveKeepScreenOn)
     }
-    PaneHighlightSettings(app)
+    PaneHighlightSettings(host.settings)
     GroupHeader("Terminal")
     GroupCard {
-        TerminalFontSetting(app, onOpen = openFont)
+        TerminalFontSetting(host.settings, onOpen = openFont)
         GroupDivider()
-        FontSizeSetting(app)
+        FontSizeSetting(host)
     }
 }
 
 /** The terminal's font size: its value beside its name, and a slider under them that has the row's width. */
 @Composable
-private fun FontSizeSetting(app: AppController) {
-    val s = app.settings
+private fun FontSizeSetting(host: SettingsHost) {
+    val s = host.settings
     val sizes = VeloTheme.sizes
     val value = fontSizeValue(s.fontSize)
     Column(Modifier.fillMaxWidth().padding(vertical = sizes.cellInset)) {
@@ -418,9 +424,9 @@ private fun FontSizeSetting(app: AppController) {
                 stateDescription = value
             },
             valueRange = 8f..24f, steps = 15,
-            onValueChangeFinished = { app.setting("fontSize", s.fontSize) },
+            onValueChangeFinished = { host.pushSetting("fontSize", s.fontSize) },
         )
-        FontSizePreview(app)
+        FontSizePreview(host)
     }
 }
 
@@ -520,7 +526,7 @@ private fun TapKeyRow(label: String, key: TapKey, onPick: (TapKey) -> Unit) {
 }
 
 @Composable
-private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKey: () -> Unit) {
+private fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshKey: () -> Unit) {
     var adding by rememberSaveable { mutableStateOf(false) }
     var removingId by rememberSaveable { mutableStateOf<String?>(null) }
     var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -535,7 +541,7 @@ private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKe
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(sizes.rowGap),
         ) {
             // Distinguish a running node from a stopped one.
-            Icon(painterResource(if (Tailnet.state is TailnetState.Running) R.drawable.ic_tailscale_on else R.drawable.ic_tailscale_off),
+            Icon(painterResource(if (host.tailnetState is TailnetState.Running) R.drawable.ic_tailscale_on else R.drawable.ic_tailscale_off),
                 null, Modifier.size(sizes.icon), tint = c.text)
             Text("Tailscale", Modifier.weight(1f))
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(sizes.iconSmall), tint = c.secondary)
@@ -554,8 +560,8 @@ private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKe
         }
     }
     GroupHeader("Saved")
-    if (app.saved.isNotEmpty()) GroupCard {
-        app.saved.forEachIndexed { index, remote ->
+    if (host.saved.isNotEmpty()) GroupCard {
+        host.saved.forEachIndexed { index, remote ->
             key(remote.id) {
                 if (index > 0) GroupDivider()
                 var menu by remember { mutableStateOf(false) }
@@ -582,8 +588,7 @@ private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKe
                     }
                 }
                 // The remote's ports forwarded to the phone (#226): they stay until stopped here.
-                val conn = app.connectionOf(remote)
-                for (forward in conn?.state?.forwards.orEmpty()) {
+                for (forward in host.forwards(remote)) {
                     key(forward.block) {
                         GroupDivider()
                         Row(Modifier.fillMaxWidth().heightIn(min = sizes.row).padding(start = sizes.rowGap), verticalAlignment = Alignment.CenterVertically) {
@@ -591,7 +596,7 @@ private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKe
                                 Text(forward.label)
                                 Text(forwardDetail(forward), style = VeloTheme.type.caption, color = c.secondary)
                             }
-                            RowIconButton(Icons.Default.Close, "Stop forwarding ${forward.label}", { conn?.closeForward(forward.block) })
+                            RowIconButton(Icons.Default.Close, "Stop forwarding ${forward.label}", { host.stopForward(remote, forward.block) })
                         }
                     }
                 }
@@ -600,29 +605,29 @@ private fun RemoteSettings(app: AppController, openDevice: () -> Unit, openSshKe
     }
     Spacer(Modifier.height(sizes.menuPadding))
     VeloButton(AddRemoteCommand, { adding = true }, kind = ButtonKind.Primary)
-    if (adding) AddRemoteDialog(add = app::addRemote, onDismiss = { adding = false })
-    app.saved.firstOrNull { it.id == removingId }?.let { remote ->
-        RemoveRemoteDialog(remote, remove = { app.removeRemote(remote.id) }, onDismiss = { removingId = null })
+    if (adding) AddRemoteDialog(add = host::addRemote, onDismiss = { adding = false })
+    host.saved.firstOrNull { it.id == removingId }?.let { remote ->
+        RemoveRemoteDialog(remote, remove = { host.removeRemote(remote.id) }, onDismiss = { removingId = null })
     }
-    app.saved.firstOrNull { it.id == renamingId }?.let { remote ->
+    host.saved.firstOrNull { it.id == renamingId }?.let { remote ->
         RenameDialog(
             "Rename Remote", remote.label, allowEmpty = false,
-            onRename = { app.renameRemote(remote.id, it) }, onDismiss = { renamingId = null },
+            onRename = { host.renameRemote(remote.id, it) }, onDismiss = { renamingId = null },
         )
     }
     // A remote removed meanwhile takes its panel with it.
-    app.saved.firstOrNull { it.id == detailsId }?.let { remote ->
-        SshDetailsPanel(app, remote, onDismiss = { detailsId = null })
+    host.saved.firstOrNull { it.id == detailsId }?.let { remote ->
+        host.SshDetails(remote, onDismiss = { detailsId = null })
     }
 }
 
 /** This Device: the Tailscale node's controls, then where to remove devices from the network. */
 @Composable
-private fun DeviceSettings(app: AppController) {
+private fun DeviceSettings(host: SettingsHost) {
     val sizes = VeloTheme.sizes
     GroupHeader("Tailscale")
     GroupCard {
-        Column(Modifier.padding(bottom = sizes.overlayPadding)) { TailscaleSection(app) }
+        Column(Modifier.padding(bottom = sizes.overlayPadding)) { TailscaleSection(host) }
     }
     GroupHeader("Other devices")
     GroupCard {
@@ -690,13 +695,13 @@ fun tailnetQuestion(action: TailnetAction, name: String): TailnetQuestion = when
 fun renameAsksFirst(name: String, current: String): Boolean = name.isNotBlank() && name != current
 
 /** The app's own Tailscale node: on/off, status, login, its name and addresses, log out. */
-@Composable private fun TailscaleSection(app: AppController) {
-    val s = app.settings
-    val state = Tailnet.state
+@Composable private fun TailscaleSection(host: SettingsHost) {
+    val s = host.settings
+    val state = host.tailnetState
     val uri = LocalUriHandler.current
-    val login = rememberTailnetLogin(app)
-    Toggle("Connect through Velo's own Tailscale node", s.tailnet, app::setTailnet)
-    Text(tailnetStatusLine(state, Tailnet.paused), color = VeloTheme.surface.secondary)
+    val login = rememberTailnetLogin(host.tailnetLogin)
+    Toggle("Connect through Velo's own Tailscale node", s.tailnet, host::setTailnet)
+    Text(tailnetStatusLine(state, host.tailnetPaused), color = VeloTheme.surface.secondary)
     if (state is TailnetState.NeedsLogin) {
         Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
         // Through the app's login, so the start screen shows the wait for this page too.
@@ -738,8 +743,8 @@ fun renameAsksFirst(name: String, current: String): Boolean = name.isNotBlank() 
             onConfirm = {
                 asking = null
                 when (action) {
-                    TailnetAction.LogOut -> app.logoutTailnet()
-                    TailnetAction.Rename -> app.setTailnetName(asked)
+                    TailnetAction.LogOut -> host.logoutTailnet()
+                    TailnetAction.Rename -> host.setTailnetName(asked)
                 }
             })
     }

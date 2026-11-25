@@ -199,8 +199,11 @@ fun tailnetLoginStep(wanted: Boolean, state: TailnetState): TailnetLoginStep = i
 
 /** The app's [TailnetLogin] ([AppController.tailnetLogin]): it opens the login page when the node has one and the user asked for it, and follows the node's wait for it. */
 @Composable
-fun rememberTailnetLogin(app: AppController): TailnetLogin {
-    val login = app.tailnetLogin
+fun rememberTailnetLogin(app: AppController): TailnetLogin = rememberTailnetLogin(app.tailnetLogin)
+
+/** [login], following the node's wait for its page, as [rememberTailnetLogin] does with the app's. */
+@Composable
+internal fun rememberTailnetLogin(login: TailnetLogin): TailnetLogin {
     val uri = LocalUriHandler.current
     val state = Tailnet.state
     LaunchedEffect(state, login.wanted) {
