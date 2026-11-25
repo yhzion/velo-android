@@ -53,6 +53,7 @@ import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.Tailnet
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.isSshLocator
+import io.github.yhzion.velo.ui.theme.AttentionBadge
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.CloseButton
 import io.github.yhzion.velo.ui.theme.GlassIconButton
@@ -191,7 +192,7 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
                                             Text(about)
                                         }
                                         GroupDivider()
-                                        ListRow("Updates", onClick = { category = shown; level = SettingsLevel.Updates })
+                                        UpdatesRow(onClick = { category = shown; level = SettingsLevel.Updates })
                                     }
                                 }
                             }
@@ -201,6 +202,29 @@ fun SettingsSheet(app: AppController, onClose: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * About's Updates row. While a newer release is found it says "X.Y.Z available" until that build is
+ * installed, with the dot until the Updates page has shown it ([UpdateStatus]).
+ */
+@Composable
+private fun UpdatesRow(onClick: () -> Unit) {
+    val status = rememberUpdateStatus()
+    val installed = rememberInstalledCode()
+    val available = status.available(installed)
+    val dot = status.unseen(installed)
+    val c = VeloTheme.surface
+    ListRow(
+        "Updates", onClick = onClick,
+        modifier = Modifier.semantics { if (available != null) stateDescription = "$available available" },
+        trailing = if (available == null) null else {
+            {
+                Text("$available available", style = VeloTheme.type.body, color = c.accent, maxLines = 1)
+                if (dot) AttentionBadge(c.accent, Modifier.size(VeloTheme.sizes.mark))
+            }
+        },
+    )
 }
 
 /** The top of the sheet: Back where there is a level above, the title, and the close button (AK). */

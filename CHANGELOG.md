@@ -4,6 +4,13 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- A dot on Settings tells you when an update is ready.
+- Velo shows what changed in a new version before you update.
+
+### Changed
+- Velo checks for updates automatically. You can turn this off in Settings, About, Updates.
+
 ## 2.9.19 - 2026-11-25
 
 ### Fixed

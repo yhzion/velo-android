@@ -20,6 +20,8 @@ data class AppRelease(
     val apkUrl: String,
     val sha256: String,
     val notesUrl: String,
+    /** What the release body's change-notes block says ([changeNotes]); empty without one. */
+    val changes: List<ChangeSection> = emptyList(),
 )
 
 object ReleaseFeed {
@@ -37,11 +39,17 @@ object ReleaseFeed {
     private val marker = Regex("""<!-- android-version-code: ([1-9][0-9]{0,9}) -->""")
     private val digestPattern = Regex("""sha256:([0-9a-fA-F]{64})""")
 
-    /** Blocking I/O. Null means a complete feed contained no eligible update, not a failed check. */
-    fun latest(channel: UpdateChannel, installedCode: Long): AppRelease? = latest(channel, installedCode, ::readPage)
+    /**
+     * Blocking I/O. Every eligible release newer than [installedCode], newest first; the first of
+     * them is the update. Empty means a complete feed contained no eligible update, not a failed check.
+     */
+    fun newer(channel: UpdateChannel, installedCode: Long): List<AppRelease> = newer(channel, installedCode, ::readPage)
 
-    internal fun latest(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): AppRelease? {
-        var best: AppRelease? = null
+    internal fun latest(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): AppRelease? =
+        newer(channel, installedCode, readPage).firstOrNull()
+
+    internal fun newer(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): List<AppRelease> {
+        val found = mutableListOf<AppRelease>()
         for (page in 1..MAX_PAGES) {
             val text = readPage(page)
             val entries = try {
@@ -51,10 +59,10 @@ object ReleaseFeed {
             }
             if (entries.size > PER_PAGE) throw IOException("Too many releases on one page.")
             for (entry in entries) {
-                val release = parse(entry as? JsonObject ?: continue, channel, best?.versionCode ?: installedCode)
-                if (release != null) best = release
+                found += parse(entry as? JsonObject ?: continue, channel, installedCode) ?: continue
             }
-            if (entries.size < PER_PAGE) return best
+            // A stable sort: of releases with one version code, the feed's first stays, as it always won.
+            if (entries.size < PER_PAGE) return found.sortedByDescending { it.versionCode }.distinctBy { it.versionCode }
         }
         throw IOException("Release list exceeds the page limit.")
     }
@@ -99,7 +107,7 @@ object ReleaseFeed {
         val apk = assets.uploaded(name, apkUrl) ?: return null
         if (assets.uploaded("$name.sha256", "$apkUrl.sha256") == null) return null
         val digest = digestPattern.matchEntire(apk.text("digest") ?: return null) ?: return null
-        return AppRelease(tag, versionCode, channel, apkUrl, digest.groupValues[1].lowercase(), notesUrl)
+        return AppRelease(tag, versionCode, channel, apkUrl, digest.groupValues[1].lowercase(), notesUrl, changeNotes(body))
     }
 
     private fun JsonArray.uploaded(name: String, url: String): JsonObject? {

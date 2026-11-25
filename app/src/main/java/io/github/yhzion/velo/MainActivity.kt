@@ -47,6 +47,7 @@ import io.github.yhzion.velo.ui.theme.BackdropSource
 import io.github.yhzion.velo.ui.theme.LocalBackdropSource
 import io.github.yhzion.velo.ui.theme.ProvideHaptics
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import io.github.yhzion.velo.updates.AutoUpdateCheck
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -253,6 +254,12 @@ class MainActivity : ComponentActivity() {
             canceled = event.isCanceled,
             open = open,
         )
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Velo came to the foreground: an automatic update check, if one is due. It never waits here.
+        AutoUpdateCheck.onForeground(this)
     }
 
     override fun onResume() {
