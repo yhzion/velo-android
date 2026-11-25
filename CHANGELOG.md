@@ -15,6 +15,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - The start screen shows its three steps with the current one's card, side by side on the unfolded Fold.
 - Tabs in the sidebar show their program's logo, stacked for a tab split into panes, with a dot for a result you have not seen yet.
 - The sidebar, rail, key bar and the line under the panes use refreshed colours and spacing, and every key of the key bar fits on a phone's screen.
+- On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
 
 ### Fixed
 - License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.

@@ -61,7 +61,7 @@ internal fun rememberInstalledCode(): Long {
 internal fun updateDot(): Boolean = rememberUpdateStatus().unseen(rememberInstalledCode())
 
 @Composable
-internal fun AppUpdateSettings() {
+internal fun AppUpdateSettings(host: SettingsHost) {
     val ctx = LocalContext.current
     var channel by remember { mutableStateOf(UpdateSettings.channel(ctx)) }
     var automatic by remember { mutableStateOf(UpdateSettings.automatic(ctx)) }
@@ -79,7 +79,7 @@ internal fun AppUpdateSettings() {
     }
     val installed = remember(ctx) { ctx.packageManager.getPackageInfo(ctx.packageName, 0) }
     // The previous channel's coroutine scope and its install button disappear together.
-    key(channel) { ChannelRelease(channel, installed) {
+    key(channel) { ChannelRelease(host, channel, installed) {
         GroupHeader("Installed version")
         GroupCard { Text("${installed.versionName} (${installed.longVersionCode})") }
         GroupHeader("Update channel")
@@ -131,7 +131,7 @@ internal fun AppUpdateSettings() {
  * shows counts as seen ([UpdateSettings.seen]).
  */
 @Composable
-private fun ChannelRelease(channel: UpdateChannel, installed: PackageInfo, settings: @Composable () -> Unit) {
+private fun ChannelRelease(host: SettingsHost, channel: UpdateChannel, installed: PackageInfo, settings: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var check by remember { mutableIntStateOf(0) }
@@ -141,7 +141,7 @@ private fun ChannelRelease(channel: UpdateChannel, installed: PackageInfo, setti
     var message by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf("") }
     var lastCheck by remember { mutableLongStateOf(UpdateSettings.lastCheck(ctx)) }
-    val arm64 = "arm64-v8a" in Build.SUPPORTED_ABIS
+    val arm64 = host.installsReleases
     LaunchedEffect(check) {
         releases = emptyList()
         verified = null
@@ -151,7 +151,7 @@ private fun ChannelRelease(channel: UpdateChannel, installed: PackageInfo, setti
             if (!arm64) { message = "Release APKs require an ARM64 device."; return@LaunchedEffect }
             message = "Checking GitHub Releases…"
             val startedAt = System.currentTimeMillis()
-            val found = withContext(Dispatchers.IO) { ReleaseFeed.newer(channel, installed.longVersionCode) }
+            val found = withContext(host.io) { host.newerReleases(channel, installed.longVersionCode) }
             UpdateSettings.record(ctx, channel, startedAt, found.firstOrNull())
             found.firstOrNull()?.let { UpdateSettings.seen(ctx, channel, it.versionCode) }
             releases = found

@@ -34,6 +34,7 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
 
 /** About > Open source licenses: the components by group, each opening its page ([open] takes its id). */
 @Composable
@@ -67,12 +68,18 @@ private class LoadedNotice(val text: LicenseText, val blocks: List<String>?)
  * instead, each opening its own page through [open]. The page scrolls itself, a block at a time.
  */
 @Composable
-internal fun LicenseDetail(component: LicenseComponent, open: (String) -> Unit, modifier: Modifier) {
+internal fun LicenseDetail(
+    component: LicenseComponent, open: (String) -> Unit, modifier: Modifier,
+    /** What goes over the page (its title beside the categories). */
+    top: @Composable () -> Unit = {},
+    /** Where the texts are read: off the main thread, or in place in a test. */
+    io: CoroutineContext = Dispatchers.IO,
+) {
     val sizes = VeloTheme.sizes
     val c = VeloTheme.surface
     val context = LocalContext.current
     val notices by produceState<List<LoadedNotice>?>(null, component.id) {
-        value = withContext(Dispatchers.IO) {
+        value = withContext(io) {
             component.texts.map { text ->
                 val blocks = try { licenseBlocks(reflowLicense(readNotice(text.asset, context.assets::open))) } catch (_: IOException) { null }
                 LoadedNotice(text, blocks)
@@ -82,6 +89,7 @@ internal fun LicenseDetail(component: LicenseComponent, open: (String) -> Unit, 
     val mono = VeloTheme.type.caption.copy(fontFamily = FontFamily.Monospace)
     SelectionContainer(modifier) {
         LazyColumn {
+            item("top") { DisableSelection { top() } }
             item("about") {
                 DisableSelection {
                     Column(Modifier.padding(top = sizes.menuPadding)) {
