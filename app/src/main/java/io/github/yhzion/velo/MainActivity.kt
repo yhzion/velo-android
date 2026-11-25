@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings as SystemSettings
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -27,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
+import io.github.yhzion.velo.core.remoteWithUrl
 import io.github.yhzion.velo.ui.FoldInfo
 import io.github.yhzion.velo.ui.MovePaneModifiers
 import io.github.yhzion.velo.ui.PairingScreen
@@ -35,7 +37,14 @@ import io.github.yhzion.velo.ui.PaneMenuShortcut
 import io.github.yhzion.velo.ui.PaneSurfaceView
 import io.github.yhzion.velo.ui.SettingsSheet
 import io.github.yhzion.velo.ui.SshQuestionDialog
+import io.github.yhzion.velo.ui.OpeningView
+import io.github.yhzion.velo.ui.Splash
+import io.github.yhzion.velo.ui.SplashSeen
+import io.github.yhzion.velo.ui.StartOpening
+import io.github.yhzion.velo.ui.StartOpeningDelayMs
 import io.github.yhzion.velo.ui.StartScreen
+import io.github.yhzion.velo.ui.openingView
+import io.github.yhzion.velo.ui.showSplash
 import io.github.yhzion.velo.ui.TailscaleScreen
 import io.github.yhzion.velo.ui.BackgroundPrompt
 import io.github.yhzion.velo.ui.TerminalInputView
@@ -48,6 +57,7 @@ import io.github.yhzion.velo.ui.theme.LocalBackdropSource
 import io.github.yhzion.velo.ui.theme.ProvideHaptics
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.updates.AutoUpdateCheck
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +71,8 @@ class MainActivity : ComponentActivity() {
     private val movePaneShortcut = PaneMenuShortcut()
     private val notificationLaunches = PaneNotificationLaunches()
     private var receivedNotification: String? = null
+    /** The cold start's splash is playing over the screens ([showSplash]). */
+    private var splash by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +90,10 @@ class MainActivity : ComponentActivity() {
         notificationLaunches.token = if (receivedNotification != null &&
             receivedNotification != savedInstanceState?.getString("receivedPaneNotification")) receivedNotification
         else savedInstanceState?.getString("paneNotification")
+        // Once per process, and not for a restored activity or a notification: those go straight to their screen.
+        splash = showSplash(shownInProcess = SplashSeen.inProcess, restored = savedInstanceState != null,
+            deepLink = receivedNotification != null || intent?.hasExtra(SshQuestionNotices.EXTRA_TARGET) == true)
+        SplashSeen.inProcess = true
 
         // The area behind edge-to-edge content stays dark, including during IME resize.
         val root = FrameLayout(this).apply { setBackgroundColor(chrome) }
@@ -101,6 +117,8 @@ class MainActivity : ComponentActivity() {
                                 val gate = notificationLaunches.token?.let { paneNotificationGate(app, it) { notificationLaunches.token = null } }
                                 Screens(gate)
                             }
+                            // Over the screens, which start under it: the start screen or the workspace is ready when it goes.
+                            if (splash) Splash(animatorScale = animatorScale()) { splash = false }
                         }
                     }
                 }
@@ -138,6 +156,10 @@ class MainActivity : ComponentActivity() {
         var settings by rememberSaveable { mutableStateOf(false) }
         var tailscale by rememberSaveable { mutableStateOf(false) }
         var pairing by remember { mutableStateOf(false) }
+        // A computer the start screen's Connect saved, while its first connection is under way (step 3).
+        var opening by remember { mutableStateOf<StartOpening?>(null) }
+        var openingSlow by remember(opening) { mutableStateOf(false) }
+        opening?.let { LaunchedEffect(it) { delay(StartOpeningDelayMs); openingSlow = true } }
         BackHandler(settings && !pairing) { settings = false }
         BackHandler(tailscale && !pairing) { tailscale = false }
         BackHandler(pairing) { pairing = false }
@@ -148,6 +170,10 @@ class MainActivity : ComponentActivity() {
         // Settings open over the screen as a sheet: the workspace stays, and so do its pane views.
         if (pairing || tailscale) conn?.cover?.begin()
         val notice = gate != null && (!gate.opened || conn == null)
+        val openingView = openingView(opening != null && conn != null, connected = conn?.connected == true,
+            failed = conn?.failure != null, slow = openingSlow)
+        // Opened, failed, or never saved: the workspace (or the start screen) takes over and a later Connect starts again.
+        if (opening != null && openingView == OpeningView.None) SideEffect { opening = null }
         when {
             notice -> PaneNotificationNotice(gate!!)
             // A remote added by its QR code is shown at once: the screens above it close.
@@ -158,7 +184,21 @@ class MainActivity : ComponentActivity() {
             )
             tailscale -> TailscaleScreen(app, onBack = { tailscale = false })
             // No remote saved: log in to the tailnet, pick a server found there, or scan a code.
-            conn == null -> StartScreen(app, onAddByQr = { pairing = true }, onSettings = { settings = true })
+            // The computer picked there stays on the start screen while it opens: at once when it is fast, as step 3 when not.
+            conn == null || openingView != OpeningView.None -> StartScreen(
+                app, onAddByQr = { pairing = true }, onSettings = { settings = true },
+                opening = opening.takeIf { openingView == OpeningView.Show }, keep = opening?.url,
+                onConnect = { server ->
+                    if (opening == null) {
+                        opening = StartOpening(server.name, server.url)
+                        app.addRemote(server.name, server.url)
+                    }
+                },
+                onCancelOpening = {
+                    opening?.let { o -> remoteWithUrl(app.saved, o.url)?.let { app.removeRemote(it.id) } }
+                    opening = null
+                },
+            )
             else -> Workspace(app, conn, input, fold, gate, notificationLaunches, settingsOpen = settings,
                 onSettings = { settings = true }, onTailscale = { tailscale = true })
         }
@@ -168,6 +208,10 @@ class MainActivity : ComponentActivity() {
         // An SSH login that waits for the user (a host key, a password): over whatever screen is up.
         SshQuestionDialog(app.sshQuestions)
     }
+
+    /** Android's animator duration scale: 0 when animations are off (developer options, or Remove animations in Accessibility). */
+    private fun animatorScale(): Float =
+        SystemSettings.Global.getFloat(contentResolver, SystemSettings.Global.ANIMATOR_DURATION_SCALE, 1f)
 
     /**
      * Full screen on both displays: status and navigation bars stay hidden until swiped in.

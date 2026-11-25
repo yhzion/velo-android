@@ -1,10 +1,15 @@
 <resources>
     <!-- Match VeloPalettes.dark.chrome.surface before Compose starts, even on a light device. -->
     <color name="velo_window_background">#0F1015</color>
+    <!-- VeloPalettes.dark.sidebar.surface: the first frame of the app's splash (ui/Splash.kt). -->
+    <color name="velo_splash_background">#0B0C11</color>
     <style name="Theme.Velo" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowBackground">@color/velo_window_background</item>
-        <item name="android:windowSplashScreenBackground">@color/velo_window_background</item>
+        <!-- Android 12+ shows its own splash until the first frame: kept plain, the colour the app's splash starts on and no
+             icon, so the hand-off to the drawn splash does not show and the mark is not drawn twice. -->
+        <item name="android:windowSplashScreenBackground">@color/velo_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
         <item name="android:statusBarColor">@color/velo_window_background</item>
         <item name="android:navigationBarColor">@color/velo_window_background</item>
         <item name="android:windowLightStatusBar">false</item>

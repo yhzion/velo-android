@@ -200,36 +200,72 @@ class StartScreenTest {
     }
 
     @Test fun eachPhoneAndFoldPostureGetsItsLayout() {
-        assertEquals(StartLayout.Narrow, startLayout(412f, 892f))   // a bar phone, upright
-        assertEquals(StartLayout.Narrow, startLayout(555f, 876f))   // the folded Fold8
-        assertEquals(StartLayout.Low, startLayout(892f, 412f))      // a bar phone, sideways
-        assertEquals(StartLayout.Low, startLayout(876f, 555f))      // the folded Fold8, sideways
-        assertEquals(StartLayout.Band, startLayout(1088f, 821f))    // the unfolded Fold8, sideways
-        assertEquals(StartLayout.TopSteps, startLayout(821f, 1088f)) // the unfolded Fold8, upright
+        assertEquals(StartLayout.Stacked, startLayout(393f))     // the bar phone, upright
+        assertEquals(StartLayout.Stacked, startLayout(475f))     // the folded Fold8
+        assertEquals(StartLayout.SideBySide, startLayout(821f)) // the unfolded Fold8, upright
+        assertEquals(StartLayout.SideBySide, startLayout(1088f)) // the unfolded Fold8, sideways
+        assertEquals(StartLayout.SideBySide, startLayout(894f))  // the bar phone, sideways: the page scrolls
     }
 
-    @Test fun theBandNeedsBothItsWidthAndItsHeight() {
-        assertEquals(StartLayout.Band, startLayout(840f, 600f))
-        assertEquals(StartLayout.TopSteps, startLayout(839f, 600f))
-        // Wide but too low for the band, and compact: the low layout, so the card still scrolls beside the steps.
-        assertEquals(StartLayout.Low, startLayout(1200f, 599f))
+    @Test fun theStepsGoBesideTheCardOnlyWhenBothFit() {
+        // The steps' column, the gap, the narrowest card and the margins (StartKit board: 300, 56, 320, 2 × 48).
+        assertEquals(772f, StartSideBySideMinWidthDp)
+        assertEquals(StartLayout.SideBySide, startLayout(StartSideBySideMinWidthDp))
+        assertEquals(StartLayout.Stacked, startLayout(StartSideBySideMinWidthDp - 1f))
+        assertEquals(StartLayout.Stacked, startLayout(600f))
     }
 
-    @Test fun theCompactLimitIsTheWorkspaces() {
-        for ((w, h) in listOf(600f to 700f, 700f to 600f, 599f to 900f, 900f to 599f))
-            assertEquals("$w x $h", !isCompact(w, h), startLayout(w, h) == StartLayout.Band || startLayout(w, h) == StartLayout.TopSteps)
+    @Test fun aShorterWindowStartsNearerTheTop() {
+        assertEquals(48f, startTopPadding(894f))   // the bar phone (StartKit board)
+        assertEquals(36f, startTopPadding(751f))   // the folded Fold8
+        assertEquals(36f, startTopPadding(400f))
     }
 
-    @Test fun aSidewaysWindowTooNarrowForTheColumnAndACardIsNarrow() {
-        // The low column takes 280 dp; beside a smaller card a button would have no width left (a split-screen window).
-        assertEquals(StartLayout.Narrow, startLayout(320f, 300f))
-        assertEquals(StartLayout.Narrow, startLayout(500f, 500f))
-        assertEquals(StartLayout.Narrow, startLayout(StartLowMinWidthDp - 1f, 400f))
-        assertEquals(StartLayout.Low, startLayout(StartLowMinWidthDp, 400f))
+    @Test fun aSingleLineIsAsTallAsTheBrowsersNormalLine() {
+        // Roboto's ascent and descent at the size, each rounded, as the board's single lines measure.
+        assertEquals(listOf(14f, 15f, 16f, 19f, 24f, 35f), listOf(12f, 13f, 14f, 16f, 20f, 30f).map { cssLineHeight(it) })
+    }
+
+    @Test fun eachStepIsDoneCurrentOrToCome() {
+        assertEquals(listOf(StepMarker.Now, StepMarker.Next, StepMarker.Next), (1..3).map { stepMarker(it, current = 1) })
+        assertEquals(listOf(StepMarker.Done, StepMarker.Now, StepMarker.Next), (1..3).map { stepMarker(it, current = 2) })
+        assertEquals(listOf(StepMarker.Done, StepMarker.Done, StepMarker.Now), (1..3).map { stepMarker(it, current = 3) })
+    }
+
+    @Test fun theStepLineNamesTheCurrentStep() {
+        assertEquals("Step 1 of 3 · Log in to Tailscale", startStepLine(1))
+        assertEquals("Step 2 of 3 · Pick a computer", startStepLine(2))
+        assertEquals("Step 3 of 3 · Use its terminals", startStepLine(3))
+    }
+
+    @Test fun aFastConnectionSkipsTheOpeningStep() {
+        // Connect was tapped: the start screen stays as it was for a moment, then shows step 3 if the computer is not open yet.
+        assertEquals(OpeningView.Hold, openingView(opening = true, connected = false, failed = false, slow = false))
+        assertEquals(OpeningView.Show, openingView(opening = true, connected = false, failed = false, slow = true))
+        // Connected in time, or after: the workspace.
+        assertEquals(OpeningView.None, openingView(opening = true, connected = true, failed = false, slow = false))
+        assertEquals(OpeningView.None, openingView(opening = true, connected = true, failed = false, slow = true))
+        // A failure is the workspace's to show, with its way to try again.
+        assertEquals(OpeningView.None, openingView(opening = true, connected = false, failed = true, slow = true))
+        assertEquals(OpeningView.None, openingView(opening = false, connected = false, failed = false, slow = true))
+        assertEquals(400L, StartOpeningDelayMs)
+    }
+
+    @Test fun theOpeningBarMovesOnButNeverClaimsTheEnd() {
+        var last = openingProgress(0)
+        assertTrue(last > 0f)
+        for (t in 100L..20_000L step 100) {
+            val p = openingProgress(t)
+            assertTrue("t=$t", p > last)
+            assertTrue("t=$t", p < 0.9f)
+            assertTrue("t=$t", openingProgress(t * 50) <= 0.9f)
+            last = p
+        }
     }
 
     @Test fun theStepIsPickingAComputerOnlyOnceTheNodeIsOnTheTailnet() {
         assertEquals(2, startStepNumber(StartStep.Found))
+        assertEquals(3, startStepNumber(StartStep.Found, opening = true))
         for (step in listOf(StartStep.LogIn(null), StartStep.LogIn("https://login.example/1"), StartStep.Starting, StartStep.Failed("x")))
             assertEquals(step.toString(), 1, startStepNumber(step))
         assertEquals("Step 1 of 3: Log in to Tailscale", startStepsDescription(1))
