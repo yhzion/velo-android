@@ -52,6 +52,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -487,7 +488,8 @@ internal fun SshKeySettings(secrets: SshSecrets, io: CoroutineContext = Dispatch
             GroupCard(Modifier.testTag("ssh-imported-group")) {
                 rows.forEachIndexed { index, row ->
                     // Named by its place among the keys logins offer, the phone key being the first.
-                    if (!row.key.phone) {
+                    // Keyed by the key: an open menu stays with its key when a removal reloads the list.
+                    if (!row.key.phone) key(row.key.id) {
                         ImportedKeyRow(row, (index + 1).toString(), busy, ::act)
                         GroupDivider(full = true)
                     }
