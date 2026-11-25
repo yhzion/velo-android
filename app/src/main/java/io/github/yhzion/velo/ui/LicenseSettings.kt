@@ -156,7 +156,7 @@ private class LoadedNotice(val text: LicenseText, val blocks: List<String>?)
  * One component's page (canvas SetLicense block): its license, version and where its code is
  * as badges; its project home; then the texts bundled in the APK, each in a frame, monospaced
  * and selectable, read through [read]. A collection lists its [LicenseComponent.parts] instead,
- * each opening its own page through [open]. The page scrolls itself, a block at a time.
+ * each opening its own page through [open]. The page scrolls itself under [top], a block at a time.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -234,37 +234,41 @@ internal fun LicenseDetail(
     // Short texts, one block each, go in the page's one piece; a long one (the NDK's) a block at a time.
     val whole = loaded != null && loaded.all { (it.blocks?.size ?: 0) <= 1 }
     SelectionContainer(modifier) {
-        LazyColumn {
-            item("top") { DisableSelection { top() } }
-            if (whole) item("whole") {
-                Column(
-                    Modifier.fillMaxWidth().testTag("license-detail-content").padding(top = space.s8, bottom = space.s24),
-                    verticalArrangement = Arrangement.spacedBy(space.s12),
-                ) {
-                    About()
+        // The title, with its row back on the unfolded screen, stays over the text: Back is a tap away however far
+        // a long notice (the NDK's) is read.
+        Column {
+            DisableSelection { top() }
+            LazyColumn(Modifier.weight(1f, fill = false)) {
+                if (whole) item("whole") {
+                    Column(
+                        Modifier.fillMaxWidth().testTag("license-detail-content").padding(top = space.s8, bottom = space.s24),
+                        verticalArrangement = Arrangement.spacedBy(space.s12),
+                    ) {
+                        About()
+                        for ((index, notice) in loaded.orEmpty().withIndex()) {
+                            if (component.texts.size > 1) Title(notice)
+                            val blocks = notice.blocks
+                            if (blocks == null) Unread(notice) else Block(blocks.firstOrNull().orEmpty(), index == 0, first = true, last = true)
+                        }
+                        Note()
+                    }
+                } else {
+                    item("about") { Column(Modifier.testTag("license-detail-content").padding(top = space.s8)) { About() } }
+                    if (component.texts.isNotEmpty() && loaded == null) item("loading") {
+                        Text("Loading…", Modifier.padding(vertical = space.s12), color = c.secondary)
+                    }
                     for ((index, notice) in loaded.orEmpty().withIndex()) {
-                        if (component.texts.size > 1) Title(notice)
+                        if (component.texts.size > 1) item("title:$index") { Title(notice) }
+                        else item("gap:$index") { Spacer(Modifier.height(space.s12)) }
                         val blocks = notice.blocks
-                        if (blocks == null) Unread(notice) else Block(blocks.firstOrNull().orEmpty(), index == 0, first = true, last = true)
+                        if (blocks == null) item("error:$index") { Unread(notice) }
+                        // One frame around a text, drawn a block at a time: its top on the first block, its bottom on the last.
+                        else items(blocks.size, key = { "text:$index:$it" }) { block ->
+                            Block(blocks[block], index == 0 && block == 0, first = block == 0, last = block == blocks.lastIndex)
+                        }
                     }
-                    Note()
+                    item("end") { Column(Modifier.padding(top = space.s12, bottom = space.s24)) { Note() } }
                 }
-            } else {
-                item("about") { Column(Modifier.testTag("license-detail-content").padding(top = space.s8)) { About() } }
-                if (component.texts.isNotEmpty() && loaded == null) item("loading") {
-                    Text("Loading…", Modifier.padding(vertical = space.s12), color = c.secondary)
-                }
-                for ((index, notice) in loaded.orEmpty().withIndex()) {
-                    if (component.texts.size > 1) item("title:$index") { Title(notice) }
-                    else item("gap:$index") { Spacer(Modifier.height(space.s12)) }
-                    val blocks = notice.blocks
-                    if (blocks == null) item("error:$index") { Unread(notice) }
-                    // One frame around a text, drawn a block at a time: its top on the first block, its bottom on the last.
-                    else items(blocks.size, key = { "text:$index:$it" }) { block ->
-                        Block(blocks[block], index == 0 && block == 0, first = block == 0, last = block == blocks.lastIndex)
-                    }
-                }
-                item("end") { Column(Modifier.padding(top = space.s12, bottom = space.s24)) { Note() } }
             }
         }
     }
