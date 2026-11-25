@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,10 @@ fun VeloTextField(
     /** How the text is drawn: a password's field hides it ([androidx.compose.ui.text.input.PasswordVisualTransformation]). */
     visualTransformation: VisualTransformation = VisualTransformation.None,
     help: String? = null, mono: Boolean = false, tagPrefix: String? = null,
+    /** The pill's least height, and the room between the [icon] and the text. */
+    minHeight: Dp = VeloTheme.sizes.field, iconGap: Dp = VeloTheme.space.s8,
+    /** On the text's own box, between the icon and [trailing]. */
+    inputModifier: Modifier = Modifier,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
@@ -103,14 +108,14 @@ fun VeloTextField(
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             interactionSource = interaction,
         ) { field ->
-            Row(Modifier.heightIn(min = s.field).glassControl(Capsule, ring = ring)
+            Row(Modifier.heightIn(min = minHeight).glassControl(Capsule, ring = ring)
                 .padding(start = VeloTheme.medium(18.dp), end = if (trailing != null) VeloTheme.medium(6.dp) else VeloTheme.medium(18.dp)),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {
                     Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = c.secondary)
-                    Spacer(Modifier.width(VeloTheme.space.s8))
+                    Spacer(Modifier.width(iconGap))
                 }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.weight(1f).then(inputModifier), contentAlignment = Alignment.CenterStart) {
                     // Without a label the placeholder is the input's name, which the input already says.
                     if (value.isEmpty()) Text(placeholder, if (!labelNamesField(label)) Modifier.clearAndSetSemantics {} else Modifier, style = textStyle, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     field()
@@ -134,12 +139,17 @@ fun VeloTextField(
  * an X at its end clears it.
  */
 @Composable
-fun SearchField(query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String = "Search") {
+fun SearchField(
+    query: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String = "Search",
+    inputModifier: Modifier = Modifier,
+) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
+    // The Sidebar board's filter: 52 high, the magnifier 12 before the text.
     VeloTextField(
         query, onQueryChange, modifier, placeholder = placeholder, icon = rememberVectorPainter(Icons.Default.Search),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        minHeight = VeloTheme.medium(52.dp).coerceAtLeast(MinTouch), iconGap = VeloTheme.space.s12, inputModifier = inputModifier,
         trailing = if (query.isEmpty()) null else {
             {
                 Box(Modifier.size(s.field - s.cellInset * 2).clip(Capsule).clickable(role = Role.Button) { onQueryChange("") }, contentAlignment = Alignment.Center) {

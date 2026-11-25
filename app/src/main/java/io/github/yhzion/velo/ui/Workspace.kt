@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -135,11 +136,16 @@ internal fun Workspace(
     val gap = if (compactStyle) sizes.gapCompact else sizes.gap
     val outerY = if (compactStyle) with(density) { sizes.compactOuterPx.toDp() } else gap
     val outerX = if (compactStyle && !compact) with(density) { sizes.compactWideSidePx.toDp() } else outerY
-    // Where the open sidebar covers the panes: on a small window, and where it would leave them too narrow.
-    val covers = sidebarCoversPanes(
+    // Where the open sidebar covers the panes: on a small window, and where it would leave them too narrow,
+    // unless the user docked it beside them where there is room for both (the unfolded screen upright).
+    val dockable = sidebarDockable(
         config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat(),
         sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value,
     )
+    val covers = sidebarPlace(
+        config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat(),
+        sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value, docked = s.sidebarDocked,
+    ) == SidebarPlace.Covers
     val panesHidden = covers && sidebar
     /**
      * The one rule for the sidebar that covers the panes ([covers]): an action that changes
@@ -612,7 +618,7 @@ internal fun Workspace(
     var pressedNow by remember { mutableStateOf(false) }
     // Edge to edge: keep panes, key bar and rail clear of the soft keyboard and system bars.
     Row(
-        Modifier.fillMaxSize().background(backdrop.surface).windowInsetsPadding(WindowInsets.screenSafeDrawing)
+        Modifier.testTag("screen-workspace").fillMaxSize().background(backdrop.surface).windowInsetsPadding(WindowInsets.screenSafeDrawing)
             .padding(horizontal = outerX, vertical = outerY)
             // The Initial pass sees every event before a child consumes it: any finger that lands raises the
             // count, whatever else is on the glass, and pressedNow says whether any of them is down now.
@@ -681,7 +687,7 @@ internal fun Workspace(
             ), settingsBadge = updateDot())
             if (!covers) Spacer(Modifier.width(gap))
         }
-        if (!panesHidden) Column(Modifier.weight(1f).fillMaxHeight()) {
+        if (!panesHidden) Column(Modifier.testTag("pane-area").weight(1f).fillMaxHeight()) {
             if (activeSearch != null) key(conn, activeSearch) {
                 PaneSearchBar(conn, activeSearch, paneLabel(tabPanes, activeSearch) ?: "Pane", ::closeSearch)
             }
@@ -801,12 +807,14 @@ internal fun Workspace(
                 }
             }
             if (fold.tabletop) Spacer(Modifier.weight(1f))
-            // Which machine the keys go to, then the tab.
+            // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
             FocusedTabCaption(conn, focused, window?.row(state, state.session.orEmpty(), true), connected,
-                color = backdrop.secondary, host = hostLabel, modifier = Modifier.padding(top = sizes.gapCompact, start = sizes.rowGap))
+                host = hostLabel, modifier = Modifier.padding(top = gap))
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
-                KeyBar(s.keyBar, armed, Modifier.padding(top = sizes.gapCompact), enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
+                // The bar keeps the board's width at most, in the middle of a wide pane column (WsOpenPanes).
+                KeyBar(s.keyBar, armed, Modifier.padding(top = gap).widthIn(max = sizes.keyBarMax).align(Alignment.CenterHorizontally),
+                    enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
                     // A modifier is felt turning on or off, any other key as a key (#309).
                     if (!repeated) haptic(barKeyFeel(k, armed))
                     if (k in StickyKeys) {
@@ -837,6 +845,7 @@ internal fun Workspace(
             keyboardAvailable = activeSearch == null && (canType || keyboard),
             onKeyboard = { toggleKeyboard(); haptic() },
             onSidebar = { sidebar = !sidebar; haptic() },
+            page = railPage(state.windows.map { it.id }, window?.id),
             // Behind the sidebar that covers the panes the overview is not seen: the button shows it.
             onOverview = showing {
                 if (panesHidden) overview.open() else overview.toggle()
@@ -965,6 +974,14 @@ internal fun Workspace(
         }
         val commands = paletteItems(units).map { item -> PaletteCommand(item.label, item.enabled, item.note) { run(item.action) } } + listOf(
             PaletteCommand(ToggleSidebarCommand) { sidebar = !sidebar },
+        ) + listOfNotNull(dockCommand(dockable, s.sidebarDocked)?.let { title ->
+            // Docking shows the sidebar beside the panes at once; undocking leaves it where it is, closed.
+            PaletteCommand(title) {
+                val dock = !s.sidebarDocked
+                s.saveSidebarDocked(dock)
+                sidebar = dock
+            }
+        }) + listOf(
             PaletteCommand("Show Tab Overview", state.windows.isNotEmpty()) { overview.open() },
         ) + listOfNotNull(if (focused != null && focused in terminalPanes) {
             PaletteCommand(if (terminalKeyboardBeforePalette) "Hide Keyboard" else "Show Keyboard") {
@@ -1070,12 +1087,12 @@ internal fun Workspace(
 }
 
 /**
- * The caption under the panes, at the text size of the [focused] pane. A composable of its own: a pinch changes that size
- * on each step, and then only the caption runs again, not the whole workspace (#335).
+ * The caption under the panes ([PaneCaption]), at the text size of the [focused] pane. A composable of its own: a pinch
+ * changes that size on each step, and then only the caption runs again, not the whole workspace (#335).
  */
 @Composable
-private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, color: Color, host: String, modifier: Modifier) {
-    TabCaption(row, connected, conn.activityReadState, color = color, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier)
+private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, host: String, modifier: Modifier) {
+    PaneCaption(row, connected, conn.activityReadState, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier)
 }
 
 /** True on the folded (cover) screen and on split-screen halves: the short side of the window is under 600dp. */

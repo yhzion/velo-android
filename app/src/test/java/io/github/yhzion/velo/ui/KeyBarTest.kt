@@ -51,11 +51,44 @@ class KeyBarTest {
         assertEquals("Backspace", Settings.DEFAULT_KEY_BAR.substringAfterLast(','))
     }
 
-    @Test fun widthsFillTheBarAndPreserveLargeLabelsAndTouchTargets() {
-        assertEquals(listOf(100, 100, 100), keyWidths(listOf(50, 75, 50), 300))
-        assertEquals(listOf(65, 120, 66), keyWidths(listOf(50, 120, 50), 251))
-        assertEquals(listOf(50, 120, 50), keyWidths(listOf(50, 120, 50), 170))
-        assertEquals(listOf(301), keyWidths(listOf(50), 301))
-        assertTrue(keyWidths(emptyList(), 100).isEmpty())
+    @Test fun keysKeepTheirOwnWidthWhileTheyFit() {
+        // WsOpenPanes, in dp: 32 for a key, CTRL 47; 548 inside the bar.
+        val natural = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
+        assertEquals(natural, keyCapWidths(natural, floor = 32, available = 548))
+        assertEquals(natural, keyCapWidths(natural, floor = 32, available = natural.sum()))
+    }
+
+    @Test fun aKeyWiderThanTheLeastGivesUpRoomBeforeTheBarScrolls() {
+        // WsBarTerminal: 297 inside the bar; CTRL alone is wider than 32 and gives up the 6 that are missing.
+        val natural = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
+        assertEquals(listOf(32, 41, 32, 32, 32, 32, 32, 32, 32), keyCapWidths(natural, floor = 32, available = 297))
+        // Two wide keys share the shortage by their widths, never below the least.
+        assertEquals(listOf(32, 58, 42), keyCapWidths(listOf(32, 70, 50), floor = 32, available = 132))
+        assertEquals(listOf(32, 32, 32), keyCapWidths(listOf(32, 70, 50), floor = 32, available = 96))
+        // Fewer than the least for every key: the bar scrolls.
+        assertNull(keyCapWidths(listOf(32, 70, 50), floor = 32, available = 95))
+        assertTrue(keyCapWidths(emptyList(), floor = 32, available = 100)!!.isEmpty())
+    }
+
+    @Test fun theRoomLeftGoesBetweenTheKeysAndEveryKeyTakesTheTapsUpToHalfway() {
+        // WsOpenPanes: nine keys, 251 left over: 31.375 between two keys. The first and the last key
+        // reach the bar's ends; each of the others half of the room on each side.
+        val caps = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
+        val cells = keyCells(caps, 548)
+        assertEquals(548, cells.sum())
+        val gap = (548 - caps.sum()) / 8f
+        assertEquals(caps.first() + gap / 2, cells.first().toFloat(), 1f)
+        assertEquals(caps.last() + gap / 2, cells.last().toFloat(), 1f)
+        for (i in 1 until caps.lastIndex) assertEquals("$i", caps[i] + gap, cells[i].toFloat(), 1f)
+        // No room left: the cells are the keys.
+        assertEquals(caps, keyCells(caps, caps.sum()))
+        // One key takes the bar.
+        assertEquals(listOf(300), keyCells(listOf(40), 300))
+        assertTrue(keyCells(emptyList(), 300).isEmpty())
+    }
+
+    @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {
+        assertEquals(listOf("key-slash", "key-ctrl", "key-esc", "key-tab", "key-left", "key-down", "key-up", "key-right", "key-backspace"),
+            Settings.DEFAULT_KEY_BAR.split(',').map(::keyTestTag))
     }
 }

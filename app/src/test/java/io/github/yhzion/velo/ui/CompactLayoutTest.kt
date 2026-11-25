@@ -6,6 +6,7 @@ import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.ui.theme.VeloSizes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -179,12 +180,9 @@ class CompactLayoutTest {
         assertEquals(ctrl, stickyMeta(toggleSticky(setOf("Ctrl", "Alt"), "Alt")))
     }
 
-    @Test fun compactBarsScrollOnlyWhenTheTouchTargetsAndLabelsNeedMoreRoom() {
-        val minimum = List(8) { 52 }
-        val gaps = 7 * 6
-        assertEquals(List(8) { 56 }, keyWidths(minimum, 490 - gaps))
-        assertEquals(minimum, keyWidths(minimum, 8 * 50))
-        assertEquals(minimum, keyWidths(minimum, 8 * 52))
-        assertEquals(List(8) { 48 }, keyWidths(List(8) { 48 }, 8 * 47))
+    @Test fun compactBarsScrollOnlyWhenEveryKeyIsAtItsLeastWidth() {
+        val least = List(8) { 32 }
+        assertEquals(least, keyCapWidths(least, 32, 8 * 32))
+        assertNull(keyCapWidths(least, 32, 8 * 32 - 1))
     }
 }

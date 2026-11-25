@@ -87,7 +87,7 @@ private val PowerSaveOnLight = Color(0xFFFFCC00)
 private const val TrackAlpha = 0.28f
 
 @Composable
-internal fun BatteryGauge(battery: BatteryState, network: DeviceNetwork, modifier: Modifier = Modifier) {
+internal fun BatteryGauge(battery: BatteryState, network: DeviceNetwork, modifier: Modifier = Modifier, faceModifier: Modifier = Modifier) {
     val c = VeloTheme.surface
     val d = VeloTheme.sizes.gauge
     val stroke = VeloTheme.sizes.gaugeStroke
@@ -103,7 +103,7 @@ internal fun BatteryGauge(battery: BatteryState, network: DeviceNetwork, modifie
     val mark = d * 0.30f
     val description = gaugeDescription(battery, network)
     Box(modifier.size(d).clearAndSetSemantics { contentDescription = description }) {
-        Box(Modifier.size(d), contentAlignment = Alignment.Center) {
+        Box(faceModifier.size(d), contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(d)) {
                 val w = stroke.toPx()
                 val topLeft = Offset(w / 2, w / 2)

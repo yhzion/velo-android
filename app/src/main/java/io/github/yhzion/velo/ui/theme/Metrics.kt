@@ -106,8 +106,10 @@ class VeloSizes(
     val rail: Dp = medium(60f),
     /** The key bar strip (KeyBar board: 56). */
     val keyBar: Dp = medium(56f),
-    /** The least width of a key (D12 label pitch 50.5). */
-    val key: Dp = 50.dp,
+    /** The widest the key bar grows: in the middle of a wide pane column (WsOpenPanes board: 560). */
+    val keyBarMax: Dp = medium(560f),
+    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCells]). */
+    val key: Dp = medium(32f),
     /** A key's height in the strip (KeyBar board: 48). */
     val keyHeight: Dp = medium(48f),
     /** Between panes, and between panes and the screen's edge (Tokens board: 8). */
@@ -162,8 +164,8 @@ class VeloSizes(
     val markIcon: Dp = 14.dp,
     /** A program's icon in a row's tile. derived: the app's size today. */
     val markTile: Dp = 20.dp,
-    /** The rail's battery gauge across its ring's line. derived: the owner asked for the size of the rail's round buttons ([control]). */
-    val gauge: Dp = 48.dp,
+    /** The rail's battery gauge across its ring's line (Rail board: 46, a little inside the rail's round buttons). */
+    val gauge: Dp = medium(46f),
     /** The line of that ring. derived: the mockup the owner chose (v4), 3.4 on a ring of 38, kept in proportion. */
     val gaugeStroke: Dp = 4.3.dp,
 )
@@ -275,7 +277,8 @@ fun veloSizes(size: UiSize): VeloSizes {
         // A control and the Rail board's 6 on each side, whatever the size.
         rail = maxOf(base.rail.s(), control + medium(6f) * (2 * f)),
         keyBar = maxOf(base.keyBar.s(), keyHeight + (base.keyBar - base.keyHeight) * f),
-        key = base.key.at(MinKey),
+        keyBarMax = base.keyBarMax.s(),
+        key = base.key.s(),
         keyHeight = keyHeight,
         gap = gap,
         gapCompact = base.gapCompact.s(),
@@ -304,7 +307,7 @@ fun veloSizes(size: UiSize): VeloSizes {
         statusIcon = base.statusIcon.s(),
         markIcon = base.markIcon.s(),
         markTile = base.markTile.s(),
-        gauge = control,
+        gauge = base.gauge.s(),
         gaugeStroke = base.gaugeStroke.s(),
     )
 }

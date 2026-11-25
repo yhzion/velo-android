@@ -102,4 +102,16 @@ class RailStatusTest {
         assertEquals("Battery 9 percent, mobile network",
             gaugeDescription(BatteryState(9, charging = false, powerSave = false), DeviceNetwork.Cellular(null)))
     }
+
+    @Test fun theRailCountsTheShownTabAmongTheSessionsTabs() {
+        // Rail board: "2 / 4".
+        val page = railPage(listOf("a", "b", "c", "d"), "b")
+        org.junit.Assert.assertEquals("2 / 4", page?.text)
+        org.junit.Assert.assertEquals("Tab 2 of 4", page?.description)
+        org.junit.Assert.assertEquals(RailPage(4, 4), railPage(listOf("a", "b", "c", "d"), "d"))
+        // A single tab, or none shown, has nothing to count.
+        org.junit.Assert.assertNull(railPage(listOf("a"), "a"))
+        org.junit.Assert.assertNull(railPage(listOf("a", "b"), null))
+        org.junit.Assert.assertNull(railPage(listOf("a", "b"), "gone"))
+    }
 }
