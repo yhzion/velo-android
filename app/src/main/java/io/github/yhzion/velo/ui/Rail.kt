@@ -102,9 +102,12 @@ internal data class RailPage(val number: Int, val count: Int) {
     val description: String get() = "Tab $number of $count"
 }
 
-/** The shown tab's place among [tabs], the session's tabs in order; null without a shown tab or with a single tab. */
-internal fun railPage(tabs: List<String>, shown: String?): RailPage? {
-    val at = tabs.indexOf(shown)
+/**
+ * The shown tab's place among [tabs], the session's tabs in order; null without a shown tab or with a single tab. While
+ * the rail's wheel turns, [front] is the index of the tab in front, and the counter follows it.
+ */
+internal fun railPage(tabs: List<String>, shown: String?, front: Int = -1): RailPage? {
+    val at = if (front in tabs.indices) front else tabs.indexOf(shown)
     return if (at < 0 || tabs.size < 2) null else RailPage(at + 1, tabs.size)
 }
 

@@ -845,7 +845,7 @@ internal fun Workspace(
             keyboardAvailable = activeSearch == null && (canType || keyboard),
             onKeyboard = { toggleKeyboard(); haptic() },
             onSidebar = { sidebar = !sidebar; haptic() },
-            page = railPage(state.windows.map { it.id }, window?.id),
+            page = railPage(state.windows.map { it.id }, window?.id, front = if (overview.wheel) overview.wheelFront else -1),
             // Behind the sidebar that covers the panes the overview is not seen: the button shows it.
             onOverview = showing {
                 if (panesHidden) overview.open() else overview.toggle()

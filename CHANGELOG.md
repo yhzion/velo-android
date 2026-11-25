@@ -29,6 +29,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
 
 ### Fixed
+- The rail shows the tab counter once, and it follows the tab in front while you turn the tab wheel.
 - License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.
 
 ## 2.10.1 - 2026-11-25

@@ -449,12 +449,6 @@ internal fun RailScrubber(
                 }
             }
         }
-        // How many windows, and which one: the wheel's front while it turns.
-        if (windows.size >= 2) {
-            val at = if (wheel != null && count > 0) front.coerceIn(0, count - 1) else shownAt
-            if (at >= 0) Text("${at + 1} / ${if (wheel != null) count else windows.size}", Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp).clearAndSetSemantics {},
-                color = if (wheel != null) colors.text else colors.disabled, fontSize = 11.sp, maxLines = 1)
-        }
     }
 }
 
