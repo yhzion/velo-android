@@ -14,10 +14,14 @@ enum class LicenseGroup(val title: String) {
     Networking("Networking"),
     Android("Android"),
     Fonts("Fonts"),
+    Artwork("Artwork"),
 }
 
-/** One license or notice text in the APK: what it is ([title]) and its path under assets/. */
-data class LicenseText(val title: String, val asset: String)
+/**
+ * One license or notice text in the APK: what it is ([title]) and its path under assets/. With a
+ * [section], the page shows only the section of the notice under that heading ([noticeSection]).
+ */
+data class LicenseText(val title: String, val asset: String, val section: String? = null)
 
 /**
  * One entry of the list. [license] is an SPDX-style expression or a short description. A
@@ -167,6 +171,10 @@ object OpenSourceLicenses {
             listOf(third("fonts/Noto-LICENSE.txt"))),
         LicenseComponent("powerline", "Powerline symbols", "1.000", "MIT", LicenseGroup.Fonts, "https://github.com/powerline/powerline",
             listOf(third("fonts/Powerline-MIT.txt"))),
+
+        // The tab tiles' logos: their licenses and the trademark note are the NOTICE's section on them.
+        LicenseComponent("simple-icons", "Program logos (Simple Icons)", "16.38.1", "CC0-1.0, CC-BY-3.0, CC-BY-SA-3.0", LicenseGroup.Artwork,
+            "https://simpleicons.org", listOf(LicenseText("Program logos", "notices/NOTICE", section = "Program logos"))),
     )
 }
 
@@ -183,6 +191,19 @@ fun licenseParent(id: String): LicenseComponent? = OpenSourceLicenses.all.firstO
 
 /** The line under a component's name: its version and its license, whichever it has. */
 fun licenseSubtitle(c: LicenseComponent): String = listOf(c.version, c.license).filter { it.isNotEmpty() }.joinToString(" · ")
+
+/**
+ * The section of a notice [text] under the heading that starts with [heading]: the heading, its
+ * underline of dashes and its lines up to the next heading, without the blank lines before it.
+ * Null when the notice has no such heading.
+ */
+fun noticeSection(text: String, heading: String): String? {
+    val lines = text.replace("\r\n", "\n").split('\n')
+    fun headingAt(i: Int) = i + 1 < lines.size && lines[i].isNotBlank() && lines[i + 1].matches(Regex("-{3,}"))
+    val start = lines.indices.firstOrNull { headingAt(it) && lines[it].startsWith(heading) } ?: return null
+    val end = (start + 2 until lines.size).firstOrNull { headingAt(it) } ?: lines.size
+    return lines.subList(start, end).dropLastWhile { it.isBlank() }.joinToString("\n")
+}
 
 /** Where the build takes the asset at [asset] from, relative to the repository root. */
 fun noticeSource(asset: String): String {
