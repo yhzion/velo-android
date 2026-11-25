@@ -106,14 +106,9 @@ class GlyphRasterizer(private val assets: AssetManager) {
         else -> faces(font)[Typeface.NORMAL]
     }
 
-    /** Line height of the terminal font in em: the cell height the core should use. */
+    /** The cell height the core should use, in em of its font size: see [cellLineHeight]. */
     val lineHeight: Float
-        @Synchronized get() {
-            paint.typeface = mono[Typeface.NORMAL]
-            paint.textSize = 100f
-            val fm = paint.fontMetrics
-            return (fm.descent - fm.ascent + fm.leading) / 100f
-        }
+        @Synchronized get() = cellLineHeight(mono[Typeface.NORMAL])
 
     /**
      * Reads ahead the selected regular face (needed for line height), then the Powerline and emoji fallbacks
@@ -290,6 +285,21 @@ class GlyphRasterizer(private val assets: AssetManager) {
         // Asset fonts have no file; every system fallback has one.
         return (0 until glyphs.glyphCount()).all { glyphs.getFont(it).file?.name.let { n -> n == null || n == "DroidSansMono.ttf" } }
     }
+}
+
+/** The width of every cell in em of the core's font size, whatever the font (Pane.cellSizeLocked). */
+internal const val CELL_ADVANCE = 0.6f
+
+/**
+ * [face]'s line height in em of the core's font size. The rasterizer draws a face so that its 'M' fills a cell
+ * [CELL_ADVANCE] wide, so a face whose 'M' is narrower, such as D2Coding's 0.5 em, is drawn larger than the font size
+ * and needs a taller cell; with the face's own line height it would be squeezed into its row.
+ */
+internal fun cellLineHeight(face: Typeface): Float {
+    // A paint of its own: the rasterizer's keeps the last glyph's horizontal scale, which changes the advance.
+    val paint = Paint().apply { typeface = face; textSize = 100f }
+    val fm = paint.fontMetrics
+    return (fm.descent - fm.ascent + fm.leading) / paint.measureText("M") * CELL_ADVANCE
 }
 
 /** Starts [GlyphRasterizer.prefetch] on a thread of its own, for the files [fontAssets] gives there (#336). */

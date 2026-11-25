@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.AppController
+import io.github.yhzion.velo.cellLineHeight
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.rounded
 import kotlinx.coroutines.Dispatchers
@@ -35,20 +36,20 @@ import kotlin.math.ceil
 /** The margin around a terminal grid in dp, which keeps text off the pane's rounded corners (HostConnection.pushDisplay). */
 fun panePaddingDp(paneStyle: String): Float = if (paneStyle == "compact") 6f else 10f
 
-/** What the terminal takes from a face: the advance of 'M' and the line height, both in em. */
+/** What the terminal takes from a face: the advance of 'M' in em, and the cell height in em of the font size. */
 private class FaceMetrics(val advance: Float, val lineHeight: Float)
 
 private fun faceMetrics(face: Typeface): FaceMetrics {
     val paint = Paint().apply { typeface = face; textSize = 100f }
-    val fm = paint.fontMetrics
-    // The rasterizer's line height (GlyphRasterizer.lineHeight) and the width it fits a glyph to.
-    return FaceMetrics(paint.measureText("M") / 100f, (fm.descent - fm.ascent + fm.leading) / 100f)
+    // The width the rasterizer fits a glyph to, and its line height (GlyphRasterizer.lineHeight).
+    return FaceMetrics(paint.measureText("M") / 100f, cellLineHeight(face))
 }
 
 /**
  * Under the Font size slider: a few terminal lines in the terminal's font at the chosen size, as
- * the terminal draws them (each cell 0.6 of the size wide, the font's line height high, on the
- * pane's black with its padding), and how many columns and rows the focused pane holds at it.
+ * the terminal draws them (each cell 0.6 of the size wide and as high as the font's line at the
+ * size its 'M' fills that width, on the pane's black with its padding), and how many columns and
+ * rows the focused pane holds at it.
  * Both follow the focused pane's pinch scale, so they show what that pane will show.
  */
 @Composable
