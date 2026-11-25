@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.10.0 - 2026-11-25
+
 ### Added
 - A dot on Settings tells you when an update is ready.
 - Velo shows what changed in a new version before you update.
