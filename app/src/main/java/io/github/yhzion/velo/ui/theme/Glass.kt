@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -61,6 +62,20 @@ fun Modifier.glass(shape: Shape = Capsule, selected: Boolean = false): Modifier 
     return glass(c, shape, VeloTheme.sizes.edge, selected)
 }
 
+/**
+ * Glass as the redesign draws a control (Controls board): the fill ([selected]: the selected
+ * cell's) and one even rim all round. On an overlay the rim is the overlay's lighter glass
+ * (Overlays board, a dialog's field). [ring] replaces the rim with a line twice as wide: a
+ * field's focus or its error.
+ */
+@Composable
+fun Modifier.glassControl(shape: Shape = Capsule, selected: Boolean = false, ring: Color? = null): Modifier {
+    val c = VeloTheme.surface
+    val rim = ring ?: if (c === VeloTheme.colors.overlay) c.glassSelected else c.glassEdge
+    val width = if (ring != null) VeloTheme.sizes.edge * 2 else VeloTheme.sizes.edge
+    return clip(shape).background(if (selected) c.glassSelected else c.glass).border(width, rim, shape)
+}
+
 /** [glass] with the colours and the edge width given, for callers outside a composition's read of the theme. */
 fun Modifier.glass(colors: SurfaceColors, shape: Shape, edge: Dp, selected: Boolean = false): Modifier =
     clip(shape).background(if (selected) colors.glassSelected else colors.glass).border(edge, glassEdge(colors), shape)
@@ -92,16 +107,16 @@ internal fun LayoutCoordinates.onScreen(): IntRect {
 // Group cards and choice tracks inside Settings are laid out on opaque pane chrome.
 internal val LocalSettingsPanel = staticCompositionLocalOf { false }
 
-/** Settings sits above the workspace, but is opaque: only its rim catches the light. */
+/** Settings sits above the workspace, but is opaque: only its rim catches the light. Its content is on the sheet's colours. */
 @Composable
 internal fun SettingsPanelSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    val chrome = VeloTheme.colors.chrome
+    val sheet = VeloTheme.colors.sheet
     val sizes = VeloTheme.sizes
     val shape = rounded(VeloTheme.radii.paneCompact)
-    VeloSurface(chrome) {
+    VeloSurface(sheet) {
         Box(
             modifier.shadow(sizes.overlayShadow, shape, clip = false).clip(shape)
-                .background(chrome.surface).border(sizes.edge, glassEdge(chrome), shape)
+                .background(sheet.surface).border(sizes.edge, glassEdge(sheet), shape)
                 // Empty panel space, unlike the scrim, must not dismiss the sheet.
                 .pointerInput(Unit) { detectTapGestures { } },
         ) { CompositionLocalProvider(LocalSettingsPanel provides true, content = content) }
@@ -135,7 +150,8 @@ fun OverlaySurface(modifier: Modifier = Modifier, shape: Shape = rounded(VeloThe
                 .onGloballyPositioned { bounds = it.onScreen() }
                 .clip(shape)
                 .background(overlay.surface)
-                .border(sizes.edge, overlay.glassEdge, shape)
+                // One even line of the overlay's divider (Overlays board).
+                .border(sizes.edge, overlay.divider, shape)
                 // A tap on the surface itself is not a tap on what is behind it.
                 .pointerInput(Unit) { detectTapGestures { } },
         ) {

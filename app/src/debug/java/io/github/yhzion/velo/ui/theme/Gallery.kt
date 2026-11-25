@@ -45,6 +45,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -59,7 +62,12 @@ import io.github.yhzion.velo.ui.toggleSticky
 
 private val Commands = listOf("New Tab", "New Session", "Split Right", "Split Down", "Rename Tab…", "Close Pane", "Toggle Sidebar", "Settings")
 
-/** The whole gallery: a workspace built from the components, then every overlay surface and control laid out flat. */
+/**
+ * The whole gallery: a workspace built from the components, then every overlay surface and
+ * control laid out flat, then the redesign's samples ([RedesignSample]). Test tags are resource
+ * ids here, so a UI dump names the samples as the boards do.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun Gallery(
     pattern: SurfaceView,
@@ -69,7 +77,7 @@ internal fun Gallery(
     val s = VeloTheme.sizes
     val start = with(LocalDensity.current) { (scrollDp * density).toInt() }
     VeloSurface(colors.backdrop) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(colors.backdrop.surface)) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(colors.backdrop.surface).semantics { testTagsAsResourceId = true }) {
             val page = maxHeight
             Column(Modifier.verticalScroll(rememberScrollState(start))) {
                 Row(Modifier.height(page).padding(end = s.gap).padding(vertical = s.gap), horizontalArrangement = Arrangement.spacedBy(s.gap)) {
@@ -81,6 +89,7 @@ internal fun Gallery(
                     VeloSurface(colors.chrome) { RailSample(open, onOpen) }
                 }
                 VeloSurface(colors.chrome) { FlatSample() }
+                RedesignSample()
             }
         }
     }

@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- Settings and dialogs use refreshed colours, cards and controls.
+
 ### Fixed
 - License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.
 
