@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -40,6 +41,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.yhzion.velo.R
 import io.github.yhzion.velo.SshKey
 import io.github.yhzion.velo.TailnetState
@@ -57,6 +59,19 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.groupInset
 import kotlinx.coroutines.withContext
+
+/** What the Remotes row of the phone key says while the keys are [list]: nothing while they load. */
+internal fun phoneKeyLine(list: KeyList): String = when (list) {
+    KeyList.Loading -> ""
+    KeyList.Unavailable -> PHONE_KEY_UNAVAILABLE
+    is KeyList.Ready -> list.keys.firstOrNull { it.phone }?.let(::keySummary) ?: PHONE_KEY_NOT_MADE
+}
+
+/** The phone key row when the keys were read and the phone has none yet. */
+internal const val PHONE_KEY_NOT_MADE = "Made when a login first needs it"
+
+/** The phone key row when the Keystore cannot open the keys now ([KEYS_UNAVAILABLE] on the key page). */
+internal const val PHONE_KEY_UNAVAILABLE = "Can't be read right now"
 
 /**
  * What the SSH key row says of [key]: its type without its prefix or curve ("ed25519", "rsa",
@@ -107,8 +122,14 @@ internal fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshK
     val c = VeloTheme.surface
     val state = host.tailnetState
     // Reading the phone key is Keystore work: off the main thread, as the key page reads it.
-    val phoneKey by produceState<SshKey?>(null, host) {
-        value = withContext(host.io) { runCatching { host.sshSecrets.keys().firstOrNull { it.phone } }.getOrNull() }
+    var reads by remember { mutableIntStateOf(0) }
+    val keys by produceState<KeyList>(KeyList.Loading, host, reads) {
+        value = withContext(host.io) { readKeys(host.sshSecrets::keys) }
+    }
+    // Back on screen: a key the Keystore could not open is read again, as the key page does.
+    LifecycleResumeEffect(Unit) {
+        if (keys == KeyList.Unavailable) reads++
+        onPauseOrDispose {}
     }
     Column(Modifier.fillMaxWidth().testTag("remotes-content").padding(bottom = VeloTheme.space.s24)) {
         GroupHeader("This Device", Modifier.testTag("remotes-this-device-header"), first = true)
@@ -123,7 +144,7 @@ internal fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshK
         // The key ssh:// logins offer first: one for the phone, whatever remote it logs in to.
         GroupHeader(SSH_GROUP, Modifier.testTag("remotes-ssh-header"))
         GroupCard(Modifier.testTag("remotes-ssh-group")) {
-            PageRow("remotes-ssh-key", SSH_KEY_ROW, phoneKey?.let(::keySummary) ?: "Made when a login first needs it",
+            PageRow("remotes-ssh-key", SSH_KEY_ROW, phoneKeyLine(keys),
                 rememberVectorPainter(Icons.Default.Key), c.text, openSshKey, line = "fingerprint")
         }
         GroupHeader("Saved", Modifier.testTag("remotes-saved-header"))
