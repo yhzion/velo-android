@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -40,25 +39,20 @@ import io.github.yhzion.velo.R
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.TailnetState
-import io.github.yhzion.velo.core.isSshLocator
 import io.github.yhzion.velo.findLicense
 import io.github.yhzion.velo.licenseParent
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.CloseButton
 import io.github.yhzion.velo.ui.theme.GlassIconButton
 import io.github.yhzion.velo.ui.theme.GroupCard
-import io.github.yhzion.velo.ui.theme.GroupDivider
 import io.github.yhzion.velo.ui.theme.GroupHeader
-import io.github.yhzion.velo.ui.theme.MenuItem
 import io.github.yhzion.velo.ui.theme.OverlayHost
 import io.github.yhzion.velo.ui.theme.SettingsPanelSurface
 import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
-import io.github.yhzion.velo.ui.theme.VeloMenu
 import io.github.yhzion.velo.ui.theme.VeloSwitch
 import io.github.yhzion.velo.ui.theme.VeloTextField
 import io.github.yhzion.velo.ui.theme.VeloTheme
-import io.github.yhzion.velo.ui.theme.RowIconButton
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -153,7 +147,10 @@ internal data class SettingsRoute(
  * What a page opens with besides its place: the key bar's order being edited, the Add Remote
  * dialog, a saved remote's menu (its id). The app opens every page closed; a test draws them open.
  */
-internal data class SettingsOpen(val editingOrder: Boolean = false, val addingRemote: Boolean = false, val remoteMenu: String? = null)
+internal data class SettingsOpen(val editingOrder: Boolean = false, val addingRemote: RemoteDraft? = null, val remoteMenu: String? = null)
+
+/** What the Add Remote dialog opens with: a label and an address. */
+internal data class RemoteDraft(val label: String = "", val address: String = "")
 
 /** What the open page starts with ([SettingsOpen]). */
 internal val LocalSettingsOpen = staticCompositionLocalOf { SettingsOpen() }
@@ -450,102 +447,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     }
 }
 
-
-@Composable
-private fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshKey: () -> Unit) {
-    var adding by rememberSaveable { mutableStateOf(false) }
-    var removingId by rememberSaveable { mutableStateOf<String?>(null) }
-    var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
-    var detailsId by rememberSaveable { mutableStateOf<String?>(null) }
-    val sizes = VeloTheme.sizes
-    val c = VeloTheme.surface
-
-    GroupHeader("This Device")
-    GroupCard {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = sizes.row).clickable(role = Role.Button, onClick = openDevice),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(sizes.rowGap),
-        ) {
-            // Distinguish a running node from a stopped one.
-            Icon(painterResource(if (host.tailnetState is TailnetState.Running) R.drawable.ic_tailscale_on else R.drawable.ic_tailscale_off),
-                null, Modifier.size(sizes.icon), tint = c.text)
-            Text("Tailscale", Modifier.weight(1f))
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(sizes.iconSmall), tint = c.secondary)
-        }
-    }
-    // The key ssh:// logins offer first: one for the phone, whatever remote it logs in to.
-    GroupHeader(SSH_GROUP)
-    GroupCard {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = sizes.row).clickable(role = Role.Button, onClick = openSshKey),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(sizes.rowGap),
-        ) {
-            Icon(Icons.Default.Key, null, Modifier.size(sizes.icon), tint = c.text)
-            Text(SSH_KEY_ROW, Modifier.weight(1f))
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(sizes.iconSmall), tint = c.secondary)
-        }
-    }
-    GroupHeader("Saved")
-    if (host.saved.isNotEmpty()) GroupCard {
-        host.saved.forEachIndexed { index, remote ->
-            key(remote.id) {
-                if (index > 0) GroupDivider()
-                var menu by remember { mutableStateOf(false) }
-                val name = remote.label.ifEmpty { "Remote" }
-                Row(Modifier.fillMaxWidth().heightIn(min = sizes.row), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(vertical = sizes.menuPadding)) {
-                        Text(name, style = VeloTheme.type.bodyStrong)
-                        Text(remote.url, style = VeloTheme.type.caption, color = c.secondary)
-                    }
-                    Box {
-                        RowIconButton(Icons.Default.MoreHoriz, "Actions for $name", { menu = true })
-                        VeloMenu(menu, { menu = false }) {
-                            // An ssh remote shows its SSH details, as in the sidebar's menu.
-                            for (item in savedRemoteMenu(isSshLocator(remote.url))) MenuItem(item.label, onClick = {
-                                menu = false
-                                when (item.action) {
-                                    RemoteAction.Rename -> renamingId = remote.id
-                                    RemoteAction.SshDetails -> detailsId = remote.id
-                                    RemoteAction.Remove -> removingId = remote.id
-                                    RemoteAction.NewSession -> Unit
-                                }
-                            }, icon = remoteActionIcon(item.action), enabled = item.enabled, destructive = item.action == RemoteAction.Remove)
-                        }
-                    }
-                }
-                // The remote's ports forwarded to the phone (#226): they stay until stopped here.
-                for (forward in host.forwards(remote)) {
-                    key(forward.block) {
-                        GroupDivider()
-                        Row(Modifier.fillMaxWidth().heightIn(min = sizes.row).padding(start = sizes.rowGap), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).padding(vertical = sizes.menuPadding)) {
-                                Text(forward.label)
-                                Text(forwardDetail(forward), style = VeloTheme.type.caption, color = c.secondary)
-                            }
-                            RowIconButton(Icons.Default.Close, "Stop forwarding ${forward.label}", { host.stopForward(remote, forward.block) })
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Spacer(Modifier.height(sizes.menuPadding))
-    VeloButton(AddRemoteCommand, { adding = true }, kind = ButtonKind.Primary)
-    if (adding) AddRemoteDialog(add = host::addRemote, onDismiss = { adding = false })
-    host.saved.firstOrNull { it.id == removingId }?.let { remote ->
-        RemoveRemoteDialog(remote, remove = { host.removeRemote(remote.id) }, onDismiss = { removingId = null })
-    }
-    host.saved.firstOrNull { it.id == renamingId }?.let { remote ->
-        RenameDialog(
-            "Rename Remote", remote.label, allowEmpty = false,
-            onRename = { host.renameRemote(remote.id, it) }, onDismiss = { renamingId = null },
-        )
-    }
-    // A remote removed meanwhile takes its panel with it.
-    host.saved.firstOrNull { it.id == detailsId }?.let { remote ->
-        host.SshDetails(remote, onDismiss = { detailsId = null })
-    }
-}
 
 /** This Device: the Tailscale node's controls, then where to remove devices from the network. */
 @Composable
