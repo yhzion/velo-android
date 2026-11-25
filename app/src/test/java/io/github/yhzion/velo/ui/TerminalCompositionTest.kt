@@ -63,6 +63,90 @@ class TerminalCompositionTest {
         assertEquals(0 to "", remoteEdit("", ""))
     }
 
+    /** A streamed word (#18) is erased only back to where it and the new text part. */
+    @Test fun theRemoteErasesOnlyBackToTheCommonFront() {
+        // Autocorrect at the space: two Backspaces, then the rest.
+        assertEquals(2 to "he ", remoteEdit("the ", "teh"))
+        // The commit at a space sends only the space.
+        assertEquals(0 to " ", remoteEdit("hello ", "hello"))
+        // A Backspace in the composition.
+        assertEquals(1 to "", remoteEdit("he", "hel"))
+        // Two emoji that share their high surrogate are two different characters: one Backspace.
+        assertEquals(1 to "😁", remoteEdit("a😁", "a😀"))
+        assertEquals(0 to "", remoteEdit("a😀", "a😀"))
+    }
+
+    @Test fun theCommonFrontEndsBetweenCodePoints() {
+        assertEquals(3, commonFront("the", "the "))
+        assertEquals(1, commonFront("the ", "teh"))
+        assertEquals(0, commonFront("", "abc"))
+        assertEquals(1, commonFront("a😀", "a😁"))
+        assertEquals(3, commonFront("a😀b", "a😀c"))
+    }
+
+    /** Latin typed on a predicting keyboard reaches the remote letter by letter (#18). */
+    @Test fun latinThatGrowsByOneCharacterStreams() {
+        val latin = { true }
+        assertTrue(streamsTerminalComposition("h", "", latin))
+        assertTrue(streamsTerminalComposition("he", "h", latin))
+        assertTrue(streamsTerminalComposition("Hello,", "Hello", latin))
+        assertTrue(streamsTerminalComposition("1a", "1", latin))
+        // A Vietnamese Telex keyboard recomposes its letter: the remote erased the a already.
+        assertTrue(streamsTerminalComposition("â", "", latin))
+        // One emoji is one character, in two UTF-16 units.
+        assertTrue(streamsTerminalComposition("🙂", "", latin))
+        // Nothing left to send.
+        assertTrue(streamsTerminalComposition("he", "he", latin))
+        assertTrue(streamsTerminalComposition("", "", latin))
+    }
+
+    @Test fun aJumpOfManyCharactersIsHeld() {
+        val latin = { true }
+        // A suggestion, or a voice transcript that grows.
+        assertFalse(streamsTerminalComposition("hello", "hel", latin))
+        assertFalse(streamsTerminalComposition("hello world", "", latin))
+        // A skin tone makes an emoji of two characters.
+        assertFalse(streamsTerminalComposition("👍🏽", "", latin))
+    }
+
+    @Test fun aCompositionWithHangulKanaOrIdeographsIsHeld() {
+        val latin = { true }
+        for (composed in listOf(
+            "ㅎ", "하", // compatibility jamo, syllables
+            "ᄀ", "ꥠ", "ힰ", "ﾡ", // jamo, Extended-A, Extended-B, halfwidth
+            "か", "カ", "ｶ", // hiragana, katakana, halfwidth katakana
+            "中", "𠀀", "ㄅ", // ideographs, Extension B, bopomofo
+        )) {
+            assertFalse(composed, streamsTerminalComposition(composed, "", latin))
+            // Also when the remote already has the Latin front of the composition (#282).
+            assertFalse(composed, streamsTerminalComposition("a$composed", "a", latin))
+        }
+    }
+
+    /** A line break is held: a composition that ends with one is still a paste ([keyboardTextIsPaste]). */
+    @Test fun aCompositionWithAControlCharacterIsHeld() {
+        assertFalse(streamsTerminalComposition("ls\n", "ls", { true }))
+        assertFalse(streamsTerminalComposition("\t", "", { true }))
+    }
+
+    @Test fun aKeyboardThatComposesLatinIntoOtherCharactersHoldsIt() {
+        assertFalse(streamsTerminalComposition("k", "", { false }))
+        // The keyboard is asked only for a composition that would stream otherwise.
+        val unasked = { throw AssertionError("asked about the keyboard for a held composition") }
+        assertFalse(streamsTerminalComposition("하", "", unasked))
+        assertFalse(streamsTerminalComposition("hello", "", unasked))
+        assertTrue(streamsTerminalComposition("he", "he", unasked))
+    }
+
+    @Test fun latinIsFinalUnlessTheKeyboardIsChineseOrJapanese() {
+        for (tag in listOf(null, "", "en", "en-US", "en_US", "ko", "ko-KR", "vi", "jv", "zu")) {
+            assertTrue("$tag", keyboardLatinIsFinal(tag))
+        }
+        for (tag in listOf("zh", "zh-CN", "zh_TW", "zh-Hant-TW", "ja", "ja-JP", "JA_jp", "yue-Hant-HK")) {
+            assertFalse(tag, keyboardLatinIsFinal(tag))
+        }
+    }
+
     /** Only a composition makes the terminal restart the keyboard's input (#295). */
     @Test fun onlyPreeditOrDeferredWritesAreACompositionToRetire() {
         assertFalse(holdsTerminalComposition("", 0))

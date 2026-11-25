@@ -118,7 +118,7 @@ class TerminalEditorInstrumentation : Instrumentation() {
         check(editor.finishComposingText())
         check(sent == listOf("armed c", "armed x", "armed z", "armed c")) { "$sent" }
         // Without Ctrl the letter is the composition, and the key bar's Shift alone leaves it
-        // one: it ends as the plain letter, which only then is text.
+        // one: it goes as the plain letter, as soon as it is composed (#18), and only once.
         sticky = 0
         check(editor.setComposingText("c", 1))
         sticky = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
@@ -577,10 +577,12 @@ class TerminalEditorInstrumentation : Instrumentation() {
         restarted.deleteSurroundingText(1, 0)
         restarted.performEditorAction(EditorInfo.IME_ACTION_DONE)
         expect("한", "key ${KeyEvent.KEYCODE_ENTER}")
+        // An emoji composes nothing: it reaches the remote as it is composed (#18), and a deletion
+        // past it erases it there first.
         restarted.setComposingText("🙂", 1)
         restarted.deleteSurroundingTextInCodePoints(2, 1)
         restarted.finishComposingText()
-        expect("key ${KeyEvent.KEYCODE_DEL}", "key ${KeyEvent.KEYCODE_FORWARD_DEL}")
+        expect("🙂", "key ${KeyEvent.KEYCODE_DEL}", "key ${KeyEvent.KEYCODE_DEL}", "key ${KeyEvent.KEYCODE_FORWARD_DEL}")
 
         restarted.setComposingText("끝", 1)
         restarted.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))

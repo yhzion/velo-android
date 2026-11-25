@@ -818,7 +818,19 @@ class TerminalInputView(context: Context) : View(context) {
             armedKey = ::sendArmedKey,
             plainInput = { stickyMeta == 0 },
             paste = { text -> boundPane { host, block -> pasteTextIntoPane(host, block, text) } },
+            latinFinal = { keyboardLatinIsFinal(keyboardLanguage()) },
         )
+    }
+
+    /**
+     * The language of the keyboard's current subtype, null when it names none. Read for each
+     * letter that would stream (#18): a keyboard switches its language without a new connection.
+     */
+    private fun keyboardLanguage(): String? {
+        val subtype = context.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            ?.currentInputMethodSubtype ?: return null
+        @Suppress("DEPRECATION") // The tag is empty for a subtype declared with a locale string only.
+        return subtype.languageTag.ifEmpty { subtype.locale }
     }
 
     /** Runs [action] for the pane the editors are bound to ([refreshEditorTarget]): nothing while none is bound. */
