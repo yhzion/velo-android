@@ -341,23 +341,24 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 
 The family is the device's own (Roboto on Android; the boards set Roboto). A size "at Medium" is
 the redesign's type scale (Tokens board); a plain one is the Large size of a style the boards do
-not name. A line of interface text is as tall as Roboto's own line, 2400 of its 2048 units
-(1.17 em): the boards set no line height on a label, so the browser gives it that one, and the
-app's labels then line up with the boards'. A paragraph sets its own (1.45 or 1.5 em, as its
-board does). The line heights of `key`, `clock`, `wordmark` and the glyph styles are derived.
+not name. A line of interface text is as tall as the browser sets a line of Roboto: its ascent
+(1900 of 2048 units) and its descent (500), each rounded to a whole dp, 19 at 16 and 15 at 13
+(`robotoLine`). The boards set no line height on a label, so the browser gives it that one, and
+the app's labels then line up with the boards'. A paragraph sets its own (1.4, 1.45 or 1.5 em, as
+its board does). The line heights of `key`, `clock`, `wordmark` and the glyph styles are derived.
 
 | token | size / line, weight | for, and source |
 |---|---|---|
-| `screenTitle` | 26 / 30.5 sp at Medium, SemiBold | The title of a full screen: Settings (Tokens board "screen-title"). |
-| `pageTitle` | 22 / 25.8 sp at Medium, SemiBold | A page's title beside the categories on the unfolded screen (Tokens board "page-title"). |
-| `overlayTitle` | 20 / 23.4 sp at Medium, SemiBold | The title of a dialog or a card (Tokens board "dialog-title"). |
-| `title` | 18 / 21.1 sp at Medium, SemiBold | The title of a header: a settings page's, a pane's (Tokens board "header-title"). |
-| `body` | 16 / 18.75 sp at Medium, Normal | Row titles, buttons, menu items, a field's text (Tokens board "body"). |
-| `bodyStrong` | 16 / 18.75 sp at Medium, Medium | The same, for a label that stands out. derived: the boards' button weight. |
-| `value`, `control` | 15 / 17.6 sp at Medium, Normal | A row's value, a menu button, a segmented cell (Medium when chosen) (Tokens board "value"). |
-| `header` | 15 / 17.6 sp at Medium, Medium | Section headers of the sidebar's list (Sidebar board, session header). |
-| `caption` | 13 / 15.2 sp at Medium, Normal | Second lines, notes; at Medium weight, a settings group's heading (Tokens board "caption"). |
-| `eyebrow` | 12 / 14.1 sp at Medium, Bold, tracking 0.06 em | A small heading in capitals: NEW VERSION (Tokens board "eyebrow"). |
+| `screenTitle` | 26 / 30 sp at Medium, SemiBold | The title of a full screen: Settings (Tokens board "screen-title"). |
+| `pageTitle` | 22 / 25 sp at Medium, SemiBold | A page's title beside the categories on the unfolded screen (Tokens board "page-title"). |
+| `overlayTitle` | 20 / 24 sp at Medium, SemiBold | The title of a dialog or a card (Tokens board "dialog-title"). |
+| `title` | 18 / 21 sp at Medium, SemiBold | The title of a header: a settings page's, a pane's (Tokens board "header-title"). |
+| `body` | 16 / 19 sp at Medium, Normal | Row titles, buttons, menu items, a field's text (Tokens board "body"). |
+| `bodyStrong` | 16 / 19 sp at Medium, Medium | The same, for a label that stands out. derived: the boards' button weight. |
+| `value`, `control` | 15 / 18 sp at Medium, Normal | A row's value, a menu button, a segmented cell (Medium when chosen) (Tokens board "value"). |
+| `header` | 15 / 18 sp at Medium, Medium | Section headers of the sidebar's list (Sidebar board, session header). |
+| `caption` | 13 / 15 sp at Medium, Normal | Second lines, notes; at Medium weight, a settings group's heading (Tokens board "caption"). |
+| `eyebrow` | 12 / 14 sp at Medium, Bold, tracking 0.06 em | A small heading in capitals: NEW VERSION (Tokens board "eyebrow"). |
 | `key` | 13 / 18 sp at Medium, Medium, monospace | Key labels (Controls and KeyBar boards). |
 | `clock` | 17 / 22 sp at Medium, SemiBold | The rail's clock (Rail board). |
 | `wordmark` | 38 / 44 sp at Medium, SemiBold, tracking -0.01 em | The wordmark of the start screen (StartKit board; 44 on the unfolded screen). |
@@ -366,6 +367,21 @@ board does). The line heights of `key`, `clock`, `wordmark` and the glyph styles
 
 The Tokens board's terminal style, JetBrains Mono at 12.5, is not a text style here: the
 terminal keeps its own Font and Font size settings (default 13).
+
+### Measures on whole pixels
+
+A Medium phone has 2.625 px a dp, so many of the boards' measures fall between pixels, where the
+browser keeps fractions and Android rounds. These helpers in `ui/theme` keep the app's measures
+as near the boards' as whole pixels allow.
+
+| helper | what it does |
+|---|---|
+| `TextStyle.onPixels`, `VeloType.onPixels` | Puts every style's line on a whole pixel; the theme applies it to the type scale. |
+| `TextStyle.paragraph(height)` | A paragraph's line on a whole pixel, centred in it without Compose's trim, so that its leading splits as CSS splits it. |
+| `textAt(size, weight)` | A style of a size the scale does not name (14, 12.5), scaled with the Size setting, on the browser's line of Roboto. |
+| `monoAt(size, weight)` | The same in JetBrains Mono (`rememberMono`), on the browser's line of that face (ascent 1020, descent 300 of 1000 units): 17 at 13, 20 at 15. Keys, addresses, fingerprints and license texts use it. |
+| `Modifier.lineBox(style)` | Holds a title or a heading to its style's line: Android never makes a line shorter than the font's own (25.8 at 22 sp, where the board's is 25). |
+| `hairline()` | A group's border and dividers: `edge` on whole pixels, rounded down, as the browser paints a 1 px border (2 px at 420 dpi). |
 
 ### The Size setting (`UiSize`)
 
@@ -748,7 +764,7 @@ Each reads the colours of the surface it is on. Every icon-only control takes a
 | Status mark | `StatusMark(status: Status, contentDescription: String, modifier = Modifier, icon: ImageVector? = null)`, `enum class Status { Ok, Warning, Danger, Active, Off }` | `ConnectionDot` (`ui/Sidebar.kt:354`), the node's dot in `DeviceHeader` (`:286-288`), the activity dot (`:366-369`), `LinkGlyph` (`ui/Rail.kt:50`, with `icon`). A dot or a glyph; it takes no tap |
 | Key cap | `KeyCap(label: String, onClick, modifier = Modifier, armed = false, icon: ImageVector? = null, contentDescription: String? = null, enabled = true)` | the key `Box` of `KeyBar` (`ui/KeyBar.kt:69-73`); `armed` is Ctrl waiting for its letter; with `icon` the arrow is drawn and `label` is spoken; `enabled` false (the connection is down) draws it in `disabled`, unfilled, and takes no tap |
 | Key bar strip | `KeyStrip(modifier = Modifier, content: @Composable RowScope.() -> Unit)` | the `BoxWithConstraints` of `KeyBar` (`ui/KeyBar.kt:60`); the scrolling and the fades stay with `KeyBar` |
-| Button | `VeloButton(text: String, onClick, modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled = true, small = false, icon: Painter? = null, iconAtEnd = false)`, `enum class ButtonKind { Primary, Secondary, Destructive, Text }` | Controls board: Primary is the accent's fill (one per screen), Secondary glass with a rim, Destructive a red rim at 50 % with `dangerText`, Text the accent's words (44 high). Not enabled: the `selected` fill with `disabled` words. `small` is the 40 high button of a list row. Every button keeps the 48 dp touch target; the caller's modifier (a test tag, semantics) applies inside it, to the button drawn |
+| Button | `VeloButton(text: String, onClick, modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled = true, small = false, icon: Painter? = null, iconAtEnd = false, row = false, danger = false, tag: String? = null)`, `enum class ButtonKind { Primary, Secondary, Destructive, Text }` | Controls board: Primary is the accent's fill (one per screen), Secondary glass with a rim, Destructive a red rim at 50 % with `dangerText`, Text the accent's words (44 high, 8 at each side; 12 with `row`). Not enabled: the `selected` fill with `disabled` words. `small` is the 40 high button of a list row; `row` the 44 high one at the end of a settings row (Edit order, Copy). `danger` sets a Text button's words in `dangerText` (Remove). Words and `row` buttons lay out at their height; the others at 48. Compose's hit testing gives every button a 48 dp touch target; the caller's modifier (a test tag, semantics) applies inside it, to the button drawn. `tag` names the drawn button |
 | Update dot | `AttentionBadge(tint: Color, modifier = Modifier, ring: Color = VeloTheme.surface.surface)` | a flat dot in a 2 ring of what it sits on (Controls board, sample-update-dot); size it with `sizes.dot` |
 | State chip | `StateChip(text: String, status: Status, modifier = Modifier)` | a state in words on a 12 % tint of its colour, with its dot (Controls board: Connected) |
 | Badge | `TagBadge(text: String, modifier = Modifier)` | a short name on glass, such as a license's (Controls board) |
@@ -761,16 +777,16 @@ As the redesign's Controls board draws them, at Medium. A switch's knob is white
 
 | component | signature | what it is |
 |---|---|---|
-| Group | `GroupHeader(text, modifier, first = false)`, `GroupCard(modifier, content)`, `GroupDivider()` | the heading is the caption at Medium weight, 20 above it (12 when `first`); the group has no fill, a 1 border of `divider` and the `group` radius, and its rows keep 16 from its start and 12 from its end; a divider runs from the rows' start to the border. On an overlay a group is a glass card with the `card` radius |
-| Setting row | `SettingRow(label, modifier, control)` | a label with its control at the end, 60 high; a control too wide to sit beside the label goes under it |
-| Switch row | `SwitchRow(label, checked, onCheckedChange, modifier, subtitle = null, enabled = true)` | the whole row is the switch (`Role.Switch`), 60 high or 64 with a second line |
+| Group | `GroupHeader(text, modifier, first = false)`, `GroupCard(modifier, content)`, `GroupDivider(modifier, full = false)`, `Modifier.groupBleed()`, `Modifier.groupInset()` | the heading is the caption at Medium weight, 20 above it (12 when `first`), held to its line (`lineBox`); the group has no fill, a `hairline` border of `divider` and the `group` radius, and its rows sit inside the border, 16 from its start and 12 from its end. A divider runs from the rows' start to the border, or from border to border with `full` (under a saved remote). A row that draws itself reaches the border with `groupBleed` and keeps the group's room with `groupInset`. On an overlay a group is a glass card with the `card` radius |
+| Setting row | `SettingRow(label, modifier, tag = null, labelFills = true, control)` | a label with its control at the end, 60 high; a control too wide to sit beside the label goes under it. The label takes the room the control leaves (Appearance), or only its words with `labelFills` false (Keyboard). `tag` names `-row` and `-label` |
+| Switch row | `SwitchRow(label, checked, onCheckedChange, modifier, subtitle = null, enabled = true, tag = null, paragraph = false)` | the whole row is the switch (`Role.Switch`), 60 high or 64 with a second line; a `paragraph` subtitle of more than a line is set at 1.4 em, 12 above and below. The label and subtitle are as wide as the wider of them. `tag` names `-row`, `-label`, `-caption`, `-switch` |
 | Navigation row | `NavigationRow(title, onClick, modifier, value = null, subtitle = null, enabled = true, trailing = null)` | a row that opens a page: its value in `secondary`, then a chevron |
 | Action row | `ActionRow(text, icon: ImageVector, onClick, modifier, enabled = true)` | words and an icon in the accent: Add Remote… |
 | Switch | `VeloSwitch(checked, modifier, enabled = true)` | drawn only, the row takes the tap; on, the accent; off, `glassSelected`; not enabled, plain glass and a `disabled` knob |
 | Slider | `VeloSlider(value, onValueChange, modifier, valueRange, steps, onValueChangeFinished)` | a tap, a drag along it, the left and right keys and a screen reader's own actions move it |
-| Segmented control | `VeloSegmented(options, selected, label, modifier, optionTag = null, onPick)` | a glass track with a rim; the chosen cell is `glassSelected` and Medium; `optionTag` tags each cell. In the settings sheet the cells wrap instead of being cut |
-| Menu button | `MenuButton(text, onClick, modifier, enabled = true, contentDescription = null)` | a 44 high glass pill with the current choice and a chevron; it opens a `SelectMenu` |
-| Key choice | `KeyChoice(key, selected, onClick, modifier)` | a key chip: tinted with the accent and its rim when chosen, a `glassEdge` rim alone when not |
+| Segmented control | `VeloSegmented(options, selected, label, modifier, optionTag = null, cellPadding = 12, stretch = false, onPick)` | a glass track with a rim; the chosen cell is `glassSelected` and Medium; `optionTag` tags each drawn cell, inside the track's rim. `cellPadding` is the room at each side of a cell's words (14 for Row and Grid). In the settings sheet the cells wrap instead of being cut, and share the control's width with `stretch` (Monospaced, All fonts) |
+| Menu button | `MenuButton(text, onClick, modifier, enabled = true, contentDescription = null, tag = null, small = false)` | a 44 high glass pill with the current choice and a chevron; it opens a `SelectMenu`. `small` is the 40 high pill with 14 words of a row that holds a switch too (an alert's sound) |
+| Key choice | `KeyChoice(key, selected, onClick, modifier)` | a key chip, 44 high: tinted with the accent and its rim when chosen, a `glassEdge` rim alone when not. A key named in words is set in JetBrains Mono at 14 (`monoAt`), an arrow keeps its icon (`IconKeys`); the rim adds to its width, as the board's border does |
 | Close button | `CloseButton(onClick, modifier, contentDescription = "Close")` | the 48 glass disc of a sheet's header, with a light line along its top |
 
 ### Cards (`ui/theme/Cards.kt`)
@@ -830,10 +846,10 @@ closes it. The `…Surface` composables are the same surfaces without a window.
 
 | component | signature | replaces |
 |---|---|---|
-| Menu | `VeloMenu(expanded: Boolean, onDismissRequest: () -> Unit, modifier = Modifier, anchor: (() -> IntRect?)? = null, content: @Composable ColumnScope.() -> Unit)`; `MenuSurface(modifier, content)` | `DropdownMenu` (`ui/PaneMenu.kt:25`, `ui/Sidebar.kt:336`, `ui/Workspace.kt:223`). Declared in the `Box` of its button it opens under it, as `DropdownMenu` does; `anchor` gives a rectangle of the screen instead (a long press on a pane) |
+| Menu | `VeloMenu(expanded: Boolean, onDismissRequest: () -> Unit, modifier = Modifier, anchor: (() -> IntRect?)? = null, content: @Composable ColumnScope.() -> Unit)`; `MenuSurface(modifier, content)` | `DropdownMenu` (`ui/PaneMenu.kt:25`, `ui/Sidebar.kt:336`, `ui/Workspace.kt:223`). Declared in the `Box` of its button it opens under it, as `DropdownMenu` does; `anchor` gives a rectangle of the screen instead (a long press on a pane). A menu does not dim the page under it (Overlays board, popup-menu; SetRemotes); a tap beside it still closes it |
 | Menu item | `MenuItem(text: String, onClick, modifier = Modifier, icon: ImageVector? = null, enabled = true, destructive = false)`; `MenuDivider(modifier = Modifier)` | the row menu (Overlays board, popup-menu): a pill of `radii.pill`, items 48 high and 20 in, the icon in `secondary`; a destructive item in `dangerText` |
 | Select menu | `SelectMenu(expanded, onDismissRequest, options: List<T>, selected: T, label: (T) -> String, onPick, modifier, anchor = null, optionTag = null)`; `SelectMenuItem(text, selected, onClick, modifier)` | the menu a `MenuButton` opens (Overlays board, select-menu): the current value has a check in the accent |
-| Dialog | `VeloDialog(title: String, onDismissRequest, confirmText: String, onConfirm, modifier = Modifier, text: String? = null, cancelText = "Cancel", destructive = false, confirmEnabled = true, …, tagPrefix: String? = null, content: (@Composable ColumnScope.() -> Unit)? = null)`; `DialogSurface(…)` | Overlays board: radius 32, 22 above, 20 at the sides, 16 below; the `text` in the overlay's `secondary` at 15; Cancel as words and the confirming button filled with the accent (the sheet's red when `destructive`) at the lower right, wrapping under each other when they do not fit. `tagPrefix` tags `-title`, `-body`, `-actions`, `-cancel`, `-confirm` |
+| Dialog | `VeloDialog(title: String, onDismissRequest, confirmText: String, onConfirm, modifier = Modifier, text: String? = null, cancelText = "Cancel", destructive = false, confirmEnabled = true, …, tagPrefix: String? = null, content: (@Composable ColumnScope.() -> Unit)? = null)`; `DialogSurface(…)` | Overlays board: radius 32, 22 above, 20 at the sides, 16 below; the `text` in the overlay's `secondary` at 15; Cancel as words and the confirming button filled with the accent (the sheet's red when `destructive`) at the lower right, wrapping under each other when they do not fit. `tagPrefix` tags `-title` (as wide as the dialog), `-body`, `-actions` (with the room above the buttons), `-cancel`, `-confirm`; `scrimTag` tags the scrim. 8 outside it at Medium (DlgAddRemote). The confirming button keeps 28 at each side in a dialog with fields, 24 in a question (DlgAddRemote and Overlays boards) |
 | Toast | `ToastSurface(message, modifier, icon: ImageVector? = null, iconTint: Color? = null, actionLabel: String? = null, onAction: (() -> Unit)? = null)`; `VeloToast(message: String?, onDismiss, …)` | Overlays board: a 48 high pill of the overlay at the bottom centre, a polite live region, tagged `toast`, `toast-message`, `toast-action`. `VeloToast` dismisses it after `ToastMillis` (3 s) or as long as the accessibility settings ask |
 | Popover | `VeloPopover(expanded, onDismissRequest, modifier = Modifier, anchor: (() -> IntRect?)? = null, content: @Composable ColumnScope.() -> Unit)`; `PopoverSurface(modifier, content)` | nothing today; for the size popover and the remote's details the spec adds |
 | Palette | `VeloPalette(query: String, onQueryChange, onGo: () -> Unit, onDismissRequest, modifier = Modifier, placeholder = "Command Palette", content: LazyListScope.() -> Unit)`; `PaletteSurface(query, onQueryChange, onGo, modifier, placeholder, focus = false, content)`; `PaletteRow(title: String, onClick, modifier = Modifier, enabled = true, note: String? = null)` | the `Dialog`, field and rows of `CommandPalette` (`ui/Palette.kt:39-58`); the list of commands and what Go runs stay there |
