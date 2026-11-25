@@ -1,5 +1,10 @@
 package io.github.yhzion.velo.fidelity
 
+import io.github.yhzion.velo.PaneAlertKind
+import org.robolectric.Shadows
+import android.os.PowerManager
+import android.app.Application
+import android.Manifest
 import io.github.yhzion.velo.ui.TapKey
 import io.github.yhzion.velo.ui.SettingsOpen
 import android.content.Context
@@ -52,7 +57,7 @@ import kotlin.coroutines.CoroutineContext
  * notifications and SSH keys (with the test sealer and key tool), and the rest as given. What a
  * page reads runs in place ([io]), so the first frame captured has it.
  */
-internal class FakeSettingsHost(context: Context) : SettingsHost {
+internal class FakeSettingsHost(val context: Context) : SettingsHost {
     override val settings = Settings(context.getSharedPreferences("fidelity-settings", Context.MODE_PRIVATE))
     override val io: CoroutineContext = Dispatchers.Unconfined
     override val rasterizer = GlyphRasterizer(context.assets)
@@ -175,7 +180,7 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-font" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance, SettingsLevel.Font)) { fonts = SampleFonts } },
     "settings-keyboard" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
     "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard, open = SettingsOpen(editingOrder = true))) },
-    "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) },
+    "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) { boardNotifications() } },
     "settings-remotes" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
     "settings-add-remote" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
     "settings-tailscale" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.Device)) },
@@ -211,3 +216,21 @@ private val SampleFonts = listOf(
     TerminalFont("device:Noto Sans Mono", "Noto Sans Mono", true),
     TerminalFont("import:ab12:Iosevka Term", "Iosevka Term", true),
 )
+
+/** The SetNotifications block's state: notifications allowed, the battery unrestricted, Work started quiet. */
+private fun FakeSettingsHost.boardNotifications() {
+    Shadows.shadowOf(context.applicationContext as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+    Shadows.shadowOf(context.getSystemService(PowerManager::class.java)).setIgnoringBatteryOptimizations(context.packageName, true)
+    with(settings) {
+        saveActivityNotices(true)
+        saveActivitySounds(true)
+        saveActivityVolume(1f)
+        saveStayConnected(true)
+        for (kind in PaneAlertKind.entries) {
+            val on = kind != PaneAlertKind.Working
+            savePosts(kind, on)
+            savePlays(kind, on)
+            saveSound(kind, kind.defaultSound)
+        }
+    }
+}
