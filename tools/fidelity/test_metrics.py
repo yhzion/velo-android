@@ -110,6 +110,26 @@ class ScreensTest(unittest.TestCase):
         self.assertIsNone(m.screen_of("Tokens"))
 
 
+class ClipTest(unittest.TestCase):
+    def test_a_device_on_a_preview_board_becomes_a_board_of_its_own(self):
+        board = {"board": "Main", "dsf": 2.0, "elements": [
+            {"name": "preview", "x": 0, "y": 0, "w": 300, "h": 100},
+            {"name": "screen", "x": 10, "y": 20, "w": 50, "h": 60},
+            {"name": "mark", "x": 20, "y": 30, "w": 10, "h": 10},
+            {"name": "screen", "x": 100, "y": 20, "w": 50, "h": 60},
+            {"name": "mark", "x": 110, "y": 40, "w": 10, "h": 10},
+        ]}
+        img = np.zeros((200, 600, 3), dtype=np.uint8)
+        img[40:160, 200:300] = 7
+        clipped, cut = m.clip_board(board, img, "screen", 1, 2.0)
+        self.assertEqual([(e["name"], e["x"], e["y"]) for e in clipped["elements"]], [("screen", 0, 0), ("mark", 10, 20)])
+        self.assertEqual(clipped["size"], [50, 60])
+        self.assertEqual(cut.shape, (120, 100, 3))
+        self.assertTrue((cut == 7).all())
+        with self.assertRaises(ValueError):
+            m.clip_board(board, img, "screen", 2, 2.0)
+
+
 class VerdictTest(unittest.TestCase):
     GOOD = dict(tokens=1.0, geometry=0.96, missing=0, max_delta_e=2.9, ssim=0.91)
 

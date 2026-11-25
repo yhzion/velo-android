@@ -195,6 +195,26 @@ def ssim(a, b):
     return float(smap.mean()), smap
 
 
+# ---- previews -------------------------------------------------------------------------------
+
+def clip_board(board, img, name, index, dsf, slack=0.5):
+    """The part of a board inside its index-th element named name, as a board of its own: the elements that lie
+    within it (slack dp allowed), moved so that it starts at 0, 0, and the image cut to it. A preview board draws
+    several devices side by side (the splash's board Main); each device's screen is compared on its own."""
+    frames = [e for e in board["elements"] if e["name"] == name]
+    if index >= len(frames):
+        raise ValueError(f"{board.get('board')}: no element {name} #{index}")
+    c = frames[index]
+
+    def inside(e):
+        return (e["x"] >= c["x"] - slack and e["y"] >= c["y"] - slack
+                and e["x"] + e["w"] <= c["x"] + c["w"] + slack and e["y"] + e["h"] <= c["y"] + c["h"] + slack)
+    elements = [{**e, "x": round(e["x"] - c["x"], 2), "y": round(e["y"] - c["y"], 2)} for e in board["elements"] if inside(e)]
+    x0, y0 = int(round(c["x"] * dsf)), int(round(c["y"] * dsf))
+    x1, y1 = int(round((c["x"] + c["w"]) * dsf)), int(round((c["y"] + c["h"]) * dsf))
+    return {**board, "elements": elements, "size": [c["w"], c["h"]]}, img[y0:y1, x0:x1]
+
+
 # ---- screens and verdict --------------------------------------------------------------------
 
 _PREFIX = {"Set": "settings", "Start": "start", "Ws": "workspace"}
