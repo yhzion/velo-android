@@ -6,6 +6,25 @@ import android.content.ContextWrapper
 import android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.em
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +32,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -182,12 +200,15 @@ fun VeloMenu(
     if (expanded) OverlayHost(onDismissRequest, keepImeTarget) { Anchored(at()) { MenuSurface(modifier, content) } }
 }
 
-/** The surface of a menu and its items ([MenuItem], [MenuDivider]); taller than its place, it scrolls. */
+/**
+ * The surface of a menu and its items ([MenuItem], [MenuDivider], [SelectMenuItem]): a pill of
+ * the overlay (Overlays board: radius 24, 8 above and below the items). Taller than its place, it scrolls.
+ */
 @Composable
 fun MenuSurface(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val s = VeloTheme.sizes
-    OverlaySurface(modifier.widthIn(min = s.menuMinWidth, max = s.menuWidth)) {
-        Column(Modifier.boundedHeight().verticalScroll(rememberScrollState()).padding(vertical = s.menuPadding), content = content)
+    OverlaySurface(modifier.widthIn(min = s.menuMinWidth, max = s.menuWidth), shape = rounded(VeloTheme.radii.pill)) {
+        Column(Modifier.boundedHeight().verticalScroll(rememberScrollState()).padding(vertical = VeloTheme.space.s8), content = content)
     }
 }
 
@@ -211,14 +232,16 @@ fun MenuItem(
     val icon = glyph
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
-    val color = if (!enabled) c.disabled else if (destructive) c.danger else c.text
+    val color = if (!enabled) c.disabled else if (destructive) c.dangerText else c.text
+    // An item's icon is the secondary colour beside its words, the red with a destructive item's (Overlays board).
+    val iconColor = if (!enabled || destructive) color else c.secondary
     Row(
-        modifier.fillMaxWidth().heightIn(min = s.menuItem).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = s.rowPadding),
+        modifier.fillMaxWidth().heightIn(min = s.menuItem).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = VeloTheme.space.s20),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, null, Modifier.size(s.iconSmall), tint = color)
-            Spacer(Modifier.width(s.rowGap))
+            Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = iconColor)
+            Spacer(Modifier.width(VeloTheme.medium(14.dp)))
         }
         Column(Modifier.padding(vertical = if (note != null) s.menuPadding else 0.dp)) {
             Text(text, style = VeloTheme.type.body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -227,11 +250,48 @@ fun MenuItem(
     }
 }
 
-/** A line between two groups of menu items. */
+/** A line between two groups of menu items (Overlays board: 8 above and below). */
 @Composable
 fun MenuDivider(modifier: Modifier = Modifier) {
     val s = VeloTheme.sizes
-    Spacer(modifier.padding(vertical = s.menuPadding).fillMaxWidth().height(s.edge).background(VeloTheme.surface.divider))
+    Spacer(modifier.padding(vertical = VeloTheme.space.s8).fillMaxWidth().height(s.edge).background(VeloTheme.surface.divider))
+}
+
+/**
+ * One choice of a menu that picks a value ([SelectMenu]): its words, and a check in the accent
+ * when it is the current value (Overlays board, select-menu).
+ */
+@Composable
+fun SelectMenuItem(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val c = VeloTheme.surface
+    Row(
+        modifier.fillMaxWidth().heightIn(min = VeloTheme.sizes.menuItem).selectable(selected, role = Role.RadioButton, onClick = onClick)
+            .padding(start = VeloTheme.space.s20, end = VeloTheme.space.s16),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, Modifier.weight(1f), style = VeloTheme.type.body, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (selected) Icon(Icons.Default.Check, null, Modifier.size(VeloTheme.medium(18.dp)), tint = c.accent)
+    }
+}
+
+/**
+ * A menu that picks one of [options], opened from a [MenuButton]: the current one has a check.
+ * Picking one calls [onPick] and closes the menu. [optionTag] gives each choice its test tag
+ * (`select-menu-option-<id>`); the menu's own is set on [modifier].
+ */
+@Composable
+fun <T> SelectMenu(
+    expanded: Boolean, onDismissRequest: () -> Unit, options: List<T>, selected: T, label: (T) -> String, onPick: (T) -> Unit,
+    modifier: Modifier = Modifier, anchor: (() -> IntRect?)? = null, optionTag: ((T) -> String)? = null,
+) {
+    VeloMenu(expanded, onDismissRequest, modifier.selectableGroup(), anchor) {
+        for (option in options) {
+            SelectMenuItem(
+                label(option), option == selected, onClick = { onPick(option); onDismissRequest() },
+                modifier = if (optionTag != null) Modifier.testTag(optionTag(option)) else Modifier,
+            )
+        }
+    }
 }
 
 /** A popover: free [content] on an overlay surface, placed as a [VeloMenu] is. */
@@ -274,15 +334,24 @@ fun VeloDialog(
      * comes up uninvited must not catch keys typed for what is under it.
      */
     keyFocus: (() -> Boolean)? = null,
+    /** The test tags of the dialog's parts ([DialogSurface]); the dialog's own is set on [modifier]. */
+    tagPrefix: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     OverlayHost(onDismissRequest, closesOnBack = closesOnBack, closesOnTapOutside = closesOnTapOutside) {
         DialogSurface(title, confirmText, onConfirm, onCancel = onDismissRequest, modifier.align(Alignment.Center).padding(VeloTheme.sizes.overlayMargin),
-            text, cancelText, destructive, confirmEnabled, cancelEnabled, fieldFocus, focusCancel, keyFocus, content)
+            text, cancelText, destructive, confirmEnabled, cancelEnabled, fieldFocus, focusCancel, keyFocus, tagPrefix, content)
     }
 }
 
-/** The surface of a dialog, without its window. */
+/**
+ * The surface of a dialog, without its window (Overlays board): the title, the [text] in the
+ * overlay's secondary colour, the [content], then Cancel as words and the confirming button
+ * filled with the accent, or with the red when [destructive], at the lower right. The buttons
+ * wrap under each other when they do not fit side by side. [tagPrefix] names the parts for
+ * tests: `<prefix>-title`, `-body`, `-actions`, `-cancel` and `-confirm`.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DialogSurface(
     title: String, confirmText: String, onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier,
@@ -294,36 +363,127 @@ fun DialogSurface(
     focusCancel: Boolean = false,
     /** Null: focus on open as above. Otherwise no focus on open, and the buttons take key focus only while it returns true. */
     keyFocus: (() -> Boolean)? = null,
+    tagPrefix: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val s = VeloTheme.sizes
+    val space = VeloTheme.space
+    val c = VeloTheme.colors.overlay
     val fallback = remember { FocusRequester() }
     // With the caller's field focus the field takes the keys; otherwise the safe-default button does.
     val focus = fieldFocus ?: fallback
     if (keyFocus == null) LaunchedEffect(Unit) { focus.requestFocus() }
     val gate = if (keyFocus != null) Modifier.focusProperties { canFocus = keyFocus() } else Modifier
-    OverlaySurface(modifier.width(s.dialogWidth)) {
+    fun Modifier.part(name: String) = if (tagPrefix != null) testTag("$tagPrefix-$name") else this
+    // A dialog with fields spaces them 16; a question alone keeps its words 12 apart.
+    val gap = if (content != null) space.s16 else space.s12
+    OverlaySurface(modifier.widthIn(max = s.dialogWidth).fillMaxWidth()) {
         // Bounded here, not at the content: a column without a height gives a weighted child none.
-        Column(Modifier.boundedHeight().padding(s.overlayPadding), verticalArrangement = Arrangement.spacedBy(s.overlayPadding)) {
+        Column(
+            Modifier.boundedHeight().padding(start = space.s20, end = space.s20, top = VeloTheme.medium(22.dp), bottom = space.s16),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
             // The title scrolls with the content, so a long one cannot push the buttons out of the surface.
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(s.overlayPadding)) {
-                // The words sit inside the corner's curve; the fields and buttons reach the padding.
-                Column(Modifier.padding(horizontal = s.menuPadding).padding(top = s.menuPadding), verticalArrangement = Arrangement.spacedBy(s.menuPadding)) {
-                    Text(title, modifier = Modifier.semantics { heading() }, style = VeloTheme.type.overlayTitle, color = VeloTheme.surface.text)
-                    if (text != null) Text(text, style = VeloTheme.type.body, color = VeloTheme.surface.secondary)
-                }
-                if (content != null) Column(verticalArrangement = Arrangement.spacedBy(s.menuPadding), content = content)
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gap)) {
+                Text(title, modifier = Modifier.semantics { heading() }.part("title"), style = VeloTheme.type.overlayTitle, color = c.text)
+                if (text != null) Text(text, Modifier.part("body"), style = VeloTheme.type.value.copy(lineHeight = 1.5.em), color = c.secondary)
+                if (content != null) content()
             }
-            // One height for both buttons: when only one label wraps at large text, the other grows with it.
-            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(s.menuPadding)) {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(top = VeloTheme.medium(if (content != null) 4.dp else 6.dp)).part("actions"),
+                horizontalArrangement = Arrangement.spacedBy(space.s8, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(space.s8),
+            ) {
                 // A destructive confirm opens on Cancel, the safer default; other dialogs open on the confirming button.
                 val cancelFocus = if ((focusCancel || destructive) && fieldFocus == null) Modifier.focusRequester(fallback) else Modifier
                 val confirmFocus = if (!focusCancel && !destructive && fieldFocus == null) Modifier.focusRequester(fallback) else Modifier
-                VeloButton(cancelText, onCancel, gate.then(cancelFocus).weight(1f).fillMaxHeight(), enabled = cancelEnabled)
-                VeloButton(confirmText, onConfirm, gate.then(confirmFocus).weight(1f).fillMaxHeight(), if (destructive) ButtonKind.Destructive else ButtonKind.Primary, confirmEnabled)
+                DialogButton(cancelText, onCancel, gate.then(cancelFocus).part("cancel"), fill = null, label = c.text, enabled = cancelEnabled)
+                // The red of a destructive confirm is the sheet's, as the board fills it; the overlay's own red is lighter, for words.
+                DialogButton(
+                    confirmText, onConfirm, gate.then(confirmFocus).part("confirm"),
+                    fill = if (destructive) VeloTheme.colors.sheet.danger else c.accent,
+                    label = if (destructive) VeloTheme.colors.sheet.onDanger else c.onAccent, enabled = confirmEnabled,
+                )
             }
         }
     }
+}
+
+/** A dialog's button: words alone ([fill] null, Cancel) or a filled pill (the confirming button). */
+@Composable
+private fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier, fill: Color?, label: Color, enabled: Boolean) {
+    val c = VeloTheme.surface
+    val frame = if (fill == null) Modifier.clip(Capsule) else Modifier.clip(Capsule).background(if (enabled) fill else c.glass)
+    Box(
+        modifier.minimumInteractiveComponentSize().heightIn(min = VeloTheme.sizes.control).then(frame)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = if (fill == null) VeloTheme.space.s20 else VeloTheme.space.s24, vertical = VeloTheme.space.s4),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Large text wraps to a second line instead of losing its end; the button grows to hold it.
+        Text(
+            text, style = VeloTheme.type.body.copy(fontWeight = if (fill == null) FontWeight.Medium else FontWeight.SemiBold),
+            color = if (enabled) label else c.disabled, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** How long a toast stays: three seconds (Overlays board), longer where the accessibility settings ask for it. */
+const val ToastMillis = 3000L
+
+/**
+ * A short note at the bottom of the screen (Overlays board, toast): an optional [icon] in
+ * [iconTint] (the ok green unless given), the [message], and an optional action in the accent.
+ * It is a polite live region, so a screen reader reads it out. Its test tags are the board's:
+ * `toast`, `toast-message`, `toast-action`. The caller places it ([VeloToast] times it).
+ */
+@Composable
+fun ToastSurface(
+    message: String, modifier: Modifier = Modifier, icon: ImageVector? = null, iconTint: Color? = null,
+    actionLabel: String? = null, onAction: (() -> Unit)? = null,
+) {
+    val c = VeloTheme.colors.overlay
+    val s = VeloTheme.sizes
+    VeloSurface(c) {
+        Row(
+            modifier.testTag("toast").shadow(s.overlayShadow, Capsule, clip = false).heightIn(min = s.control).clip(Capsule)
+                .background(c.surface).border(s.edge, c.divider, Capsule)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(start = VeloTheme.medium(18.dp), end = VeloTheme.space.s8),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(10.dp)),
+        ) {
+            if (icon != null) Icon(icon, null, Modifier.size(VeloTheme.medium(18.dp)), tint = iconTint ?: c.ok)
+            Text(message, Modifier.weight(1f, fill = false).testTag("toast-message").padding(vertical = VeloTheme.space.s8),
+                style = VeloTheme.type.value, color = c.text)
+            if (actionLabel != null && onAction != null) {
+                Box(
+                    Modifier.testTag("toast-action").minimumInteractiveComponentSize().heightIn(min = VeloTheme.medium(40.dp)).clip(Capsule)
+                        .clickable(role = Role.Button, onClick = onAction).padding(horizontal = VeloTheme.space.s12),
+                    contentAlignment = Alignment.Center,
+                ) { Text(actionLabel, style = VeloTheme.type.value, fontWeight = FontWeight.Medium, color = c.accent) }
+            }
+        }
+    }
+}
+
+/**
+ * A [ToastSurface] while [message] is set, which calls [onDismiss] after [ToastMillis], or after
+ * as long as the accessibility settings ask for. A new message starts the time again.
+ */
+@Composable
+fun VeloToast(
+    message: String?, onDismiss: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, iconTint: Color? = null,
+    actionLabel: String? = null, onAction: (() -> Unit)? = null,
+) {
+    if (message == null) return
+    val accessibility = LocalAccessibilityManager.current
+    val dismiss by rememberUpdatedState(onDismiss)
+    LaunchedEffect(message) {
+        delay(accessibility?.calculateRecommendedTimeoutMillis(ToastMillis, containsIcons = icon != null, containsText = true, containsControls = onAction != null) ?: ToastMillis)
+        dismiss()
+    }
+    ToastSurface(message, modifier, icon, iconTint, actionLabel, onAction)
 }
 
 /**

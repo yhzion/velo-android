@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui.theme
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -31,10 +33,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.painter.Painter
@@ -44,6 +47,7 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -51,8 +55,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.ui.KeyLegend
 import kotlinx.coroutines.coroutineScope
@@ -122,29 +128,22 @@ fun CapsuleIcon(
     ) {
         Box {
             Icon(icon, contentDescription, Modifier.size(s.icon), tint = if (enabled) c.onGlass else c.disabled)
-            if (badge) AttentionBadge(c.accent, Modifier.align(Alignment.TopEnd).offset(x = s.mark / 4, y = -s.mark / 4).size(s.mark))
+            if (badge) AttentionBadge(c.accent, Modifier.align(Alignment.TopEnd).offset(x = s.dot / 4, y = -s.dot / 4).size(s.dot), ring = c.glass)
         }
     }
 }
 
 /**
- * The raised dot Rex for Mac puts on its Activity button (`StatusBadgeDrawing`): a shadow a
- * point below that fades over two, the [tint] lit from above by a gradient, and a thin dark rim.
+ * The update dot (Controls board, sample-update-dot): a dot of [tint] in a ring of [ring], the
+ * colour of what it sits on, so that it reads as a dot where it overlaps an edge. [modifier]
+ * sizes the dot (`VeloTheme.sizes.dot`); the ring is drawn outside it.
  */
 @Composable
-fun AttentionBadge(tint: Color, modifier: Modifier = Modifier) {
-    // Black at 16 % on a light surface, 28 % on a dark one.
-    val shadow = Color.Black.copy(alpha = if (VeloTheme.colors.dark) .28f else .16f)
+fun AttentionBadge(tint: Color, modifier: Modifier = Modifier, ring: Color = VeloTheme.surface.surface) {
+    val width = VeloTheme.medium(2.dp)
     Canvas(modifier) {
-        val r = size.minDimension / 2
-        val blur = 2.dp.toPx()
-        val below = center + Offset(0f, 1.dp.toPx())
-        drawCircle(Brush.radialGradient(0f to shadow, r / (r + blur) to shadow, 1f to Color.Transparent,
-            center = below, radius = r + blur), r + blur, below)
-        // Gloss: the tint blended 24 % to white at the top, to 8 % black at the bottom.
-        drawCircle(Brush.verticalGradient(listOf(lerp(tint, Color.White, .24f), tint, lerp(tint, Color.Black, .08f)),
-            startY = center.y - r, endY = center.y + r), r)
-        drawCircle(Color.Black.copy(alpha = .12f), r - .375.dp.toPx(), style = Stroke(.75.dp.toPx()))
+        drawCircle(ring, size.minDimension / 2 + width.toPx())
+        drawCircle(tint)
     }
 }
 
@@ -156,6 +155,7 @@ fun AttentionBadge(tint: Color, modifier: Modifier = Modifier) {
  * [titleFont] draws the title and subtitle in another family: a font list shows each font in itself.
  * [titleContent] draws in the title's place (a tab's report that alternates with its name); it
  * must keep to the title's one line. A screen reader still reads [title], not what it draws.
+ * [minHeight] is the row's least height: a settings row's unless given (`sizes.tabRow` for a tab's row).
  */
 @Composable
 fun ListRow(
@@ -163,13 +163,13 @@ fun ListRow(
     subtitle: String? = null, selected: Boolean = false, enabled: Boolean = true, dimmed: Boolean = false, strong: Boolean = false,
     onClickLabel: String? = null, onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null,
     leading: (@Composable () -> Unit)? = null, trailing: (@Composable RowScope.() -> Unit)? = null,
-    titleFont: FontFamily? = null, titleContent: (@Composable () -> Unit)? = null,
+    titleFont: FontFamily? = null, titleContent: (@Composable () -> Unit)? = null, minHeight: Dp = VeloTheme.sizes.row,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     val type = VeloTheme.type
     Row(
-        modifier.fillMaxWidth().heightIn(min = s.row).clip(Capsule)
+        modifier.fillMaxWidth().heightIn(min = minHeight.coerceAtLeast(MinTouch)).clip(Capsule)
             .background(if (selected) c.selected else Color.Transparent)
             .combinedClickable(enabled = enabled, onClickLabel = onClickLabel, onLongClickLabel = onLongClickLabel, onLongClick = onLongClick, onClick = onClick)
             .semantics { if (selected) this.selected = true }
@@ -221,7 +221,7 @@ fun RowIconButton(icon: ImageVector, contentDescription: String, onClick: () -> 
     }
 }
 
-/** The heading of a group of rows: secondary text, with the group's own buttons at its end ([RowIconButton]). */
+/** The heading of a group of rows in the sidebar: a session's name, with the group's own buttons at its end ([RowIconButton]) (Sidebar board). */
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, onClickLabel: String? = null, trailing: (@Composable RowScope.() -> Unit)? = null) {
     val s = VeloTheme.sizes
@@ -231,7 +231,7 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier, onClick: (() -> U
             .padding(start = s.rowPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, Modifier.weight(1f), style = VeloTheme.type.header, color = VeloTheme.surface.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, Modifier.weight(1f), style = VeloTheme.type.header, color = VeloTheme.colors.textOnRaised, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (trailing != null) trailing()
     }
 }
@@ -272,9 +272,16 @@ fun KeyCap(
     val s = VeloTheme.sizes
     val lit = armed && enabled
     val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.text
+    val pill = VeloTheme.medium(40.dp)
     Box(
         modifier.widthIn(min = s.key).height(s.keyHeight).clip(Capsule)
-            .background(if (lit) c.accent else Color.Transparent)
+            // A latched key is a pill of the accent, 40 high, inside the key's height (Controls board, sample-key-latched).
+            .drawBehind {
+                if (lit) {
+                    val h = minOf(size.height, pill.toPx())
+                    drawRoundRect(c.accent, Offset(0f, (size.height - h) / 2), Size(size.width, h), CornerRadius(h / 2))
+                }
+            }
             .clickable(enabled = enabled, role = Role.Button) { if (enabled) onClick() }
             .then(if (enabled && holdRepeat) repeatKeyPress(label, onClick, onRepeat) else Modifier)
             .semantics { if (lit) selected = true; this.contentDescription = contentDescription ?: label }
@@ -332,32 +339,118 @@ fun KeyStrip(modifier: Modifier = Modifier, content: @Composable RowScope.() -> 
     }
 }
 
-/** How a [VeloButton] weighs: the one action of its place, an action among others, or one that destroys something. */
-enum class ButtonKind { Primary, Plain, Destructive }
+/**
+ * How a [VeloButton] weighs (Controls board): the one action of its place, an action among
+ * others, one that destroys something, or a word that acts as a link. A screen has one primary
+ * button at most.
+ */
+enum class ButtonKind { Primary, Secondary, Destructive, Text }
 
-/** A text button: a capsule filled with the accent ([ButtonKind.Primary]), with danger, or glass. */
+/**
+ * A button (Controls board): [ButtonKind.Primary] is filled with the accent; [ButtonKind.Secondary]
+ * is glass with a rim; [ButtonKind.Destructive] is a rim of the red with red words; [ButtonKind.Text]
+ * is the accent's words alone. A button that is not [enabled] is the selected fill with grey words.
+ * [small] is the 40 high button of a list row, such as Connect. [icon] goes before the words, or
+ * after them with [iconAtEnd] (a link that leaves the app). Every button keeps the least touch target.
+ */
 @Composable
-fun VeloButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Plain, enabled: Boolean = true) {
+fun VeloButton(
+    text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
+    small: Boolean = false, icon: Painter? = null, iconAtEnd: Boolean = false,
+) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
-    val fill = when {
-        !enabled || kind == ButtonKind.Plain -> null
-        kind == ButtonKind.Primary -> c.accent
-        else -> c.danger
+    val type = VeloTheme.type
+    val words = kind == ButtonKind.Text
+    val frame = when {
+        words -> Modifier
+        !enabled -> Modifier.clip(Capsule).background(c.selected)
+        kind == ButtonKind.Primary -> Modifier.clip(Capsule).background(c.accent)
+        kind == ButtonKind.Secondary -> Modifier.glassControl(Capsule)
+        else -> Modifier.clip(Capsule).border(s.edge, c.danger.copy(alpha = 0.5f), Capsule)
     }
     val label = when {
         !enabled -> c.disabled
         kind == ButtonKind.Primary -> c.onAccent
-        kind == ButtonKind.Destructive -> c.onDanger
-        else -> c.onGlass
+        kind == ButtonKind.Secondary -> c.onGlass
+        kind == ButtonKind.Destructive -> c.dangerText
+        else -> c.accent
     }
-    Box(
-        (if (fill != null) modifier.clip(Capsule).background(fill) else modifier.glass())
+    val height = when {
+        words -> VeloTheme.medium(44.dp)
+        small -> VeloTheme.medium(40.dp)
+        else -> s.control
+    }
+    val style = (if (words || small) type.value else type.body)
+        .copy(fontWeight = if (kind == ButtonKind.Primary) FontWeight.SemiBold else FontWeight.Medium)
+    val padding = when {
+        words -> VeloTheme.space.s8
+        small -> VeloTheme.medium(18.dp)
+        else -> VeloTheme.space.s20
+    }
+    Row(
+        modifier.minimumInteractiveComponentSize().heightIn(min = height).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .heightIn(min = s.control).padding(horizontal = s.rowPadding, vertical = s.gapCompact),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = padding, vertical = VeloTheme.space.s4),
+        horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Large text wraps to a second line instead of losing its end; the capsule grows to hold it.
-        Text(text, style = VeloTheme.type.bodyStrong, color = label, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+        if (icon != null && !iconAtEnd) Icon(icon, null, Modifier.size(VeloTheme.medium(18.dp)), tint = label)
+        // Large text wraps to a second line instead of losing its end; the button grows to hold it.
+        Text(text, style = style, color = label, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+        if (icon != null && iconAtEnd) Icon(icon, null, Modifier.size(VeloTheme.space.s16), tint = label)
     }
+}
+
+/**
+ * A state in words, on a tint of its colour, with its dot (Controls board, sample-state-chip:
+ * Connected). It takes no tap; a screen reader reads [text].
+ */
+@Composable
+fun StateChip(text: String, status: Status, modifier: Modifier = Modifier) {
+    val c = VeloTheme.surface
+    val tint = statusColor(status, c)
+    Row(
+        modifier.clip(Capsule).background(tint.copy(alpha = 0.12f)).padding(horizontal = VeloTheme.medium(10.dp), vertical = VeloTheme.medium(6.dp)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp)),
+    ) {
+        Box(Modifier.size(VeloTheme.medium(7.dp)).clip(Capsule).background(tint))
+        Text(text, style = VeloTheme.type.caption, color = stateChipText(status, tint, c), maxLines = 1)
+    }
+}
+
+/** The green of a chip's words (Controls board); the other states' words are their colour lightened as much. */
+private val OkChipText = Color(0xFF7EE29A)
+
+private fun stateChipText(status: Status, tint: Color, c: SurfaceColors): Color = when (status) {
+    Status.Ok -> OkChipText
+    Status.Off -> c.secondary
+    else -> lerp(tint, Color.White, 0.4f)
+}
+
+private fun statusColor(status: Status, c: SurfaceColors): Color = when (status) {
+    Status.Ok -> c.ok
+    Status.Warning -> c.warning
+    Status.Danger -> c.danger
+    Status.Active -> c.accent
+    Status.Off -> c.secondary
+}
+
+/** A short name on glass, such as a license's (Controls board, sample-license-badge: Apache-2.0). */
+@Composable
+fun TagBadge(text: String, modifier: Modifier = Modifier) {
+    val type = VeloTheme.type
+    Text(
+        text, modifier.clip(rounded(VeloTheme.radii.badge)).background(VeloTheme.surface.glass)
+            .padding(horizontal = VeloTheme.medium(9.dp), vertical = VeloTheme.space.s4),
+        style = type.caption.copy(fontSize = type.eyebrow.fontSize, lineHeight = type.eyebrow.lineHeight),
+        color = VeloTheme.colors.textOnRaised, maxLines = 1,
+    )
+}
+
+/** A small heading in capitals over what it names, such as NEW VERSION (Tokens board "eyebrow"). Write [text] in capitals. */
+@Composable
+fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = VeloTheme.surface.accent) {
+    Text(text, modifier.semantics { heading() }, style = VeloTheme.type.eyebrow, color = color, maxLines = 1)
 }

@@ -522,7 +522,7 @@ private fun ConnectedAs(line: String) {
 private fun FoundRows(found: List<DiscoveredServer>, onAdd: (DiscoveredServer) -> Unit) {
     found.forEachIndexed { index, server ->
         if (index > 0) GroupDivider()
-        ConnectRow(server, if (index == 0) ButtonKind.Primary else ButtonKind.Plain) { onAdd(server) }
+        ConnectRow(server, if (index == 0) ButtonKind.Primary else ButtonKind.Secondary) { onAdd(server) }
     }
 }
 

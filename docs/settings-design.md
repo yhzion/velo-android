@@ -6,25 +6,25 @@ Velo's settings have five categories: Appearance, Keyboard, Notifications, Remot
 
 Settings opens as a modal without replacing the current screen. The modal respects safe areas; tapping outside it closes settings, but tapping empty space within it does not. When both window dimensions are at least 600dp, categories and details appear side by side, with Appearance selected initially and separate scroll positions. In smaller windows, categories, details, and subpages appear one at a time. Changing category leaves its subpage. Back goes up one level or closes settings at the top; Close Settings always closes the whole panel.
 
-At Large size the panel has an 8dp outside margin, a maximum width of 820dp, and a 236dp category column. It uses a 12dp corner radius and elevation, and 0.65dp borders and dividers. The header uses 16dp horizontal and 8dp vertical padding. The category list uses 8dp inside padding, 4dp between rows, and rows at least 60dp high, with a 28dp icon and a label. The icon is not a separate button. Details use 16dp horizontal padding.
+At Large size the panel has an 8dp outside margin, a maximum width of 820dp, and a 236dp category column. It uses a 12dp corner radius and elevation, and 1dp borders and dividers. The header uses 16dp horizontal and 8dp vertical padding. The category list uses 8dp inside padding, rows 60dp high at Medium, with a 28dp icon and a label. The icon is not a separate button. Details use 16dp horizontal padding.
 
-The opaque category and detail surfaces are `sidebar` and `chrome`; menus and confirmations use `overlay`. The interface stays dark regardless of Android appearance. A glass border or small glass control does not make the entire sheet translucent. Use `onAccent` and `onDanger` for text on their respective fills.
+The opaque category and detail surfaces are `sidebar` and `sheet` (the redesign's settings: chrome's fill with the sidebar's controls); menus and confirmations use `overlay`. A card that stands out of a page is `RaisedCard` (`colors.raised`). The interface stays dark regardless of Android appearance. A glass border or small glass control does not make the entire sheet translucent. Use `onAccent` and `onDanger` for text on their respective fills.
 
 ## Shared controls
 
-Small, Medium (default), and Large use scale factors of 0.72, 0.85, and 1.0. At those sizes a 20dp inset becomes 14.4, 17, and 20dp, and a 60dp row becomes 48, 51, and 60dp. Typesetting stays at least 11sp, line height follows the resulting text size, and Android's font scale still applies. The terminal font size is independent.
+Small, Medium (default), and Large use scale factors of 0.72, 0.85, and 1.0. The redesign gives its sizes at Medium: a settings row is 60dp at Medium, so 50.8 at Small and 70.6 at Large; a 20dp inset at Large becomes 14.4, 17, and 20dp. Typesetting stays at least 11sp, line height follows the resulting text size, and Android's font scale still applies. The terminal font size is independent.
 
 | Control | Layout and behavior |
 | --- | --- |
-| Section and group | Section headings expose heading semantics. An outlined group uses a 12dp radius at Large and dividers between its rows. Neither headings nor group backgrounds act as buttons. |
-| Labeled row | A `SettingRow` places the label and control side by side with at least 14dp between them at Large; in a narrow window the control moves below. |
+| Section and group | Section headings expose heading semantics. A group has no fill, a 1dp border, a 12dp radius at Medium and dividers between its rows from 16dp in. Neither headings nor group backgrounds act as buttons. |
+| Labeled row | A `SettingRow` places the label and control side by side with at least 14dp between them at Medium; in a narrow window the control moves below. `SwitchRow`, `NavigationRow` and `ActionRow` are the other rows of a group. |
 | Segmented choice | Radio choices have a minimum 48dp target. The selected cell uses `glassSelected` and `onGlass`. Choices wrap rather than truncating. |
-| Switch | The entire row operates one switch. The track is 51×31dp at Large; position and color both indicate state. |
-| Slider | A 48dp target with a 4dp track and 28dp thumb at Large. Supports tapping, horizontal dragging, arrow keys, and accessibility value actions. |
-| Button | Text and icon buttons have a minimum 48dp target. Primary actions use an accent fill and destructive confirmations use a danger fill. Navigation chevrons follow reading direction; terminal keys represent physical directions. |
+| Switch | The entire row operates one switch (`SwitchRow`). The track is 51×31dp at Medium; position and color both indicate state. |
+| Slider | A 48dp target with a 4dp track and 28dp thumb at Medium. Supports tapping, horizontal dragging, arrow keys, and accessibility value actions. |
+| Button | Text and icon buttons have a minimum 48dp target. Primary actions use an accent fill; a destructive button on a page is a red outline, and a destructive confirmation in a dialog a red fill. Navigation chevrons follow reading direction; terminal keys represent physical directions. |
 | Text field | `VeloTextField` keeps its label visible after typing and reports validation errors below the capsule-shaped field. |
 | Menu | Opens below its button, or above when space is limited. Width is 200–285dp at Large; long menus scroll. Back and outside taps dismiss without choosing. |
-| Confirmation | Centered, with at least 8dp outside margin and a maximum width of 386dp at Large. Content scrolls while action buttons stay below it. Cancel, Back, or an outside tap discards unconfirmed changes. |
+| Confirmation | Centered, with at least 8dp outside margin and a maximum width of 386dp at Medium. Content scrolls while Cancel and the confirming button stay at its lower right. Cancel, Back, or an outside tap discards unconfirmed changes. |
 
 ## Appearance
 

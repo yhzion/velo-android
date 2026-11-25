@@ -1,6 +1,16 @@
 package io.github.yhzion.velo.ui.theme
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,9 +62,12 @@ fun fieldDescription(label: String?, placeholder: String): String? =
 fun labelNamesField(label: String?): Boolean = !label.isNullOrEmpty()
 
 /**
- * A one-line text field: a glass capsule on the surface it is on, with an optional [label]
- * above it, an [icon] before the text and a [placeholder] while it is empty. [trailing] sits
- * at its end, inside the capsule. [error] under it turns nothing red but the line itself.
+ * A one-line text field (Controls and Overlays boards): a glass pill with an even rim on the
+ * surface it is on, an optional [label] above it, an [icon] before the text and a [placeholder]
+ * while it is empty. [trailing] sits at its end, inside the pill. While it has the keys its rim is
+ * the chrome accent, twice as wide. [help] under it says what to type; an [error] takes its place
+ * in the red and turns the rim red. [mono] sets the text in the monospace face, for an address or
+ * a path. [tagPrefix] names the parts for tests: `<prefix>-field` (the whole), `-input`, `-help`, `-error`.
  */
 @Composable
 fun VeloTextField(
@@ -64,36 +77,54 @@ fun VeloTextField(
     trailing: (@Composable () -> Unit)? = null,
     /** How the text is drawn: a password's field hides it ([androidx.compose.ui.text.input.PasswordVisualTransformation]). */
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    help: String? = null, mono: Boolean = false, tagPrefix: String? = null,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     val type = VeloTheme.type
     val description = fieldDescription(label, placeholder)
-    Column(modifier) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    // The chrome accent marks the field that has the keys on every surface (Controls and Overlays boards: #7FA6F5).
+    val focusColor = VeloTheme.colors.chrome.accent
+    val ring = when {
+        error != null -> c.danger
+        focused -> focusColor
+        else -> null
+    }
+    val textStyle = if (mono) type.value.copy(fontFamily = FontFamily.Monospace) else type.body
+    fun Modifier.part(name: String) = if (tagPrefix != null) testTag("$tagPrefix-$name") else this
+    Column(modifier.part("field"), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp))) {
         // The input says the label itself ([fieldDescription]): drawn text only, so it is not read twice.
-        if (label != null) Text(label, Modifier.padding(start = s.rowPadding, bottom = s.menuPadding / 2).clearAndSetSemantics {}, style = type.caption, color = c.secondary)
+        if (label != null) Text(label, Modifier.padding(start = VeloTheme.space.s4).clearAndSetSemantics {}, style = type.caption, color = c.secondary)
         BasicTextField(
-            value, onValueChange, Modifier.fillMaxWidth().semantics { description?.let { contentDescription = it } }, singleLine = true,
-            textStyle = type.body.copy(color = c.onGlass), cursorBrush = SolidColor(c.accent),
+            value, onValueChange, Modifier.fillMaxWidth().part("input").semantics { description?.let { contentDescription = it } }, singleLine = true,
+            textStyle = textStyle.copy(color = c.onGlass), cursorBrush = SolidColor(focusColor),
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
+            interactionSource = interaction,
         ) { field ->
-            Row(Modifier.height(s.field).glass().padding(start = s.rowPadding, end = if (trailing != null) s.cellInset else s.rowPadding),
+            Row(Modifier.heightIn(min = s.field).glassControl(Capsule, ring = ring)
+                .padding(start = VeloTheme.medium(18.dp), end = if (trailing != null) VeloTheme.medium(6.dp) else VeloTheme.medium(18.dp)),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {
-                    // The Duo's magnifier is 24 dp of ink (D12 24.0, L06 23.9): the control's icon size, not the row's.
-                    Icon(icon, null, Modifier.size(s.icon), tint = c.secondary)
-                    Spacer(Modifier.width(s.rowGap / 2))
+                    Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = c.secondary)
+                    Spacer(Modifier.width(VeloTheme.space.s8))
                 }
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     // Without a label the placeholder is the input's name, which the input already says.
-                    if (value.isEmpty()) Text(placeholder, if (!labelNamesField(label)) Modifier.clearAndSetSemantics {} else Modifier, style = type.body, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (value.isEmpty()) Text(placeholder, if (!labelNamesField(label)) Modifier.clearAndSetSemantics {} else Modifier, style = textStyle, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     field()
                 }
                 if (trailing != null) trailing()
             }
         }
-        if (error != null) Text(error, Modifier.padding(start = s.rowPadding, top = s.menuPadding / 2).semantics { liveRegion = LiveRegionMode.Polite },
-            style = type.caption, color = c.danger)
+        val note = error ?: help
+        if (note != null) Text(
+            note,
+            Modifier.padding(horizontal = VeloTheme.medium(if (error != null) 6.dp else 4.dp)).part(if (error != null) "error" else "help")
+                .then(if (error != null) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier),
+            style = type.caption.copy(lineHeight = 1.45.em), color = if (error != null) c.dangerText else c.secondary,
+        )
     }
 }
 

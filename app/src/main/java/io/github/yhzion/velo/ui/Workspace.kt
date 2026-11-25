@@ -715,7 +715,7 @@ internal fun Workspace(
                                         EmptyAction.CopyCommand -> copyFix()
                                         EmptyAction.ShowRemotes -> sidebar = true
                                     }
-                                }, kind = if (i == 0) ButtonKind.Primary else ButtonKind.Plain)
+                                }, kind = if (i == 0) ButtonKind.Primary else ButtonKind.Secondary)
                             }
                         }
                     }

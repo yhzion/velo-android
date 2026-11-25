@@ -4,10 +4,15 @@
 below record reference and comparison values, not a selectable Android theme. For the current
 settings layout, its controls and the reasons for their spacing, see [Settings design](settings-design.md).
 
-Velo's colours, corner radii, sizes and type are read from images of Rex for iOS.
-This file lists what was read, where, what is built from it, and what is still open. The
-tokens live in `app/src/main/java/io/github/yhzion/velo/ui/theme/`: the colours in `Tokens.kt`, the
-radii, sizes and text styles in `Metrics.kt`.
+Velo's colours, corner radii, sizes and type were read from images of Rex for iOS, and the
+redesign canvas (boards Tokens, Controls, Overlays, Tile, KeyBar, Rail and Pane) then set the
+values it draws. The redesign keeps the dark colours read from the images, adds a group for the
+settings sheet and the raised card, and gives its sizes at the **Medium** size; a source that
+names a board is the redesign's. This file lists what was read, where, what is built from it,
+and what is still open. The tokens live in `app/src/main/java/io/github/yhzion/velo/ui/theme/`:
+the colours in `Tokens.kt`, the radii, sizes, spacing steps and text styles in `Metrics.kt`.
+`RedesignTokensTest` holds them against `app/src/test/resources/redesign/tokens.json`, the
+Tokens board's values copied by hand.
 
 This document records the reference measurements and the tokens derived from them, then
 describes the theme, glass surfaces, reusable components, and debug gallery.
@@ -76,20 +81,25 @@ A source names the image by its id above and the reading by its name in "Read fr
 below, where the pixel, line or rectangle and the value read are listed. "derived" means that no
 image shows the value; what it is derived from follows.
 
-Measured: 87 tokens. Derived: 86 tokens. Counted per token and appearance (a colour that
-differs between Dark and Light counts twice); a token whose value was moved from a measured one
-to meet a contrast ratio counts as derived.
+Before the redesign: 87 tokens measured and 86 derived, counted per token and appearance (a
+colour that differs between Dark and Light counts twice); a token whose value was moved from a
+measured one to meet a contrast ratio counts as derived. The redesign's values are not in
+those counts; each names its board.
 
-Colours come in four groups, one per kind of surface, and every group has the same sixteen
+Colours come in five groups, one per kind of surface, and every group has the same seventeen
 roles. A screen area reads the group of the surface it sits on. That is what lets the sidebar
 stay dark in Light: it has its own group, dark in both appearances, while the chrome and the
-overlays of Light are light.
+overlays of Light are light. The fifth group, `sheet`, is the redesign's settings: chrome's
+fill with the sidebar's controls. The workspace's chrome (the rail, the key bar) keeps its own
+glass and its `#7FA6F5` accent, as the Rail and KeyBar boards draw them.
 
 Ruling kept: in every image, the light ones included, the sidebar, its "Search" field and the
 overview backdrop are black or near-black (L06, L09, D12, MB2). In Light they stay so.
 
-What the unit test `TokensContrastTest` holds, in both appearances and for every group: text,
-secondary text and destructive text reach 4.5 on the surface, on a selected row and on glass;
+What the unit test `TokensContrastTest` holds, in both appearances and for every group, and for
+the raised card on the sheet and on the sidebar: text, secondary text and destructive text
+(`dangerText`) reach 4.5 on the surface, on a selected row and on glass; a paragraph on a card
+(`textOnRaised`) reaches 4.5 on it;
 text on an accent or danger fill reaches 4.5; every state colour and every glyph of an icon-only
 control reaches 3 on what it is drawn on; a selected row differs from its surface by 1.1 or more
 (the Duo's own pill is 1.12) and a glass control by 1.25 or more through its fill or its edge. An
@@ -131,7 +141,8 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 | `onAccent` | Text and glyphs on an [accent] fill. | `#000000` | derived: the surface under the accent |
 | `ok` | Connected, running, finished. | `#30D158` | derived: the iOS system green of the dark appearance |
 | `warning` | Connecting, starting, waiting for the user. | `#FF9F0A` | derived: the iOS system orange of the dark appearance |
-| `danger` | Failed or not connected; destructive actions, as a mark and as text. | `#FF453A` | derived: the iOS system red of the dark appearance |
+| `danger` | Failed or not connected; a destructive action, as a mark, an outline or a fill. | `#FF453A` | derived: the iOS system red of the dark appearance |
+| `dangerText` | A destructive action and an error, as text. | `#FF6B61` | derived: the sheet's |
 | `onDanger` | Text on a [danger] fill (a destructive confirm button). | `#000000` | derived: as onAccent |
 
 **Sidebar: the sidebar and its search field. Dark in both appearances** (`VeloTheme.colors.sidebar`)
@@ -152,7 +163,8 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 | `onAccent` | Text and glyphs on an [accent] fill. | `#0B0C11` | derived: the surface | `#000000` | derived: the surface |
 | `ok` | Connected, running, finished. | `#30D158` | derived: the iOS system green of the dark appearance | `#30D158` | derived: the iOS system green of the dark appearance |
 | `warning` | Connecting, starting, waiting for the user. | `#FF9F0A` | derived: the iOS system orange of the dark appearance | `#FF9F0A` | derived: the iOS system orange of the dark appearance |
-| `danger` | Failed or not connected; destructive actions, as a mark and as text. | `#FF453A` | derived: the iOS system red of the dark appearance | `#FF453A` | derived: the iOS system red of the dark appearance |
+| `danger` | Failed or not connected; a destructive action, as a mark, an outline or a fill. | `#FF453A` | derived: the iOS system red of the dark appearance | `#FF453A` | derived: the iOS system red of the dark appearance |
+| `dangerText` | A destructive action and an error, as text. | `#FF6B61` | derived: the sheet's | `#FF453A` | derived: as danger |
 | `onDanger` | Text on a [danger] fill (a destructive confirm button). | `#0B0C11` | derived: the surface | `#000000` | derived |
 
 **Chrome: the pane header, the key bar, the rail, the full screens** (`VeloTheme.colors.chrome`)
@@ -173,7 +185,8 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 | `onAccent` | Text and glyphs on an [accent] fill. | `#0B0C11` | derived: the darkest surface | `#FFFFFF` | derived |
 | `ok` | Connected, running, finished. | `#30D158` | derived: the iOS system green of the dark appearance | `#248A3D` | derived: the iOS system green of the light appearance, darker variant |
 | `warning` | Connecting, starting, waiting for the user. | `#FF9F0A` | derived: the iOS system orange of the dark appearance | `#C93400` | derived: the iOS system orange, darker variant |
-| `danger` | Failed or not connected; destructive actions, as a mark and as text. | `#FF453A` | derived: the iOS system red of the dark appearance | `#D70015` | derived: the iOS system red, darker variant |
+| `danger` | Failed or not connected; a destructive action, as a mark, an outline or a fill. | `#FF453A` | derived: the iOS system red of the dark appearance | `#D70015` | derived: the iOS system red, darker variant |
+| `dangerText` | A destructive action and an error, as text. | `#FF6B61` | derived: the sheet's, on the same fill | `#D70015` | derived: as danger |
 | `onDanger` | Text on a [danger] fill (a destructive confirm button). | `#0B0C11` | derived | `#FFFFFF` | derived |
 
 **Overlay: menus, dialogs, popovers, the command palette** (`VeloTheme.colors.overlay`)
@@ -194,8 +207,29 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 | `onAccent` | Text and glyphs on an [accent] fill. | `#0B0C11` | derived | `#FFFFFF` | derived |
 | `ok` | Connected, running, finished. | `#30D158` | derived: the iOS system green of the dark appearance | `#1E7B34` | derived: chrome's green darkened to 3 on a selected row |
 | `warning` | Connecting, starting, waiting for the user. | `#FF9F0A` | derived: the iOS system orange of the dark appearance | `#C93400` | derived: chrome's |
-| `danger` | Failed or not connected; destructive actions, as a mark and as text. | `#FF9994` | derived: the dark red lightened to 4.5 as text over the lightest the material gets | `#B80012` | derived: chrome's red darkened to 4.5 as text over the darkest the material gets |
+| `danger` | Failed or not connected; a destructive action, as a mark, an outline or a fill. | `#FF9994` | derived: the dark red lightened to 4.5 as text over the lightest the material gets | `#B80012` | derived: chrome's red darkened to 4.5 as text over the darkest the material gets |
+| `dangerText` | A destructive action and an error, as text. | `#FF9994` | Tokens board "dangerOnOverlay": the destructive menu item | `#B80012` | derived: as danger |
 | `onDanger` | Text on a [danger] fill (a destructive confirm button). | `#0B0C11` | derived | `#FFFFFF` | derived |
+
+**Sheet: Settings, as the redesign draws it. Dark only** (`VeloTheme.colors.sheet`; Light uses chrome's)
+
+| token | Dark | source |
+|---|---|---|
+| `surface` | `#0F1015` | Tokens board "chrome": the settings' fill, as chrome's |
+| `text`, `onGlass` | `#F3F4F9` | Tokens board "text", as the sidebar's |
+| `secondary` | `#8C8F94` | Tokens board "secondary" |
+| `disabled` | `#5F6064` | Tokens board "disabled" |
+| `glass` | `#24262B` | Tokens board "glass": buttons, fields, the segmented track |
+| `glassEdge` | `#383C42` | Tokens board "glassEdge" |
+| `glassSelected` | `#3A3D44` | Tokens board "glassSelected": the selected cell, a switch that is off |
+| `selected` | `#1D1E23` | Tokens board "selected": the selected row, a disabled button |
+| `divider` | `#2B2C30` | Tokens board "divider": a group's border and its hairlines |
+| `accent` | `#63A2F6` | Tokens board "accent": links, a switch that is on, the primary button |
+| `onAccent` | `#0B0C11` | Tokens board "onAccent" |
+| `ok`, `warning` | `#30D158`, `#FF9F0A` | Tokens board |
+| `danger` | `#FF453A` | Tokens board: a field's error ring, the outlined destructive button's rim at 50 %, a destructive dialog's confirm |
+| `dangerText` | `#FF6B61` | Controls board: the outlined destructive button and a field's error line |
+| `onDanger` | `#0B0C11` | derived: the Overlays board writes white on the red, 3.4; dark text reaches 5.7 |
 
 **Of the appearance** (`VeloTheme.colors`)
 
@@ -204,62 +238,98 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 | `overlayAnchor` | What is behind an overlay, as it looks under the scrim, where the overlay is exactly its [SurfaceColors.surface]: the ground the surface colour was measured over. | `#15161B` | AK the screen above the sheet | `#BDBEC2` | MB1 backdrop behind the sheet |
 | `overlayLight` | How much of the lightness of what is behind an overlay shows in it: 0 none, 1 all of it. | 10 % | derived: no image shows an overlay over a bright picture; the most, with overlayTint, at which every text keeps 4.5 over any colour | 10 % | derived: Dark's; here too the most at which every text keeps 4.5 over any colour |
 | `overlayTint` | How much of the colour of what is behind an overlay shows in it. | 45 % | derived: as overlayLight | 45 % | derived: as overlayLight |
-| `scrim` | Laid over everything behind an open overlay. | `#000000` at 40 % | derived: AK against PK, two screenshots: under the sheet the header title reads 55 % and its disc 66 % of their values; black at 40 % | `#000000` at 23 % | M03 against M01: the pane behind the menu is dimmed by black at 23 % |
+| `scrim` | Laid over everything behind an open overlay. | `#000000` at 45 % | Tokens and Overlays boards (AK against PK read 40 %) | `#000000` at 23 % | M03 against M01: the pane behind the menu is dimmed by black at 23 % |
+| `raised` | A card that stands out of the sheet or the start screen. | `#15171D` | Tokens board "raised", the one value the redesign adds | `#FFFFFF` | derived: a step lighter than chrome |
+| `textOnRaised` | A paragraph in a card or a dialog. | `#C2C3C9` | Tokens board "textOnRaised", the overlay's secondary | `#3C3C40` | derived |
 | `paneFocus` | The edge of the pane that takes the keys. | `#7FA6F5` at 70 % | derived: chrome's accent at 70 %, the strength the app uses today | `#63A2F6` at 70 % | derived: the backdrop's accent at 70 %, as Dark's strength; chrome's #336FB1 reads 2.46 on black |
+
+The settings categories' icon tiles have a tint each (`CategoryTints`, Controls board):
+appearance `#5B4FC4`, keyboard `#3E4A5E`, notifications `#9A3B62`, remotes `#2F6B57`, about `#2F5E9E`.
+
+What the redesign's boards draw that is not a token, and why:
+
+- The Overlays board writes the destructive confirm's label in white, 3.4 on `#FF453A`; the app
+  keeps `onDanger`, 5.7. The board fills that button with the sheet's `danger`; the overlay's own
+  `danger` stays `#FF9994`, since `#FF453A` is 2.98 as a mark over a bright terminal.
+- A dialog's field rim is the overlay's `glassSelected`, `#4A4D5C`, as the board draws it; the
+  overlay's `glassEdge` stays `#727588`, since `#4A4D5C` as the rim of glass reads 1.248 over a
+  bright terminal, under the 1.25 the test holds.
+- The state chip's green words, `#7EE29A`, belong to `StateChip`; other states lighten their colour as much.
+- Tints made from a token with an alpha (the state chip at 12 %, the warning note at 10 %, the
+  chosen key chip at 16 % with a rim at 55 %, the destructive rim at 50 %) are drawn by their component.
+- Brand colours of the tab tiles are in `TileBrand` (Tile board).
 
 ### Corner radii (`VeloTheme.radii`), the same in both appearances
 
-| token | dp | for, and source |
+A value given at Medium is the redesign's; the Large value is it divided by 0.85.
+
+| token | dp at Medium | for, and source |
 |---|---|---|
-| `pane` | 40 | A pane card (L06 41.0, L20 40.3). |
-| `paneCompact` | 12 | A pane card on the folded screen. derived: the app's compact pane style; the folded Duo shows one pane edge to edge. |
-| `overlay` | 38 | A menu, dialog, popover or the palette (AK 38.7, MB1 38.1, M03 37.2). |
-| `card` | 26 | A group or card inside an overlay (AK 25.8). |
-| `bar` | 27 | The key bar strip (L20 26.8). |
-| `tile` | 8 | The program tile of a row (D12 8.1). |
+| `pane` | 16 | A pane card: Tokens board "card", the Pane board's terminal pane. |
+| `paneCompact` | 10.2 (12 at Large) | A pane card on the folded screen. derived: the app's compact pane style; the folded Duo shows one pane edge to edge. |
+| `overlay` | 32 | A dialog, popover or the palette (Tokens board "dialog"). |
+| `card` | 16 | A card: the raised card on the sheet, a glass card inside a dialog (Tokens board "card"). |
+| `bar` | 28 | The key bar strip, a capsule 56 high (KeyBar board). |
+| `tile` | 8 | A tab tile of 30 (Tokens board "tile": the tile's size times 0.27; `TabTile` computes it from its size). |
+| `badge` | 11 | A small badge, such as a license's name (Tokens board "badge"). |
+| `group` | 12 | A group of setting rows (Tokens board "group"). |
+| `sheet` | 20 | The settings sheet on the unfolded screen (Tokens board "sheet"). |
+| `pill` | 24 | A button, a field, a segmented track, a menu (Tokens board "pill"). |
+| `nav` | 30 | The category list beside the details on the unfolded screen (Tokens board "nav"). |
+
+### Spacing steps (`VeloTheme.space`)
+
+The Tokens board uses the steps 4, 8, 12, 16, 20 and 24 at Medium: `space.s4` to `space.s24`,
+scaled with the Size setting. A number a board draws that no token holds is taken at Medium
+with `VeloTheme.medium(14.dp)` (`mediumAt(size, value)`), so that it scales as the tokens do.
 
 ### Sizes (`VeloTheme.sizes`), the same in both appearances
+
+A plain number is the Large size read from the images; "at Medium" is the redesign's.
 
 | token | dp | for, and source |
 |---|---|---|
 | `control` | 48 | A round glass control and the least touch target (D12 rail disc 47.3, L06 49.6). |
 | `capsule` | 52 | The thickness of a capsule that holds several icons (D12 51.2, L06 54.3). |
 | `capsuleCell` | 56 | One icon's share of that capsule's length (L06 55.5). |
-| `cellInset` | 4 | How far a selected cell stays inside its capsule. derived: D12's tab capsule keeps 1.9 in a capsule of 27.8; the same share of this one. |
+| `cellInset` | 3 at Medium | How far a selected cell stays inside its capsule (Controls board: the segmented track's 3). |
 | `icon` | 28 | An icon in a control (D12 ink 22.0 to 27.8; a Material icon inks five sixths of its box). |
 | `iconSmall` | 20 | An icon beside a header or inside a row (L06 "+" ink 17.3). |
-| `row` | 60 | A list row and its selected pill (D12 59.6, L06 59.1). |
-| `sectionHeader` | 60 | A section header of the list (L06: 59.7 from a header's centre to its row's; D12: a header and a row take 116.6). |
+| `row` | 60 at Medium | A row of settings and a list row (Tokens board: "설정 행은 최소 60 높이"). |
+| `tabRow` | 56 at Medium | A tab's row in the sidebar (Controls board, sample-tab-row). |
+| `sectionHeader` | 44 at Medium, kept at 48 | A section header of the list (Sidebar board, session header). |
 | `rowInset` | 18 | The selected pill's distance from the list's edge (D12 18.1, L06 17.9). |
 | `rowPadding` | 20 | From the pill's edge to the row's tile (L06 19.7). |
 | `rowGap` | 14 | From the tile to the title (D12 15.5; L06 puts the title 69.3 from the pill's edge, which is padding, tile and this). |
 | `tile` | 36 | The program tile of a row (D12 36.9 wide). |
-| `mark` | 8 | A state dot (D12 7.8, MB2 7.3). |
+| `mark` | 8 at Medium | A state dot (Controls board, sample-status-dot). |
+| `dot` | 9 at Medium | The update dot and a tab tile's state dot, each in a ring of the surface (Controls board). |
+| `tabTile` | 30 at Medium | A tab tile's face in a sidebar row (Controls board, sample-tab-row). |
 | `field` | 48 | The search field and a field in a dialog (D12 45.3, L06 50.2). |
 | `sidebar` | 366 | The sidebar (D12 365.9). |
 | `rail` | 68 | The rail. derived: a control and a gap on each side; the Duo's rail (109) is built around its camera. |
 | `keyBar` | 63 | The key bar strip (L20 62.7). |
 | `key` | 50 | The least width of a key (D12 label pitch 50.5). |
 | `keyHeight` | 47 | A key that has its own capsule (D12 46.6, 47.3). |
-| `gap` | 10 | Between panes, and between panes and chrome (L20 10.2). |
+| `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
 | `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style. |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |
 | `menuItem` | 48 | A menu item. derived: M03 45.7 and AK 44.8, raised to Android's least touch target. |
 | `menuWidth` | 285 | The widest a menu grows (M03 284.8). |
 | `menuPadding` | 8 | Above the first and under the last item of a menu, and around its divider. derived: half the overlay padding. |
 | `menuMinWidth` | 200 | The narrowest a menu is. derived: wide enough for an icon and two short words at the body size. |
-| `dialogWidth` | 386 | A dialog (MB1 sheet 385.8). |
+| `dialogWidth` | 386 at Medium | The widest a dialog grows (Overlays board, DlgAddRemote). |
 | `paletteWidth` | 420 | The command palette. derived: the app's width today; no image shows the palette. |
 | `paletteHeight` | 520 | The tallest the command palette grows. derived: the app's height today. |
 | `overlayMargin` | 8 | An overlay's distance from the window's edge and from its anchor (MB1 sheet inset 8.1). |
 | `blur` | 24 | How far the picture behind an overlay is blurred. derived: far enough that no letter of a terminal can be read through it. |
 | `overlayShadow` | 12 | The shadow under an overlay, as an elevation. derived: M03 shows a soft shadow of about 6 px around the menu. |
-| `edge` | 0.65 | The glass edge and a divider (D12: one image pixel, 0.65). |
+| `edge` | 1 | The glass edge, a group's border and a divider (Controls board). Not scaled. |
 | `paneFocus` | 2 | The edge of the pane that takes the keys. derived: the app's width today. |
-| `switchWidth`, `switchHeight` | 51, 31 | A switch's track. derived: the iOS system switch, 51 by 31 pt; no image shows a switch. |
-| `switchInset` | 2 | From a switch's track to its knob. derived: the iOS system switch. |
-| `sliderTrack` | 4 | A slider's track. derived: the iOS system slider; no image shows a slider. |
-| `sliderKnob` | 28 | A slider's knob. derived: the iOS system slider. |
+| `switchWidth`, `switchHeight` | 51, 31 at Medium | A switch's track (Controls board). |
+| `switchInset` | 2 at Medium | From a switch's track to its knob (Controls board). |
+| `sliderTrack` | 4 at Medium | A slider's track (Controls board). |
+| `sliderKnob` | 28 at Medium | A slider's knob (Controls board). |
 | `sheetWidth` | 820 | Maximum width of the settings sheet on wide windows. Derived from its proportion within a 1088dp reference window. |
 | `sheetList` | 236 | The list of categories beside the details in the settings sheet. derived: as `sheetWidth`. |
 | `statusIcon` | 16 | A tab's state icon, and the height of its working dots (1.5 times as wide). derived: the app's size today. |
@@ -268,34 +338,44 @@ The app requests light system-bar icons over its dark surfaces, regardless of de
 
 ### Text styles (`VeloTheme.type`), the same in both appearances
 
+The family is the device's own (Roboto on Android; the boards set Roboto). A size "at Medium" is
+the redesign's type scale (Tokens board); a plain one is the Large size of a style the boards do
+not name. Line heights are derived.
+
 | token | size / line, weight | for, and source |
 |---|---|---|
-| `body` | 19 / 24 sp, Normal | Row titles, the search field, menu items, dialog text (D12 19.3 to 19.7, L06 19.3 to 19.5, M03 19.5). |
-| `bodyStrong` | 19 / 24 sp, Medium | The same, for the row that names a unit: a remote, This Device. derived: body, at the weight of the host label. |
-| `header` | 18 / 22 sp, SemiBold | Section headers of the list (D12 18.5, L06 18.2). |
-| `title` | 17 / 22 sp, SemiBold | The pane header's title (L01 16.9, M01 16.8). |
-| `caption` | 13 / 18 sp, Normal | Second lines and notes (L01 13.6, MB2 13.0, M01 12.3, PK 12.2). |
-| `overlayTitle` | 20 / 25 sp, SemiBold | The title of a dialog or sheet (AK 20.6 to 21.1). |
-| `key` | 17 / 22 sp, Normal, monospace | Key labels (D12 17.1, monospace). |
-| `clock` | 19 / 22 sp, SemiBold | The rail's clock (D12 18.4, L06 18.6, M01 18.9; the iPhone stills 18.8). |
-| `tileGlyph` | 12 / 14 sp, Bold, monospace | The glyph inside a row's tile. derived: the tile's height less its padding. |
-| `screenTitle` | 28 / 34 sp, SemiBold | The title of a full screen. derived: the app's size today; no image shows a full screen's title. |
-| `wordmark` | 40 / 48 sp, SemiBold | The wordmark of the start screen. derived: the app's size today. |
-| `control` | 17 / 22 sp, Normal | A cell of a segmented capsule; the selected cell is Medium. derived: the pane title's size at the body's weight; no image shows a segmented control. |
+| `screenTitle` | 26 / 32 sp at Medium, SemiBold | The title of a full screen: Settings (Tokens board "screen-title"). |
+| `pageTitle` | 22 / 28 sp at Medium, SemiBold | A page's title beside the categories on the unfolded screen (Tokens board "page-title"). |
+| `overlayTitle` | 20 / 26 sp at Medium, SemiBold | The title of a dialog or a card (Tokens board "dialog-title"). |
+| `title` | 18 / 24 sp at Medium, SemiBold | The title of a header: a settings page's, a pane's (Tokens board "header-title"). |
+| `body` | 16 / 22 sp at Medium, Normal | Row titles, buttons, menu items, a field's text (Tokens board "body"). |
+| `bodyStrong` | 16 / 22 sp at Medium, Medium | The same, for a label that stands out. derived: the boards' button weight. |
+| `value`, `control` | 15 / 20 sp at Medium, Normal | A row's value, a menu button, a segmented cell (Medium when chosen) (Tokens board "value"). |
+| `header` | 15 / 20 sp at Medium, Medium | Section headers of the sidebar's list (Sidebar board, session header). |
+| `caption` | 13 / 18 sp at Medium, Normal | Second lines, notes; at Medium weight, a settings group's heading (Tokens board "caption"). |
+| `eyebrow` | 12 / 16 sp at Medium, Bold, tracking 0.06 em | A small heading in capitals: NEW VERSION (Tokens board "eyebrow"). |
+| `key` | 13 / 18 sp at Medium, Medium, monospace | Key labels (Controls and KeyBar boards). |
+| `clock` | 17 / 22 sp at Medium, SemiBold | The rail's clock (Rail board). |
+| `wordmark` | 38 / 44 sp at Medium, SemiBold, tracking -0.01 em | The wordmark of the start screen (StartKit board; 44 on the unfolded screen). |
+| `tileGlyph` | 12 / 14 sp, Bold, monospace | The glyph inside a row's `RowTile`. derived: the tile's height less its padding. |
 | `markGlyph`, `markGlyphTile` | 16 / 20 sp, 26 / 30 sp | A program's glyph beside a tab's caption, and in a row's tile. derived: the app's size today. |
+
+The Tokens board's terminal style, JetBrains Mono at 12.5, is not a text style here: the
+terminal keeps its own Font and Font size settings (default 13).
 
 ### The Size setting (`UiSize`)
 
-The values above are the **Large** size: the size read from the Duo. Settings > Appearance >
+The tokens are kept at the **Large** size, the size read from the Duo; a value the redesign
+gives at Medium is kept as the Large value that Medium scales to it. Settings > Appearance >
 Size also offers **Medium** (the default) and **Small**, which scale them by a factor
-(`veloSizes`, `veloType`, `veloRadii` in `ui/theme/Metrics.kt`). The terminal's text keeps its own
+(`veloSizes`, `veloType`, `veloRadii`, `veloSpace` in `ui/theme/Metrics.kt`). The terminal's text keeps its own
 Font size setting and is not scaled.
 
-| size | factor | body text | row |
+| size | factor | body text | settings row |
 |---|---|---|---|
-| Large | 1.00 | 19 sp | 60 dp |
-| Medium | 0.85 | 16.2 sp | 51 dp |
-| Small | 0.72 | 13.7 sp | 48 dp |
+| Large | 1.00 | 18.8 sp | 70.6 dp |
+| Medium | 0.85 | 16 sp | 60 dp |
+| Small | 0.72 | 13.6 sp | 50.8 dp |
 
 Medium and Small scale the Large measurements. The following values do not scale directly:
 
@@ -304,7 +384,7 @@ Medium and Small scale the Large measurements. The following values do not scale
   44 dp (`MinKey`), the iOS least touch target, so that a row of keys still fits the bar.
 - The rail stays a control and a gap on each side; the key bar stays as much taller than its
   keys as it is at Large.
-- `edge`, `paneFocus`, `blur` and `overlayShadow` do not scale, nor do the physical pixels of
+- `edge` (and a field's ring, twice it), `paneFocus`, `blur` and `overlayShadow` do not scale, nor do the physical pixels of
   the Compact pane style.
 - No text is smaller than 11 sp (`MinTextSp`); a style keeps its line height in proportion.
 - The breakpoint between the folded and the unfolded layout is the window's width in dp, so a
@@ -554,7 +634,7 @@ dp follow the mappings above.
 
 ```kotlin
 @Composable fun VeloTheme(size: UiSize = UiSize.Large, content: @Composable () -> Unit)
-object VeloTheme { colors: VeloColors; surface: SurfaceColors; radii: VeloRadii; sizes: VeloSizes; type: VeloType }
+object VeloTheme { colors: VeloColors; surface: SurfaceColors; radii: VeloRadii; sizes: VeloSizes; type: VeloType; space: VeloSpace; size: UiSize; fun medium(value: Dp): Dp }
 @Composable fun VeloSurface(colors: SurfaceColors, content: @Composable () -> Unit)
 fun rounded(radius: Dp): Shape
 val Capsule: Shape
@@ -564,7 +644,8 @@ fun materialColors(s: SurfaceColors, scrim: Color): ColorScheme
 - `VeloTheme(size = app.settings.uiSize)` uses the same dark palette on every launch. An old
   `colorScheme` preference does not override it. Interface size and terminal font remain independent.
 - A screen area declares the surface it is on with `VeloSurface(VeloTheme.colors.sidebar) { … }`
-  (or `backdrop`, `chrome`, `overlay`); `VeloTheme` starts on chrome. Inside, every component
+  (or `backdrop`, `chrome`, `overlay`, `sheet`); `VeloTheme` starts on chrome. The settings
+  panel (`SettingsPanelSurface`) is on `sheet`. Inside, every component
   reads `VeloTheme.surface` for the area beneath it.
 - The Material bridge: `VeloSurface` wraps its content in a `MaterialTheme` whose colour scheme,
   typography and shapes are made from the tokens of that surface (`materialColors`), and sets
@@ -582,8 +663,15 @@ shape, with the `glassEdge` rim `sizes.edge` wide. On dark glass the rim is lit 
 bottom and falls to 35 % at the sides, as D12 and PK show; on light glass it is one line all
 round (M01, MB1). It shows nothing through: chrome never overlaps a pane.
 
+`Modifier.glassControl(shape = Capsule, selected = false, ring: Color? = null)` is glass as the
+redesign draws a control (Controls board): the fill and one even rim of `glassEdge` all round
+(on an overlay, its `glassSelected`, as a dialog's field). `ring` replaces the rim with a line
+twice as wide: a field's focus (`colors.chrome.accent`) or its error (`danger`). Buttons,
+fields, the segmented track and the menu button use it.
+
 **Over the panes.** `OverlaySurface(modifier, shape = rounded(radii.overlay)) { … }` is the
-surface of every menu, dialog, popover and of the palette. Its fill is a blur of what is behind
+surface of every menu (with `radii.pill`), dialog, popover and of the palette. Its rim is one
+even line of the overlay's `divider` (Overlays board). Its fill is a blur of what is behind
 it, made by the app:
 
 ```kotlin
@@ -656,30 +744,70 @@ Each reads the colours of the surface it is on. Every icon-only control takes a
 | Status mark | `StatusMark(status: Status, contentDescription: String, modifier = Modifier, icon: ImageVector? = null)`, `enum class Status { Ok, Warning, Danger, Active, Off }` | `ConnectionDot` (`ui/Sidebar.kt:354`), the node's dot in `DeviceHeader` (`:286-288`), the activity dot (`:366-369`), `LinkGlyph` (`ui/Rail.kt:50`, with `icon`). A dot or a glyph; it takes no tap |
 | Key cap | `KeyCap(label: String, onClick, modifier = Modifier, armed = false, icon: ImageVector? = null, contentDescription: String? = null, enabled = true)` | the key `Box` of `KeyBar` (`ui/KeyBar.kt:69-73`); `armed` is Ctrl waiting for its letter; with `icon` the arrow is drawn and `label` is spoken; `enabled` false (the connection is down) draws it in `disabled`, unfilled, and takes no tap |
 | Key bar strip | `KeyStrip(modifier = Modifier, content: @Composable RowScope.() -> Unit)` | the `BoxWithConstraints` of `KeyBar` (`ui/KeyBar.kt:60`); the scrolling and the fades stay with `KeyBar` |
-| Text button | `VeloButton(text: String, onClick, modifier = Modifier, kind: ButtonKind = ButtonKind.Plain, enabled = true)`, `enum class ButtonKind { Primary, Plain, Destructive }` | Material `Button` (Primary), `OutlinedButton` and `TextButton` (Plain) in `ui/StartScreen.kt:70-94`, `ui/SettingsScreen.kt:90,133,146,151`, `ui/PairingScreen.kt:91,92`, `ui/Workspace.kt:168,171`, `ui/HostDialogs.kt:67` |
+| Button | `VeloButton(text: String, onClick, modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled = true, small = false, icon: Painter? = null, iconAtEnd = false)`, `enum class ButtonKind { Primary, Secondary, Destructive, Text }` | Controls board: Primary is the accent's fill (one per screen), Secondary glass with a rim, Destructive a red rim at 50 % with `dangerText`, Text the accent's words (44 high). Not enabled: the `selected` fill with `disabled` words. `small` is the 40 high button of a list row. Every button keeps the 48 dp touch target |
+| Update dot | `AttentionBadge(tint: Color, modifier = Modifier, ring: Color = VeloTheme.surface.surface)` | a flat dot in a 2 ring of what it sits on (Controls board, sample-update-dot); size it with `sizes.dot` |
+| State chip | `StateChip(text: String, status: Status, modifier = Modifier)` | a state in words on a 12 % tint of its colour, with its dot (Controls board: Connected) |
+| Badge | `TagBadge(text: String, modifier = Modifier)` | a short name on glass, such as a license's (Controls board) |
+| Eyebrow | `Eyebrow(text: String, modifier = Modifier, color = surface.accent)` | the small heading in capitals: NEW VERSION, EXAMPLES; it is a heading for a screen reader |
 
 ### Settings controls (`ui/theme/Controls.kt`)
 
-No image shows the Duo's settings. These are derived from the two sheets that are shown (AK,
-MB1), the tab capsule (D12) and the iOS system controls. The knob of a switch and a slider is
-white in both appearances, as the iOS knobs are, with a soft shade under it.
+As the redesign's Controls board draws them, at Medium. A switch's knob is white when on and
+`textOnRaised` when off, with a soft shade under it; a slider's knob is white.
 
-| component | signature | replaces |
+| component | signature | what it is |
 |---|---|---|
-| Group | `GroupHeader(text)`, `GroupCard(modifier, content)`, `GroupDivider()` | the bordered `SettingsCard` and `HorizontalDivider` of the settings; a card is glass with the `card` radius (AK grouped card) |
-| Setting row | `SettingRow(label, modifier, control)` | a label with its control at the end; a control too wide to sit beside the label goes under it |
-| Switch | `VeloSwitch(checked, modifier)` | Material `Switch`; drawn only, the row takes the tap (`Toggle`, `Role.Switch`) |
-| Slider | `VeloSlider(value, onValueChange, modifier, valueRange, steps, onValueChangeFinished)` | Material `Slider`; a tap, a drag along it, the left and right keys and a screen reader's own actions move it |
-| Segmented capsule | `VeloSegmented(options, selected, label, modifier, onPick)` | the bordered choice chips; the selected cell is `glassSelected`, as the tab capsule's |
-| Key choice | `KeyChoice(label, selected, onClick, modifier, contentDescription)` | Material `FilterChip` of the key bar's keys |
-| Close button | `CloseButton(onClick, modifier, contentDescription = "Close")` | the round close of a sheet, `glassSelected` (AK close disc) |
+| Group | `GroupHeader(text, modifier, first = false)`, `GroupCard(modifier, content)`, `GroupDivider()` | the heading is the caption at Medium weight, 20 above it (12 when `first`); the group has no fill, a 1 border of `divider` and the `group` radius, and its rows keep 16 from its start and 12 from its end; a divider runs from the rows' start to the border. On an overlay a group is a glass card with the `card` radius |
+| Setting row | `SettingRow(label, modifier, control)` | a label with its control at the end, 60 high; a control too wide to sit beside the label goes under it |
+| Switch row | `SwitchRow(label, checked, onCheckedChange, modifier, subtitle = null, enabled = true)` | the whole row is the switch (`Role.Switch`), 60 high or 64 with a second line |
+| Navigation row | `NavigationRow(title, onClick, modifier, value = null, subtitle = null, enabled = true, trailing = null)` | a row that opens a page: its value in `secondary`, then a chevron |
+| Action row | `ActionRow(text, icon: ImageVector, onClick, modifier, enabled = true)` | words and an icon in the accent: Add Remote… |
+| Switch | `VeloSwitch(checked, modifier, enabled = true)` | drawn only, the row takes the tap; on, the accent; off, `glassSelected`; not enabled, plain glass and a `disabled` knob |
+| Slider | `VeloSlider(value, onValueChange, modifier, valueRange, steps, onValueChangeFinished)` | a tap, a drag along it, the left and right keys and a screen reader's own actions move it |
+| Segmented control | `VeloSegmented(options, selected, label, modifier, optionTag = null, onPick)` | a glass track with a rim; the chosen cell is `glassSelected` and Medium; `optionTag` tags each cell. In the settings sheet the cells wrap instead of being cut |
+| Menu button | `MenuButton(text, onClick, modifier, enabled = true, contentDescription = null)` | a 44 high glass pill with the current choice and a chevron; it opens a `SelectMenu` |
+| Key choice | `KeyChoice(key, selected, onClick, modifier)` | a key chip: tinted with the accent and its rim when chosen, a `glassEdge` rim alone when not |
+| Close button | `CloseButton(onClick, modifier, contentDescription = "Close")` | the 48 glass disc of a sheet's header, with a light line along its top |
+
+### Cards (`ui/theme/Cards.kt`)
+
+| component | signature | what it is |
+|---|---|---|
+| Raised card | `RaisedCard(modifier, padding: Dp? = null, spacing: Dp? = null, content: ColumnScope.() -> Unit)` | `colors.raised`, a border of `divider`, the `card` radius, 18 inside and 14 between its parts unless given; its words keep the surface's colours, a paragraph is `textOnRaised` |
+| Warning note | `WarningNote(text, modifier)` | the warning triangle and the words on a 10 % tint of `warning` |
+| Category icon | `CategoryIcon(icon: Painter, tint: Color, modifier)` | a white line icon on a 32 tile of the category's tint (`CategoryTints`) |
+
+### Tab tile (`ui/theme/Tile.kt`)
+
+`TabTile(brand: TileBrand, modifier, panes = 1, size = sizes.tabTile, dot: TileDot? = null,
+ring = surface.surface, tag: String? = null, contentDescription = tileLabel(brand, panes))`
+draws the redesign's tab tile (Tile and TabTiles boards). The rules are pure functions of the
+face's size at Medium and are unit-tested (`TabTileTest`):
+
+| rule | function |
+|---|---|
+| One layer per pane, at most four (`MaxTileLayers`) | `tileLayers(panes)` |
+| The pane count shows from five panes, at the front tile's lower right | `tilePaneCountShown(panes)`, `tileCountRect(size, digits)` |
+| The state dot (`TileDot.Unread` accent, `Waiting` warning, `Failed` danger) keeps the upper right; the two never overlap | `tileDotRect(size)` |
+| Each layer behind steps `max(2.5, size × 0.115)` up and right, 12 % smaller, 20 % fainter and darker | `tileStep`, `tileBackLayers(panes, size)` |
+| The box is the face and three steps, so a row's words never move | `tileBox(size)` |
+| Corner `size × 0.27`, logo `size × 0.6`, letter `size × 0.56` (`>_` 0.4) | `tileCorner`, `tileGlyph`, `tileLetter` |
+| What a screen reader says: "Claude Code, 3 panes" | `tileLabel(brand, panes)` |
+| A program's brand from its name | `tileBrand(program)` |
+
+`TileBrand` holds each brand's label, logo and colours. Claude and Codex fill their tile (the
+orange gradient; white to `#E3E3E3` with Codex's own C, `ic_agent_codex`); the tools draw a
+Simple Icons 16.38.1 logo (`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass;
+Azure and Heroku are letter tiles; any other program is `>_`. The parts carry the canvas's
+test tags under `tag`: `-face`, `-logo`, `-letter`, `-layer-2` to `-layer-4`, `-badge`, `-pane-count`.
+The sidebar does not use it yet.
 
 ### Fields (`ui/theme/Fields.kt`)
 
 | component | signature | replaces |
 |---|---|---|
 | Search field | `SearchField(query: String, onQueryChange: (String) -> Unit, modifier = Modifier, placeholder: String = "Search")` | the outlined "Filter" box (`ui/Sidebar.kt:206`). Place it over the bottom of the list (`Modifier.align(Alignment.BottomCenter)` in a `Box` around the `LazyColumn`), as the gallery does. In the sidebar it lies on a band of the surface colour from `sizes.gap` above it to the bottom (`.background(VeloTheme.surface.surface).padding(vertical = sizes.gap)`), so rows that scroll under it do not show around it; give the list a bottom content padding of `sizes.field` plus the band's two gaps |
-| Text field | `VeloTextField(value: String, onValueChange: (String) -> Unit, modifier = Modifier, placeholder = "", label: String? = null, error: String? = null, icon: ImageVector? = null, keyboardOptions = KeyboardOptions.Default, keyboardActions = KeyboardActions.Default, trailing: (@Composable () -> Unit)? = null)` | every `OutlinedTextField`: `ui/HostDialogs.kt:61,64` (`label`, `error` for "taken"), `ui/PairingScreen.kt:80`, `ui/SettingsScreen.kt:140` (`trailing` for its Save button) |
+| Text field | `VeloTextField(value: String, onValueChange: (String) -> Unit, modifier = Modifier, placeholder = "", label: String? = null, error: String? = null, icon: Painter? = null, keyboardOptions = KeyboardOptions.Default, keyboardActions = KeyboardActions.Default, trailing: (@Composable () -> Unit)? = null, visualTransformation, help: String? = null, mono = false, tagPrefix: String? = null)` | a `glassControl` pill, 48 high (Controls and Overlays boards). While it has the keys its ring is `colors.chrome.accent`; an `error` turns the ring `danger` and takes the place of `help` in `dangerText`. `mono` sets an address or a path in the monospace face. `tagPrefix` tags `-field`, `-input`, `-help` and `-error` |
 
 ### Overlays (`ui/theme/Overlays.kt`)
 
@@ -689,8 +817,10 @@ closes it. The `…Surface` composables are the same surfaces without a window.
 | component | signature | replaces |
 |---|---|---|
 | Menu | `VeloMenu(expanded: Boolean, onDismissRequest: () -> Unit, modifier = Modifier, anchor: (() -> IntRect?)? = null, content: @Composable ColumnScope.() -> Unit)`; `MenuSurface(modifier, content)` | `DropdownMenu` (`ui/PaneMenu.kt:25`, `ui/Sidebar.kt:336`, `ui/Workspace.kt:223`). Declared in the `Box` of its button it opens under it, as `DropdownMenu` does; `anchor` gives a rectangle of the screen instead (a long press on a pane) |
-| Menu item | `MenuItem(text: String, onClick, modifier = Modifier, icon: ImageVector? = null, enabled = true, destructive = false)`; `MenuDivider(modifier = Modifier)` | `DropdownMenuItem`, `HorizontalDivider` (`ui/PaneMenu.kt:26-51`, `ui/Sidebar.kt:339-345`, `ui/Workspace.kt:220-228`) |
-| Dialog | `VeloDialog(title: String, onDismissRequest, confirmText: String, onConfirm, modifier = Modifier, text: String? = null, cancelText = "Cancel", destructive = false, confirmEnabled = true, content: (@Composable ColumnScope.() -> Unit)? = null)`; `DialogSurface(title, confirmText, onConfirm, onCancel, modifier, text, cancelText, destructive, confirmEnabled, content)` | `AlertDialog`: `AddHostDialog` (`ui/HostDialogs.kt:56`, its fields in `content`), `RemoveRemoteDialog` (`:97`, `destructive`), "Close pane?" (`ui/Workspace.kt:268`, `destructive`) |
+| Menu item | `MenuItem(text: String, onClick, modifier = Modifier, icon: ImageVector? = null, enabled = true, destructive = false)`; `MenuDivider(modifier = Modifier)` | the row menu (Overlays board, popup-menu): a pill of `radii.pill`, items 48 high and 20 in, the icon in `secondary`; a destructive item in `dangerText` |
+| Select menu | `SelectMenu(expanded, onDismissRequest, options: List<T>, selected: T, label: (T) -> String, onPick, modifier, anchor = null, optionTag = null)`; `SelectMenuItem(text, selected, onClick, modifier)` | the menu a `MenuButton` opens (Overlays board, select-menu): the current value has a check in the accent |
+| Dialog | `VeloDialog(title: String, onDismissRequest, confirmText: String, onConfirm, modifier = Modifier, text: String? = null, cancelText = "Cancel", destructive = false, confirmEnabled = true, …, tagPrefix: String? = null, content: (@Composable ColumnScope.() -> Unit)? = null)`; `DialogSurface(…)` | Overlays board: radius 32, 22 above, 20 at the sides, 16 below; the `text` in the overlay's `secondary` at 15; Cancel as words and the confirming button filled with the accent (the sheet's red when `destructive`) at the lower right, wrapping under each other when they do not fit. `tagPrefix` tags `-title`, `-body`, `-actions`, `-cancel`, `-confirm` |
+| Toast | `ToastSurface(message, modifier, icon: ImageVector? = null, iconTint: Color? = null, actionLabel: String? = null, onAction: (() -> Unit)? = null)`; `VeloToast(message: String?, onDismiss, …)` | Overlays board: a 48 high pill of the overlay at the bottom centre, a polite live region, tagged `toast`, `toast-message`, `toast-action`. `VeloToast` dismisses it after `ToastMillis` (3 s) or as long as the accessibility settings ask |
 | Popover | `VeloPopover(expanded, onDismissRequest, modifier = Modifier, anchor: (() -> IntRect?)? = null, content: @Composable ColumnScope.() -> Unit)`; `PopoverSurface(modifier, content)` | nothing today; for the size popover and the remote's details the spec adds |
 | Palette | `VeloPalette(query: String, onQueryChange, onGo: () -> Unit, onDismissRequest, modifier = Modifier, placeholder = "Command Palette", content: LazyListScope.() -> Unit)`; `PaletteSurface(query, onQueryChange, onGo, modifier, placeholder, focus = false, content)`; `PaletteRow(title: String, onClick, modifier = Modifier, enabled = true, note: String? = null)` | the `Dialog`, field and rows of `CommandPalette` (`ui/Palette.kt:39-58`); the list of commands and what Go runs stay there |
 | Any other surface over the panes | `OverlaySurface(modifier = Modifier, shape: Shape = rounded(VeloTheme.radii.overlay), content: @Composable BoxScope.() -> Unit)` | the `Snackbar` of `ErrorNotice` (`ui/Dialogs.kt`) if it is to blur; otherwise Material's keeps working through the bridge |
@@ -719,7 +849,7 @@ Today's fifteen colour values, and the role each becomes:
 | `0xFF0A84FF` (`Blue`, `Accent`) | `accent`; `colors.paneFocus` for the pane edge |
 | `0xFF2C2C2E` | `glass` (the row tile, the overview tile) |
 | `0xFF30D158`, `0xFFFF9F0A` | `ok`, `warning` |
-| `0xFFFF453A` and `0xFFFF6B6B` (`Warn`) | `danger`, one red for the mark and the text |
+| `0xFFFF453A` and `0xFFFF6B6B` (`Warn`) | `danger` for the mark, the rim and the fill; `dangerText` for the words |
 | `0x8C000000` over docked panes | `colors.scrim` |
 
 ## The gallery
@@ -735,7 +865,12 @@ pane header, a pane, the key bar, the rail) around a real `SurfaceView` that dra
 pattern: terminal text that stands still, coloured bars that travel, and the time. Below it,
 every overlay surface without its window, both dialogs, the buttons, fields and marks in every
 state, and the settings controls on the overlay surface. The rail's three buttons and the header's `…`
-open the overlays over the pattern.
+open the overlays over the pattern. Last come the redesign's samples (`RedesignSample`,
+`app/src/debug/.../RedesignGallery.kt`): the Controls and Overlays boards' rows, buttons,
+controls, fields, marks, the confirm and Add Remote dialogs, the menus, the toast and every tab
+tile, each under the test tag its board gives it (`sample-…`, `confirm-dialog`, `popup-menu`,
+`select-menu`, `toast`, `brand-tile-…`). The gallery makes test tags resource ids
+(`testTagsAsResourceId`), so `uiautomator dump` names them.
 
 ## What still differs from the Duo
 
@@ -746,7 +881,7 @@ These notes compare Velo's layout and surfaces with the visual references above.
 | Icons and sounds | Velo uses its own Android glyphs for settings, alerts, connection status, pane actions, and agent indicators. Activity sounds use Velo's own presets. |
 | Round glass button | The fill and rim match. The Duo's disc has a soft highlight inside its upper rim and a faint shadow under it (PK, M01); here the rim is one line and there is no inner highlight |
 | Capsule of icons | In D12 the sidebar toggle is a separate disc to the right of the capsule; that is layout, which the sidebar screen decides. The capsule itself matches in height and radius. The capsule's order is Activity, command palette, Settings |
-| Row with a tile | The reference tile uses a full-colour program mark. Velo uses a smaller glass chip with a glyph. |
+| Row with a tile | The reference tile uses a full-colour program mark. The sidebar still uses a smaller glass chip with a glyph; `TabTile` draws the redesign's brand tile and waits to be placed in the sidebar. |
 | Row with an icon (a remote, This Device) | Matches in size and position. The Duo's remote row has no state dot; the app's has one (it shows the connection) |
 | Selected pill | Matches in height, radius and inset. In Light the Duo's pill reads `#131313` on black, a ratio of 1.13; here it is the same value |
 | Section header | The Duo's "+" is a circled plus and its chevron is thinner; the text matches in size, weight and colour |
