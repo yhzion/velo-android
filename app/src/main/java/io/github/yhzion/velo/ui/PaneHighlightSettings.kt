@@ -1,6 +1,13 @@
 package io.github.yhzion.velo.ui
 
 import androidx.compose.foundation.Canvas
+import io.github.yhzion.velo.ui.theme.groupBleed
+import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.Capsule
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -83,22 +90,29 @@ private val CustomRing = Brush.sweepGradient(
  * Appearance → Active pane: the colour of the edge of the pane that takes the keys. The sheet
  * covers the panes, so a small picture of two panes shows the edge as it will look. Under it are
  * Rex for Mac's choices ([HighlightPreset]) and Custom, which opens its picker in place. As every
- * setting of the sheet, a choice applies at once.
+ * setting of the sheet, a choice applies at once (canvas SetAppearance block).
  */
 @Composable
 internal fun PaneHighlightSettings(settings: Settings) {
     val highlight = settings.paneHighlight
-    val sizes = VeloTheme.sizes
+    val space = VeloTheme.space
     // Here, not in the picker: choosing a preset and Custom again keeps the hue a grey or black left.
     val picker = rememberSaveable(saver = HsvSaver) { mutableStateOf(hsvOf(highlight.custom ?: highlight.rgb)) }
-    GroupHeader("Active pane")
-    GroupCard {
-        Row(Modifier.fillMaxWidth().heightIn(min = sizes.row), verticalAlignment = Alignment.CenterVertically) {
-            Text("Highlight color", Modifier.weight(1f))
-            Text(highlight.preset?.label ?: "Custom", color = VeloTheme.surface.secondary)
+    GroupHeader("Active pane", Modifier.testTag("appearance-active-pane-header"))
+    GroupCard(Modifier.testTag("appearance-active-pane-group")) {
+        Row(
+            Modifier.groupBleed().testTag("appearance-highlight-row").fillMaxWidth().heightIn(min = VeloTheme.sizes.row).groupInset().padding(end = space.s4),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Highlight color", Modifier.testTag("appearance-highlight-label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
+            Text(highlight.preset?.label ?: "Custom", Modifier.testTag("appearance-highlight-value"), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
         }
-        HighlightPreview(opaque(highlight.rgb))
-        Swatches(highlight, settings::savePaneHighlight)
+        // The picture and the swatches keep 16 from both sides of the group, its rows 12 at the end.
+        Column(Modifier.padding(end = space.s4, bottom = space.s16)) {
+            HighlightPreview(opaque(highlight.rgb))
+            Swatches(highlight, settings::savePaneHighlight)
+        }
         val custom = highlight.custom
         if (highlight.isCustom && custom != null) {
             GroupDivider()
@@ -107,42 +121,36 @@ internal fun PaneHighlightSettings(settings: Settings) {
     }
 }
 
-/** Two panes on the backdrop: the left one takes the keys, so it has the edge, and the handle between them has its colour. */
+/** Two panes on the backdrop: the left one takes the keys, so it has the edge, and its last line has the colour. */
 @Composable
 private fun HighlightPreview(colour: Color) {
     val palette = VeloTheme.colors
-    val sizes = VeloTheme.sizes
-    val radius = VeloTheme.radii.paneCompact
-    Canvas(
-        // Height: three lines of the pane's text and the padding around them, as in the mockup.
-        Modifier.fillMaxWidth().height(104.dp).clip(rounded(radius))
+    val line = VeloTheme.surface.divider
+    val space = VeloTheme.space
+    val paneRadius = VeloTheme.space.s8
+    Row(
+        Modifier.fillMaxWidth().testTag("appearance-highlight-preview").height(VeloTheme.medium(108.dp)).clip(rounded(VeloTheme.radii.group))
+            .background(palette.backdrop.surface).padding(VeloTheme.medium(10.dp))
             .semantics { contentDescription = "Preview of the focused pane's edge" },
+        horizontalArrangement = Arrangement.spacedBy(space.s8),
     ) {
-        drawRect(palette.backdrop.surface)
-        val inset = sizes.menuPadding.toPx()
-        val gap = sizes.gap.toPx()
-        val paneW = (size.width - 2 * inset - gap) / 2
-        val paneH = size.height - 2 * inset
-        val corner = CornerRadius(radius.toPx() - inset / 2)
-        val edge = sizes.paneFocus.toPx()
-        val bar = 6.dp.toPx()
-        fun pane(left: Float, lines: List<Float>, lineColour: Color, focused: Boolean) {
-            drawRoundRect(palette.chrome.surface, Offset(left, inset), Size(paneW, paneH), corner)
-            lines.forEachIndexed { i, share ->
-                val y = inset + 12.dp.toPx() + i * (bar + 7.dp.toPx())
-                drawRoundRect(if (focused && i == lines.lastIndex) colour.copy(alpha = PaneHighlightAlpha) else lineColour,
-                    Offset(left + 12.dp.toPx(), y), Size((paneW - 24.dp.toPx()) * share, bar), CornerRadius(bar / 2))
+        @Composable
+        fun Pane(tag: String, lines: List<Float>, focused: Boolean) {
+            val edge = if (focused) VeloTheme.sizes.paneFocus else VeloTheme.sizes.edge
+            val ring = if (focused) colour.copy(alpha = PaneHighlightAlpha) else line
+            Column(
+                Modifier.weight(1f).fillMaxHeight().testTag(tag).clip(rounded(paneRadius)).background(palette.sidebar.surface)
+                    .border(edge, ring, rounded(paneRadius)).padding(space.s12),
+                verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(7.dp)),
+            ) {
+                lines.forEachIndexed { i, share ->
+                    val last = focused && i == lines.lastIndex
+                    Box(Modifier.fillMaxWidth(share).height(VeloTheme.medium(5.dp)).clip(Capsule).background(if (last) colour else line))
+                }
             }
-            if (focused) drawRoundRect(
-                colour.copy(alpha = PaneHighlightAlpha), Offset(left + edge / 2, inset + edge / 2),
-                Size(paneW - edge, paneH - edge), CornerRadius(corner.x - edge / 2), style = Stroke(edge),
-            )
         }
-        pane(inset, listOf(0.72f, 0.48f, 0.6f, 0.3f), palette.chrome.glassSelected, focused = true)
-        pane(inset + paneW + gap, listOf(0.64f, 0.4f, 0.52f), palette.chrome.glass, focused = false)
-        // The split handle (PaneArea): 3 × 32 dp, the edge's colour at half strength while it rests.
-        val grip = Size(3.dp.toPx(), 32.dp.toPx())
-        drawRoundRect(colour.copy(alpha = 0.5f), Offset(inset + paneW + (gap - grip.width) / 2, (size.height - grip.height) / 2), grip, CornerRadius(grip.width / 2))
+        Pane("appearance-preview-active-pane", listOf(0.72f, 0.5f, 0.62f, 0.34f), focused = true)
+        Pane("appearance-preview-other-pane", listOf(0.64f, 0.4f, 0.55f), focused = false)
     }
 }
 
@@ -157,8 +165,11 @@ private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) 
     } + SwatchChoice("Custom", highlight.isCustom, highlight.custom?.let(::opaque), CustomRing) {
         if (!highlight.isCustom) onPick(highlight.toCustom())
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = VeloTheme.sizes.menuPadding).selectableGroup()) {
-        for (row in choices.chunked(4)) Row(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = VeloTheme.space.s16).testTag("appearance-highlight-swatches").selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
+    ) {
+        for (row in choices.chunked(4)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {
             for (choice in row) SwatchCell(choice, Modifier.weight(1f))
         }
     }
@@ -168,10 +179,11 @@ private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) 
 private fun SwatchCell(choice: SwatchChoice, modifier: Modifier) {
     val c = VeloTheme.surface
     Column(
-        // The cell, not only the disc, takes the tap: 68 dp tall, a quarter of the card wide.
-        modifier.heightIn(min = 68.dp).selectable(choice.selected, role = Role.RadioButton, onClick = choice.pick).padding(vertical = 6.dp),
+        // The cell, not only the disc, takes the tap: a quarter of the card wide.
+        modifier.testTag("appearance-highlight-${choice.label.lowercase()}").selectable(choice.selected, role = Role.RadioButton, onClick = choice.pick)
+            .padding(vertical = VeloTheme.space.s4),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp)),
     ) {
         Swatch(choice.fill, choice.ring, choice.selected, empty = choice.ring != null && choice.fill == null)
         Text(choice.label, style = VeloTheme.type.caption, color = if (choice.selected) c.text else c.secondary, maxLines = 1)
@@ -180,22 +192,27 @@ private fun SwatchCell(choice: SwatchChoice, modifier: Modifier) {
 
 /**
  * A disc of [fill], or of [ring] with [fill] inside it (Custom). The chosen one has a ring in the
- * text colour around it and a check that reads on its fill; Custom before a colour is set shows a plus.
+ * text colour around it, apart from it by the surface, and a check that reads on its fill;
+ * Custom before a colour is set shows a plus.
  */
 @Composable
 private fun Swatch(fill: Color?, ring: Brush?, selected: Boolean, empty: Boolean) {
     val c = VeloTheme.surface
     val hairline = VeloTheme.sizes.edge
-    val disc = 36.dp
-    Box(Modifier.size(disc + 8.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(disc + 8.dp)) {
+    val disc = VeloTheme.medium(40.dp)
+    Box(Modifier.size(disc), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(disc)) {
             val centre = center
-            val r = disc.toPx() / 2
-            if (selected) drawCircle(c.text, r + 3.dp.toPx(), centre, style = Stroke(2.dp.toPx()))
+            val r = size.minDimension / 2
+            // The chosen disc's ring sits outside it, 3 off and 2 wide, as the board's shadow rings it.
+            if (selected) {
+                drawCircle(c.text, r + 5.dp.toPx(), centre)
+                drawCircle(c.surface, r + 3.dp.toPx(), centre)
+            }
             if (ring != null) {
                 drawCircle(ring, r, centre)
-                drawCircle(c.surface, r - 5.dp.toPx(), centre)
-                if (fill != null) drawCircle(fill, r - 7.dp.toPx(), centre)
+                drawCircle(c.surface, r * 0.7f, centre)
+                if (fill != null) drawCircle(fill, r * 0.7f - 2.dp.toPx(), centre)
             } else if (fill != null) {
                 drawCircle(fill, r, centre)
                 // A hairline around the disc, so that Text's near-white reads as a disc on the card.
@@ -204,7 +221,7 @@ private fun Swatch(fill: Color?, ring: Brush?, selected: Boolean, empty: Boolean
         }
         val mark = if (selected) Icons.Default.Check else if (empty) Icons.Default.Add else null
         val markTint = if (fill != null && fill.luminance() > 0.3f) c.onAccent else c.text
-        if (mark != null) Icon(mark, null, Modifier.size(if (ring != null) 14.dp else 20.dp), tint = if (empty) c.text else markTint)
+        if (mark != null) Icon(mark, null, Modifier.size(if (ring != null) VeloTheme.medium(14.dp) else VeloTheme.medium(18.dp)), tint = if (empty) c.text else markTint)
     }
 }
 

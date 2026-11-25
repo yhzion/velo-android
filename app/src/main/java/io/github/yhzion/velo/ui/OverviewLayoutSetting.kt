@@ -1,9 +1,13 @@
 package io.github.yhzion.velo.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.ui.theme.VeloSegmented
 import io.github.yhzion.velo.ui.theme.SettingRow
+import io.github.yhzion.velo.ui.theme.VeloTheme
+import androidx.compose.ui.unit.dp
 
 /** How the tab overview lays its cards out (Appearance → Interface → Overview). */
 enum class OverviewLayout(
@@ -23,5 +27,8 @@ enum class OverviewLayout(
 /** The Overview row of the Interface card: the strip of cards (Row) or a vertical grid (Grid). */
 @Composable
 internal fun OverviewLayoutSetting(s: Settings) {
-    SettingRow("Overview") { VeloSegmented(OverviewLayout.entries, s.overviewLayout, { it.label }, onPick = s::saveOverviewLayout) }
+    SettingRow("Overview", tag = "appearance-overview") {
+        VeloSegmented(OverviewLayout.entries, s.overviewLayout, { it.label }, Modifier.testTag("appearance-overview-options"),
+            optionTag = { "appearance-overview-${it.saved}-option" }, cellPadding = VeloTheme.medium(14.dp), onPick = s::saveOverviewLayout)
+    }
 }

@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import io.github.yhzion.velo.ui.theme.lineBox
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -345,7 +346,7 @@ private fun PageTitle(title: String, above: String?, back: (() -> Unit)?) {
         title,
         Modifier.fillMaxWidth().testTag("settings-page-title")
             .padding(top = if (above != null) 0.dp else VeloTheme.medium(18.dp), bottom = VeloTheme.medium(if (above != null) 6.dp else 2.dp))
-            .semantics { heading() },
+            .lineBox(VeloTheme.type.pageTitle).semantics { heading() },
         style = VeloTheme.type.pageTitle, color = c.text,
     )
 }
@@ -448,7 +449,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     }
 }
 
-private val PaneStyles = listOf("comfortable", "compact")
 
 @Composable
 private fun ActivitySettings(host: SettingsHost) {
@@ -525,62 +525,6 @@ private fun alertIcon(kind: PaneAlertKind): Int = when (kind) {
     PaneAlertKind.Error -> R.drawable.ic_alert_error
     PaneAlertKind.Working -> R.drawable.ic_alert_working
 }
-
-@Composable
-private fun AppearanceSettings(host: SettingsHost, openFont: () -> Unit) {
-    val s = host.settings
-    GroupHeader("Interface")
-    GroupCard {
-        SettingRow("Size") { VeloSegmented(UiSize.entries, s.uiSize, { it.name }, onPick = s::saveUiSize) }
-        GroupDivider()
-        SettingRow("Pane style") {
-            VeloSegmented(PaneStyles, s.paneStyle, { it.replaceFirstChar(Char::uppercaseChar) }) {
-                s.savePaneStyle(it)
-                host.pushDisplay()
-            }
-        }
-        GroupDivider()
-        OverviewLayoutSetting(s)
-        GroupDivider()
-        CapsuleCornerRow(shownCorner(s.capsuleCorner), s::saveCapsuleCorner)
-        GroupDivider()
-        Toggle("Keep screen on while using Velo", s.keepScreenOn, s::saveKeepScreenOn)
-    }
-    PaneHighlightSettings(host.settings)
-    GroupHeader("Terminal")
-    GroupCard {
-        TerminalFontSetting(host.settings, onOpen = openFont)
-        GroupDivider()
-        FontSizeSetting(host)
-    }
-}
-
-/** The terminal's font size: its value beside its name, and a slider under them that has the row's width. */
-@Composable
-private fun FontSizeSetting(host: SettingsHost) {
-    val s = host.settings
-    val sizes = VeloTheme.sizes
-    val value = fontSizeValue(s.fontSize)
-    Column(Modifier.fillMaxWidth().padding(vertical = sizes.cellInset)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = sizes.control), verticalAlignment = Alignment.CenterVertically) {
-            Text("Font size", Modifier.weight(1f))
-            Text(value, color = VeloTheme.surface.secondary)
-        }
-        VeloSlider(
-            s.fontSize, { s.saveFontSize(it.roundToInt().toFloat()) },
-            Modifier.fillMaxWidth().semantics {
-                contentDescription = "Font size"
-                stateDescription = value
-            },
-            valueRange = 8f..24f, steps = 15,
-            onValueChangeFinished = { host.pushSetting("fontSize", s.fontSize) },
-        )
-        FontSizePreview(host)
-    }
-}
-
-/** The font size as a whole number: the text beside the slider and the slider's own state say it alike. */
-fun fontSizeValue(size: Float): String = size.roundToInt().toString()
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
