@@ -341,20 +341,23 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 
 The family is the device's own (Roboto on Android; the boards set Roboto). A size "at Medium" is
 the redesign's type scale (Tokens board); a plain one is the Large size of a style the boards do
-not name. Line heights are derived.
+not name. A line of interface text is as tall as Roboto's own line, 2400 of its 2048 units
+(1.17 em): the boards set no line height on a label, so the browser gives it that one, and the
+app's labels then line up with the boards'. A paragraph sets its own (1.45 or 1.5 em, as its
+board does). The line heights of `key`, `clock`, `wordmark` and the glyph styles are derived.
 
 | token | size / line, weight | for, and source |
 |---|---|---|
-| `screenTitle` | 26 / 32 sp at Medium, SemiBold | The title of a full screen: Settings (Tokens board "screen-title"). |
-| `pageTitle` | 22 / 28 sp at Medium, SemiBold | A page's title beside the categories on the unfolded screen (Tokens board "page-title"). |
-| `overlayTitle` | 20 / 26 sp at Medium, SemiBold | The title of a dialog or a card (Tokens board "dialog-title"). |
-| `title` | 18 / 24 sp at Medium, SemiBold | The title of a header: a settings page's, a pane's (Tokens board "header-title"). |
-| `body` | 16 / 22 sp at Medium, Normal | Row titles, buttons, menu items, a field's text (Tokens board "body"). |
-| `bodyStrong` | 16 / 22 sp at Medium, Medium | The same, for a label that stands out. derived: the boards' button weight. |
-| `value`, `control` | 15 / 20 sp at Medium, Normal | A row's value, a menu button, a segmented cell (Medium when chosen) (Tokens board "value"). |
-| `header` | 15 / 20 sp at Medium, Medium | Section headers of the sidebar's list (Sidebar board, session header). |
-| `caption` | 13 / 18 sp at Medium, Normal | Second lines, notes; at Medium weight, a settings group's heading (Tokens board "caption"). |
-| `eyebrow` | 12 / 16 sp at Medium, Bold, tracking 0.06 em | A small heading in capitals: NEW VERSION (Tokens board "eyebrow"). |
+| `screenTitle` | 26 / 30.5 sp at Medium, SemiBold | The title of a full screen: Settings (Tokens board "screen-title"). |
+| `pageTitle` | 22 / 25.8 sp at Medium, SemiBold | A page's title beside the categories on the unfolded screen (Tokens board "page-title"). |
+| `overlayTitle` | 20 / 23.4 sp at Medium, SemiBold | The title of a dialog or a card (Tokens board "dialog-title"). |
+| `title` | 18 / 21.1 sp at Medium, SemiBold | The title of a header: a settings page's, a pane's (Tokens board "header-title"). |
+| `body` | 16 / 18.75 sp at Medium, Normal | Row titles, buttons, menu items, a field's text (Tokens board "body"). |
+| `bodyStrong` | 16 / 18.75 sp at Medium, Medium | The same, for a label that stands out. derived: the boards' button weight. |
+| `value`, `control` | 15 / 17.6 sp at Medium, Normal | A row's value, a menu button, a segmented cell (Medium when chosen) (Tokens board "value"). |
+| `header` | 15 / 17.6 sp at Medium, Medium | Section headers of the sidebar's list (Sidebar board, session header). |
+| `caption` | 13 / 15.2 sp at Medium, Normal | Second lines, notes; at Medium weight, a settings group's heading (Tokens board "caption"). |
+| `eyebrow` | 12 / 14.1 sp at Medium, Bold, tracking 0.06 em | A small heading in capitals: NEW VERSION (Tokens board "eyebrow"). |
 | `key` | 13 / 18 sp at Medium, Medium, monospace | Key labels (Controls and KeyBar boards). |
 | `clock` | 17 / 22 sp at Medium, SemiBold | The rail's clock (Rail board). |
 | `wordmark` | 38 / 44 sp at Medium, SemiBold, tracking -0.01 em | The wordmark of the start screen (StartKit board; 44 on the unfolded screen). |

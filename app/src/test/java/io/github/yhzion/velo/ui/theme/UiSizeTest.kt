@@ -71,6 +71,17 @@ class UiSizeTest {
         }
     }
 
+    /**
+     * The boards set no line height on a line of text, so the browser gives it Roboto's own:
+     * ascent and descent, 2400 of 2048 units. A label of the app is as tall, so it lines up.
+     */
+    @Test fun aLineOfInterfaceTextIsAsTallAsRobotosOwnLine() {
+        val t = veloType(UiSize.Medium)
+        for (style in listOf(t.body, t.bodyStrong, t.header, t.title, t.caption, t.overlayTitle, t.screenTitle, t.pageTitle, t.control, t.value, t.eyebrow)) {
+            assertEquals("${style.fontSize}", style.fontSize.value * 2400f / 2048f, style.lineHeight.value, 0.01f)
+        }
+    }
+
     @Test fun textGetsSmallerStepByStepAndNeverBelowTheLeastSize() {
         val large = styles(veloType(UiSize.Large))
         val medium = styles(veloType(UiSize.Medium))
