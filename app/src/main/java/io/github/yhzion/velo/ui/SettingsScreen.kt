@@ -108,7 +108,10 @@ import kotlin.math.roundToInt
  * it; the settings sheet shows the same controls inside itself.
  */
 @Composable
-fun TailscaleScreen(app: AppController, onBack: () -> Unit) = TailscaleScreen(remember(app) { AppSettingsHost(app) }, onBack)
+fun TailscaleScreen(app: AppController, onBack: () -> Unit) {
+    val assets = LocalContext.current.assets
+    TailscaleScreen(remember(app) { AppSettingsHost(app, assets) }, onBack)
+}
 
 @Composable
 internal fun TailscaleScreen(host: SettingsHost, onBack: () -> Unit) {
@@ -170,7 +173,10 @@ internal data class SettingsRoute(
  * button, a tap beside the sheet on the unfolded screen and Back at the top close it ([onClose]).
  */
 @Composable
-fun SettingsSheet(app: AppController, onClose: () -> Unit) = SettingsSheet(remember(app) { AppSettingsHost(app) }, onClose)
+fun SettingsSheet(app: AppController, onClose: () -> Unit) {
+    val assets = LocalContext.current.assets
+    SettingsSheet(remember(app) { AppSettingsHost(app, assets) }, onClose)
+}
 
 @Composable
 internal fun SettingsSheet(host: SettingsHost, onClose: () -> Unit) {
@@ -298,14 +304,14 @@ private fun SettingsPageContent(
     openLevel: (SettingsLevel) -> Unit, openLicense: (String) -> Unit,
 ) {
     if (level == SettingsLevel.Font) TerminalFontSettings(host, modifier, top)
-    else if (licensed != null) LicenseDetail(licensed, open = openLicense, modifier = modifier, top = top, io = host.io)
+    else if (licensed != null) LicenseDetail(licensed, open = openLicense, modifier = modifier, host = host, top = top)
     else scrolls(modifier) {
         top()
         if (level == SettingsLevel.Device) DeviceSettings(host)
         else if (level == SettingsLevel.Updates) AppUpdateSettings(host)
         else if (level == SettingsLevel.SshKey) SshKeySettings(host.sshSecrets)
         // A license that is no longer listed falls back to the list.
-        else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) OpenSourceLicenseList(open = openLicense)
+        else if (level == SettingsLevel.Licenses || level == SettingsLevel.License) OpenSourceLicenseList(host.licenses, open = openLicense)
         else when (category) {
             SettingsCategory.Appearance -> AppearanceSettings(host, openFont = { openLevel(SettingsLevel.Font) })
             SettingsCategory.Keyboard -> KeyboardSettings(host.settings)

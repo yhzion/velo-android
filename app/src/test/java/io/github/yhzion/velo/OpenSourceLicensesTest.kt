@@ -176,4 +176,23 @@ class OpenSourceLicensesTest {
         val long = "x".repeat(2500)
         assertEquals(listOf("a", long, "b"), licenseBlocks("a\n$long\nb", maxChars = 1000))
     }
+
+    @Test fun aSectionRunsFromItsHeadingToTheNextHeading() {
+        val text = "Intro\n\nFirst part\n----------\none\n\nSecond part (here)\n------------------\ntwo\nmore\n\nThird\n-----\nthree\n"
+        assertEquals("Second part (here)\n------------------\ntwo\nmore", noticeSection(text, "Second part"))
+        assertEquals("Third\n-----\nthree", noticeSection(text, "Third"))
+        assertNull(noticeSection(text, "Fourth"))
+    }
+
+    @Test fun theProgramLogosEntryShowsTheLogoSectionOfTheNotice() {
+        val logos = findLicense("simple-icons")
+        assertNotNull(logos)
+        assertEquals("Program logos (Simple Icons)", logos!!.name)
+        val text = logos.texts.single()
+        assertEquals("notices/NOTICE", text.asset)
+        val section = noticeSection(File(root, "NOTICE").readText(), text.section!!)
+        assertNotNull("NOTICE has no section ${text.section}", section)
+        for (said in listOf("Simple Icons 16.38.1", "CC0 1.0", "CC BY 3.0", "CC BY-SA 3.0")) assertTrue(said, said in section!!)
+        assertTrue("Bundled fonts" !in section!!)
+    }
 }

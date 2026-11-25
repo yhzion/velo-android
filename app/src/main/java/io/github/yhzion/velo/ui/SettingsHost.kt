@@ -1,11 +1,14 @@
 package io.github.yhzion.velo.ui
 
+import android.content.res.AssetManager
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntSize
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.BackgroundConnection
 import io.github.yhzion.velo.GlyphRasterizer
+import io.github.yhzion.velo.LicenseComponent
+import io.github.yhzion.velo.OpenSourceLicenses
 import io.github.yhzion.velo.PaneNotifications
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.SshSecrets
@@ -14,6 +17,7 @@ import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.TerminalFont
 import io.github.yhzion.velo.core.ForwardInfo
 import io.github.yhzion.velo.core.Remote
+import io.github.yhzion.velo.readNotice
 import io.github.yhzion.velo.updates.AppRelease
 import io.github.yhzion.velo.updates.ReleaseFeed
 import io.github.yhzion.velo.updates.UpdateChannel
@@ -85,10 +89,16 @@ internal interface SettingsHost {
     fun newerReleases(channel: UpdateChannel, installed: Long): List<AppRelease>
     /** Release APKs are built for ARM64 only. */
     val installsReleases: Boolean
+
+    // Open source licenses
+    /** The software Velo ships, as the list shows it. */
+    val licenses: List<LicenseComponent> get() = OpenSourceLicenses.all
+    /** The text of the notice at [asset] in the APK. Reads the file: call it on [io]. */
+    fun readNotice(asset: String): String
 }
 
 /** The settings of the app's own [AppController]. */
-internal class AppSettingsHost(private val app: AppController) : SettingsHost {
+internal class AppSettingsHost(private val app: AppController, private val assets: AssetManager) : SettingsHost {
     override val settings get() = app.settings
     override val io: CoroutineContext = Dispatchers.IO
     override val rasterizer get() = app.rasterizer
@@ -120,4 +130,5 @@ internal class AppSettingsHost(private val app: AppController) : SettingsHost {
     override val sshSecrets get() = app.sshSecrets
     override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed)
     override val installsReleases get() = "arm64-v8a" in android.os.Build.SUPPORTED_ABIS
+    override fun readNotice(asset: String) = readNotice(asset, assets::open)
 }
