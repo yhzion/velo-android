@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +37,7 @@ import io.github.yhzion.velo.DiscoveredServer
 import io.github.yhzion.velo.Tailnet
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.notYetRows
+import io.github.yhzion.velo.ui.theme.AttentionBadge
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.GroupDivider
 import io.github.yhzion.velo.ui.theme.Capsule
@@ -327,12 +329,12 @@ fun StartScreen(app: AppController, onAddByQr: () -> Unit, onSettings: () -> Uni
         connect = { app.addRemote(it.name, it.url) },
         getRex = { try { uri.openUri(RexInstallationUrl); true } catch (_: IllegalArgumentException) { false } },
     )
-    StartScreenBody(model, onAddByQr, onSettings)
+    StartScreenBody(model, onAddByQr, onSettings, settingsBadge = updateDot())
 }
 
 /** The start screen for [model], laid out for the window ([startLayout]). */
 @Composable
-fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: () -> Unit) {
+fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: () -> Unit, settingsBadge: Boolean = false) {
     val window = LocalConfiguration.current
     val layout = startLayout(window.screenWidthDp.toFloat(), window.screenHeightDp.toFloat())
     val current = startStepNumber(model.step)
@@ -357,7 +359,7 @@ fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: ()
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = s.rowPadding * 3, vertical = s.rowPadding * 2)) {
                 card(Modifier.weight(1f).widthIn(max = CardMaxWidthDp.dp))
                 Spacer(Modifier.height(s.menuPadding))
-                Footer(onAddByQr, onSettings, Modifier.widthIn(max = CardMaxWidthDp.dp), withPrompt = true)
+                Footer(onAddByQr, onSettings, Modifier.widthIn(max = CardMaxWidthDp.dp), withPrompt = true, settingsBadge)
             }
         }
         StartLayout.TopSteps -> Box(screen, contentAlignment = Alignment.TopCenter) {
@@ -368,7 +370,7 @@ fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: ()
                 Spacer(Modifier.height(s.rowPadding))
                 card(Modifier.weight(1f).fillMaxWidth())
                 Spacer(Modifier.height(s.menuPadding))
-                Footer(onAddByQr, onSettings, Modifier.fillMaxWidth(), withPrompt = true)
+                Footer(onAddByQr, onSettings, Modifier.fillMaxWidth(), withPrompt = true, settingsBadge)
             }
         }
         // Everything scrolls together, the links at the bottom of the window while they fit under the card: a very low
@@ -384,7 +386,7 @@ fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: ()
                     Spacer(Modifier.height(s.rowGap))
                     StartCard(model)
                 }
-                Footer(onAddByQr, onSettings, Modifier.fillMaxWidth().padding(top = s.menuPadding), withPrompt = false)
+                Footer(onAddByQr, onSettings, Modifier.fillMaxWidth().padding(top = s.menuPadding), withPrompt = false, settingsBadge)
             }
         }
         StartLayout.Low -> Row(screen) {
@@ -397,7 +399,7 @@ fun StartScreenBody(model: StartCardModel, onAddByQr: () -> Unit, onSettings: ()
                         VerticalSteps(current, withHints = false)
                     }
                     StartLink("Add by QR code or address", onAddByQr)
-                    StartLink("Settings", onSettings, quiet = true)
+                    StartLink("Settings", onSettings, quiet = true, badge = settingsBadge)
                 }
             }
             // The weight takes the rest of the row; the card inside it keeps its widest.
@@ -590,26 +592,36 @@ private fun NothingFoundNote(note: FoundNote, searching: Boolean, searchAgain: (
     }
 }
 
-/** "Add by QR code or address" and "Settings" under the card; [withPrompt] puts "No Tailscale?" before the first. */
+/**
+ * "Add by QR code or address" and "Settings" under the card; [withPrompt] puts "No Tailscale?" before the first.
+ * [settingsBadge] puts the update dot on Settings.
+ */
 @Composable
-private fun Footer(onAddByQr: () -> Unit, onSettings: () -> Unit, modifier: Modifier, withPrompt: Boolean) {
+private fun Footer(onAddByQr: () -> Unit, onSettings: () -> Unit, modifier: Modifier, withPrompt: Boolean, settingsBadge: Boolean) {
     val s = VeloTheme.sizes
     FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(s.rowPadding), verticalArrangement = Arrangement.Center,
         itemVerticalAlignment = Alignment.CenterVertically) {
         if (withPrompt) Text("No Tailscale?", color = VeloTheme.surface.secondary)
         StartLink("Add by QR code or address", onAddByQr)
         Spacer(Modifier.weight(1f))
-        StartLink("Settings", onSettings, quiet = true)
+        StartLink("Settings", onSettings, quiet = true, badge = settingsBadge)
     }
 }
 
-/** A link-like text button: accent text, or secondary when [quiet], with a touch target of [VeloSizes.control] or more. */
+/**
+ * A link-like text button: accent text, or secondary when [quiet], with a touch target of [VeloSizes.control] or more.
+ * [badge] puts the raised accent dot after the text: an update was found ([AttentionBadge]).
+ */
 @Composable
-private fun StartLink(text: String, onClick: () -> Unit, quiet: Boolean = false) {
+private fun StartLink(text: String, onClick: () -> Unit, quiet: Boolean = false, badge: Boolean = false) {
     val c = VeloTheme.surface
-    Box(Modifier.heightIn(min = VeloTheme.sizes.control).clip(Capsule).clickable(role = Role.Button, onClick = onClick)
-        .padding(horizontal = VeloTheme.sizes.gapCompact), contentAlignment = Alignment.CenterStart) {
+    val s = VeloTheme.sizes
+    Row(Modifier.heightIn(min = s.control).clip(Capsule).clickable(role = Role.Button, onClick = onClick)
+        .semantics { if (badge) stateDescription = "Update available" }
+        .padding(horizontal = s.gapCompact), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(s.gapCompact)) {
         Text(text, color = if (quiet) c.secondary else c.accent, style = VeloTheme.type.body)
+        if (badge) AttentionBadge(c.accent, Modifier.size(s.mark))
     }
 }
 

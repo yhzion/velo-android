@@ -22,14 +22,15 @@ class UpdateCheckJobService : JobService() {
         val channel = UpdateSettings.jobChannel(this, generation) ?: return false
         work?.cancel()
         runningGeneration = generation
+        val startedAt = System.currentTimeMillis()
         work = scope.launch {
             try {
                 val release = runInterruptible(Dispatchers.IO) {
                     @Suppress("DEPRECATION")
                     val installed = packageManager.getPackageInfo(packageName, 0).longVersionCode
-                    ReleaseFeed.latest(channel, installed)
+                    ReleaseFeed.newer(channel, installed).firstOrNull()
                 }
-                UpdateSettings.finish(this@UpdateCheckJobService, generation, release)
+                UpdateSettings.finish(this@UpdateCheckJobService, generation, startedAt, release)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {

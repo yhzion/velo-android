@@ -37,6 +37,39 @@ class ReleaseFeedTest {
             select(entry(tag, body = "Release notes\\r\\n$marker\\r\\nFix android-version-code parsing")))
     }
 
+    private fun newer(vararg entries: String, channel: UpdateChannel = UpdateChannel.Edge, installed: Long = 0) =
+        ReleaseFeed.newer(channel, installed) { entries.joinToString(prefix = "[", postfix = "]") }
+
+    private fun code(code: Long) = marker.replace("3000100", "$code")
+
+    @Test fun everyEligibleNewerReleaseCarriesItsChangeNotesNewestFirst() {
+        val notes = "\\n<!-- velo-changes -->\\n### Added\\n- A dot on [Settings](https://example.com).\\n" +
+            "### Fixed\\n- Hangul no longer looks flat.\\n<!-- /velo-changes -->\\n\\n## What's Changed\\n- x"
+        val releases = newer(
+            entry("v2.9.19", code(3000037)),
+            entry("v2.9.21", code(3000039) + notes),
+            entry("v2.9.20-edge.1", code(3000038) + notes.replace("Added", "Removed")),
+            entry("v2.9.18", code(3000036)),
+            channel = UpdateChannel.Preview, installed = 3000036,
+        )
+        assertEquals(listOf("v2.9.21", "v2.9.19"), releases.map { it.tag })
+        assertEquals(listOf(
+            ChangeSection(ChangeKind.Added, listOf("A dot on Settings.")),
+            ChangeSection(ChangeKind.Fixed, listOf("Hangul no longer looks flat.")),
+        ), releases[0].changes)
+        assertEquals(emptyList<ChangeSection>(), releases[1].changes)
+        assertEquals("v2.9.21", ReleaseFeed.latest(UpdateChannel.Preview, 3000036) { "[${entry("v2.9.21", code(3000039))}]" }?.tag)
+    }
+
+    @Test fun newerKeepsTheFeedsFirstReleaseOfAVersionCodeAndValidatesEveryEntry() {
+        val first = entry("v2.9.21", code(3000039))
+        val duplicate = entry("v2.9.22", code(3000039))
+        val broken = entry("v2.9.23", code(3000040)).replace("\"uploaded\"", "\"starter\"")
+        assertEquals(listOf("v2.9.21"), newer(first, duplicate, broken).map { it.tag })
+        assertEquals("v2.9.21", select(first, duplicate)?.tag)
+        assertEquals(emptyList<AppRelease>(), newer(first, installed = 3000039))
+    }
+
     @Test fun rejectsAnOtherwiseValidReleaseFromAnotherRepository() {
         val other = "https://github.com/yhzion/other-android"
         val good = entry()

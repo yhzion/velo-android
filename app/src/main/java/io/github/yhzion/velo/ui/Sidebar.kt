@@ -134,7 +134,11 @@ fun remoteRowNote(status: String, removed: Boolean, needsAnswer: Boolean = false
  * and "Add Remote…". Activity and the filter cover every remote.
  */
 @Composable
-fun Sidebar(device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, actions: SidebarActions) = VeloSurface(VeloTheme.colors.sidebar) {
+fun Sidebar(
+    device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, actions: SidebarActions,
+    /** The gear's dot: an update was found that the Updates page has not shown yet. */
+    settingsBadge: Boolean = false,
+) = VeloSurface(VeloTheme.colors.sidebar) {
     val s = VeloTheme.sizes
     var activityOnly by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -163,7 +167,8 @@ fun Sidebar(device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, act
                     "Toggle Activity", { activityOnly = !activityOnly }, selected = activityOnly, badge = anyUnread,
                     stateDescription = if (activityOnly) "On" else "Off")
                 CapsuleIcon(painterResource(R.drawable.ic_toolbar_command), "Command Palette", actions.openPalette)
-                CapsuleIcon(painterResource(R.drawable.ic_toolbar_gear), "Settings", actions.openSettings)
+                CapsuleIcon(painterResource(R.drawable.ic_toolbar_gear), "Settings", actions.openSettings, badge = settingsBadge,
+                    stateDescription = if (settingsBadge) "Update available" else null)
             }
         }
 

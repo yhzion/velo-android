@@ -67,7 +67,16 @@ Each alert kind has separate **Background notification** and **Activity sound** 
 
 ## About
 
-The app name, `versionName`, and `longVersionCode` come from Android's `PackageManager`. **Updates** opens a subpage for channel selection, background update notifications, and manual checks. Updates compare Android version codes, not tag strings. After an APK download passes verification, installation is a separate action with Android's own confirmation.
+The app name, `versionName`, and `longVersionCode` come from Android's `PackageManager`. **Updates** opens a subpage for channel selection, automatic checks, background update notifications, and manual checks. Updates compare Android version codes, not tag strings. After an APK download passes verification, installation is a separate action with Android's own confirmation.
+
+### Updates
+
+- **Check for updates automatically** is on by default. When Velo comes to the foreground, it checks the selected channel if the last successful check is at least 12 hours old. The check runs in the background and never blocks the interface. A failure is silent and waits 15 minutes before the next foreground attempt.
+- **Notify me about updates** is off by default and independent of automatic checks. It schedules a periodic background check that posts an Android notification for a new release.
+- Every successful check, whether automatic, background, or manual, remembers the newest eligible release it found. A check that started earlier never replaces the result of one that started later. Changing the channel forgets what the previous channel found and saw.
+- While that release is newer than the installed build, About's **Updates** row shows "X.Y.Z available" until it is installed. The raised dot (`AttentionBadge`) appears on that row, on the sidebar's Settings gear, and on the start screen's **Settings** link until the Updates page has shown the release.
+- Opening the page checks GitHub Releases. When a newer release exists, the page starts with "Velo X.Y.Z", "You have A.B.C", and **What's new**, followed by **Download update** or **Install update** and **Full release notes on GitHub**. Below that come the installed version, the channel and switches, and the check status with **Check for updates**.
+- **What's new** lists every eligible release newer than the installed build, newest first, with a small version heading when there are several. Each release shows its New (Added), Changed, Fixed, Removed, and Security sections. The items come from the `<!-- velo-changes -->` … `<!-- /velo-changes -->` block of the release body, as plain text: links keep only their text, at most 12 items per release, each cut to 200 characters. A release without the block adds nothing; with none, the list is absent.
 
 ## Android boundaries
 

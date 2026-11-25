@@ -678,7 +678,7 @@ internal fun Workspace(
                 renameTab = { remote, row -> app.connectionOf(remote)?.let { rename(it, RenameTarget.OfTab(row.session, row.tab)) } },
                 moveTab = { remote, row, forward -> app.connectionOf(remote)?.let { moveTabOnePlace(it, row.session, row.tab, forward) } },
                 closeTab = { remote, row -> app.connectionOf(remote)?.let { closeTab(it, row) } },
-            ))
+            ), settingsBadge = updateDot())
             if (!covers) Spacer(Modifier.width(gap))
         }
         if (!panesHidden) Column(Modifier.weight(1f).fillMaxHeight()) {
