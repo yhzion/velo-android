@@ -1,0 +1,37 @@
+name: Pull request check (changelog)
+
+# A pull request that changes app/ or native/ adds a user-facing item under "## Unreleased" in
+# CHANGELOG.md: the release workflow publishes that section, and Velo shows it before updating.
+# Label the pull request skip-changelog when users see no difference. No path filter, so the job
+# reports on every pull request; it only reads git history. No secrets, no artifacts.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+concurrency:
+  group: pr-check-changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  changelog:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The full history, for the merge base of the pull request and main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check CHANGELOG.md
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/changelog.sh pr-check "$BASE_SHA" "$HEAD_SHA"

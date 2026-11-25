@@ -21,11 +21,23 @@ The source export and release APK include stock JetBrains Mono 2.304 and D2Codin
 
 Velo uses ZXing Core for [on-device QR scanning](../README.md#qr-scanning-and-privacy). Before publishing, compare the exact signed candidate and its resolved release runtime with [NOTICE](../NOTICE) and the [Android runtime inventory](../licenses/android/RELEASE-RUNTIME.md). Verify the packaged ZXing license and copyright notices and confirm that the APK contains no Barhopper library or barcode models, and that the resolved runtime contains no ML Kit, Play services, or scanner metrics dependencies.
 
+## Write the changelog
+
+[CHANGELOG.md](../CHANGELOG.md) lists what changes for users, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) style: `## Unreleased` on top, then one `## X.Y.Z - YYYY-MM-DD` section per release, newest first. Under each section, group items under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`; no other headings are accepted. Write each item as one `- ` line: a short, plain sentence a user understands, without internal names, links or HTML. Velo shows at most 12 items per release and cuts an item at 200 characters.
+
+A pull request that changes `app/` or `native/` must add or change an item under `## Unreleased`; the [changelog check](../.github/workflows/pr-check-changelog.yml) fails otherwise. When users see no difference, such as a refactor or a test, label the pull request `skip-changelog` instead.
+
 ## Choose a version and tag
 
 The first stable public release was `v2.9.18`, code `3000036`, public build number `1`. The archive's largest published code was `3000035`, confirmed by its v2.9.17 APK and published release markers (including prereleases). The workflow continues that sequence with its run number: its run 1 was the v2.9.18 tag, which it skipped, so its first release is run 2, code `3000037`. Never publish a code at or below one already distributed.
 
-Put the intended `X.Y.Z` in the root `VERSION`, without a leading `v` or a suffix, and merge it into `main` after review. The base version must be greater than `2.5.3`. You can publish multiple prereleases and then a stable release with the same base version.
+Put the intended `X.Y.Z` in the root `VERSION`, without a leading `v` or a suffix, and merge it into `main` after review. In the same pull request, prepare the changelog:
+
+1. Rename `## Unreleased` in `CHANGELOG.md` to `## X.Y.Z - YYYY-MM-DD`, with the new version and today's date.
+2. Add a new, empty `## Unreleased` section above it.
+3. Run `bash .github/scripts/changelog.sh section X.Y.Z` and check the items it prints.
+
+The release workflow fails before signing when `CHANGELOG.md` has no `## X.Y.Z` section with at least one item. A preview or edge tag uses the section of its base version, so prepare the changelog before the first prerelease too. The base version must be greater than `2.5.3`. You can publish multiple prereleases and then a stable release with the same base version.
 
 Use the original v2.9.17 keystore for package `io.github.yhzion.velo`. The new repository needs the [four owner-provisioned secrets](../dev/public-secrets-howto.md) before any future approved signing workflow is enabled. The initial local candidate does not use GitHub secrets. Do not sign a dirty checkout. A candidate is not approval to change visibility, tag, or publish.
 
@@ -51,9 +63,9 @@ The build job passes `RELEASE_VERSION_NAME` and `RELEASE_VERSION_CODE` together 
 
 ## Verify the release
 
-The workflow checks that the tag matches `VERSION` and points to a commit in `main`'s history, then runs native and Android unit tests. It checks that the APK is signed with the key in the secrets, then runs the [public APK verifier](../.github/scripts/verify-public-apk.sh): the original v2.9.17 signer certificate, package name, version and code, ABI and libraries, the allowed font inventory, and every packaged font and notice against the source commit. Then it checksums the final bytes. Before publishing, the workflow checks the checksum, tag object, and `main` ancestry again. The release body contains generated change notes and the APK's code on its own line, for example `<!-- android-version-code: 3000042 -->`. When editing the body, leave exactly one such marker unchanged.
+The workflow checks that the tag matches `VERSION` and points to a commit in `main`'s history, then runs native and Android unit tests. It checks that the APK is signed with the key in the secrets, then runs the [public APK verifier](../.github/scripts/verify-public-apk.sh): the original v2.9.17 signer certificate, package name, version and code, ABI and libraries, the allowed font inventory, and every packaged font and notice against the source commit. Then it checksums the final bytes. Before publishing, the workflow checks the checksum, tag object, and `main` ancestry again. The release body starts with the APK's code on its own line, for example `<!-- android-version-code: 3000042 -->`. Then comes the release's changelog section between the lines `<!-- velo-changes -->` and `<!-- /velo-changes -->`, which Velo shows before updating; `bash .github/scripts/changelog.sh body X.Y.Z CODE` prints both. GitHub's generated change notes follow. When editing the body, leave exactly one such marker unchanged and keep the block's `### ` and `- ` lines plain text. v2.9.18 and v2.9.19 were published without the block.
 
-Download the APK and `.sha256` file to the same directory, then run `sha256sum -c "velo-${tag}-arm64-v8a.apk.sha256"` with `tag` set to the downloaded tag. Use `apksigner verify --print-certs` to compare the APK certificate digest with the expected signing certificate. To check only the tag and version rules without a tag or signing key, run `bash .github/scripts/test-release-version.sh`.
+Download the APK and `.sha256` file to the same directory, then run `sha256sum -c "velo-${tag}-arm64-v8a.apk.sha256"` with `tag` set to the downloaded tag. Use `apksigner verify --print-certs` to compare the APK certificate digest with the expected signing certificate. To check only the tag and version rules without a tag or signing key, run `bash .github/scripts/test-release-version.sh`. To test the changelog script, run `bash .github/scripts/test-changelog.sh`.
 
 Run `python3 .github/scripts/test-verify-apk-notices.py` to test the font and notice checks without Android tools or a signing key.
 
