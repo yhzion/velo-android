@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Velo's mark in About: two panes, the left one in the accent with the cursor (canvas SetAbout block; the splash's last frame). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="56dp" android:height="40dp"
+    android:viewportWidth="136" android:viewportHeight="96">
+    <group android:translateX="2" android:translateY="2" android:scaleX="0.97" android:scaleY="0.97">
+        <path android:strokeColor="#FF7FA6F5" android:strokeWidth="5"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M13 1H51A12 12 0 0 1 63 13V83A12 12 0 0 1 51 95H13A12 12 0 0 1 1 83V13A12 12 0 0 1 13 1Z" />
+        <path android:strokeColor="#FF3A3D44" android:strokeWidth="5"
+            android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M85 1H123A12 12 0 0 1 135 13V83A12 12 0 0 1 123 95H85A12 12 0 0 1 73 83V13A12 12 0 0 1 85 1Z" />
+    </group>
+    <path android:fillColor="#FF7FA6F5" android:pathData="M20 16H26A2 2 0 0 1 28 18V31A2 2 0 0 1 26 33H20A2 2 0 0 1 18 31V18A2 2 0 0 1 20 16Z" />
+</vector>
