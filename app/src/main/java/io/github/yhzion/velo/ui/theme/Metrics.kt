@@ -6,12 +6,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -386,6 +388,24 @@ internal fun TextStyle.onPixels(density: Density): TextStyle {
 fun Modifier.lineBox(style: TextStyle): Modifier {
     val density = LocalDensity.current
     return if (!style.lineHeight.isSp) this else height(with(density) { style.lineHeight.toDp() })
+}
+
+/**
+ * [lineBox] for a text that may wrap (a long title, a line at large text): one line is held to
+ * the browser's line as there, and more lines take the height they need, so they push what is
+ * under them down instead of drawing over it.
+ */
+@Composable
+fun Modifier.lineBoxOrTaller(style: TextStyle): Modifier {
+    val density = LocalDensity.current
+    if (!style.lineHeight.isSp) return this
+    val line = with(density) { style.lineHeight.toDp().roundToPx() }
+    return layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0))
+        // One line is a fraction taller than the browser's (25.8 at 22 sp, where it is 25); two are twice it.
+        val height = if (placeable.height < line * 3 / 2) line else placeable.height
+        layout(placeable.width, constraints.constrainHeight(height)) { placeable.place(0, 0) }
+    }
 }
 
 /**

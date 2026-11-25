@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import io.github.yhzion.velo.ui.theme.textAt
 import io.github.yhzion.velo.ui.theme.lineBox
+import io.github.yhzion.velo.ui.theme.lineBoxOrTaller
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -80,7 +81,7 @@ internal fun AboutSettings(openUpdates: () -> Unit, openLicenses: () -> Unit) {
                     Modifier.testTag("about-app-mark").size(VeloTheme.medium(56.dp), VeloTheme.medium(40.dp)))
                 Column(Modifier.width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(3.dp))) {
                     Text(name, Modifier.fillMaxWidth().testTag("about-app-name").lineBox(type.pageTitle), style = type.pageTitle, color = c.text)
-                    Text("Version ${info.versionName} (${info.longVersionCode})", Modifier.fillMaxWidth().testTag("about-app-version").lineBox(textAt(14f)),
+                    Text("Version ${info.versionName} (${info.longVersionCode})", Modifier.fillMaxWidth().testTag("about-app-version").lineBoxOrTaller(textAt(14f)),
                         style = textAt(14f), color = c.secondary)
                     Text("An unofficial Android client for Rex. MIT licensed.", Modifier.fillMaxWidth().testTag("about-app-description"),
                         style = textAt(14f).paragraph(1.4.em), color = c.secondary)
