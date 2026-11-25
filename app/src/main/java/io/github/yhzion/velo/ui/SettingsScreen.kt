@@ -8,9 +8,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,12 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.yhzion.velo.R
 import io.github.yhzion.velo.AppController
@@ -41,17 +36,11 @@ import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.findLicense
 import io.github.yhzion.velo.licenseParent
-import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.CloseButton
 import io.github.yhzion.velo.ui.theme.GlassIconButton
-import io.github.yhzion.velo.ui.theme.GroupCard
-import io.github.yhzion.velo.ui.theme.GroupHeader
 import io.github.yhzion.velo.ui.theme.OverlayHost
 import io.github.yhzion.velo.ui.theme.SettingsPanelSurface
-import io.github.yhzion.velo.ui.theme.VeloButton
-import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloSwitch
-import io.github.yhzion.velo.ui.theme.VeloTextField
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
@@ -100,7 +89,6 @@ internal fun TailscaleScreen(host: SettingsHost, onBack: () -> Unit) {
     }
 }
 
-private const val TAILSCALE_MACHINES_URL = "https://console.tailscale.com/admin/machines"
 
 /** The settings categories: the line icon on the tile of its tint, and what the category holds (canvas SetNav block). */
 internal enum class SettingsCategory(val title: String, val id: String, @DrawableRes val icon: Int, val summary: String) {
@@ -448,33 +436,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
 }
 
 
-/** This Device: the Tailscale node's controls, then where to remove devices from the network. */
-@Composable
-private fun DeviceSettings(host: SettingsHost) {
-    val sizes = VeloTheme.sizes
-    GroupHeader("Tailscale")
-    GroupCard {
-        Column(Modifier.padding(bottom = sizes.overlayPadding)) { TailscaleSection(host) }
-    }
-    GroupHeader("Other devices")
-    GroupCard {
-        Column(Modifier.padding(vertical = sizes.overlayPadding), verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
-            val uri = LocalUriHandler.current
-            var browserUnavailable by remember { mutableStateOf(false) }
-            VeloButton("Open Tailscale admin console", {
-                try {
-                    uri.openUri(TAILSCALE_MACHINES_URL)
-                } catch (_: IllegalArgumentException) {
-                    browserUnavailable = true
-                }
-            })
-            if (browserUnavailable) {
-                SelectionContainer { Text("Open in a browser: $TAILSCALE_MACHINES_URL") }
-            }
-        }
-    }
-}
-
 /** A switch with its label: the whole row takes the tap, so the switch is found by what it says. */
 @Composable internal fun Toggle(t: String, v: Boolean, on: (Boolean) -> Unit) = Toggle(t, v, true, on)
 
@@ -521,58 +482,3 @@ fun tailnetQuestion(action: TailnetAction, name: String): TailnetQuestion = when
 /** Whether renaming the node to [name] is worth a question: a blank name or the current one changes nothing. */
 fun renameAsksFirst(name: String, current: String): Boolean = name.isNotBlank() && name != current
 
-/** The app's own Tailscale node: on/off, status, login, its name and addresses, log out. */
-@Composable private fun TailscaleSection(host: SettingsHost) {
-    val s = host.settings
-    val state = host.tailnetState
-    val uri = LocalUriHandler.current
-    val login = rememberTailnetLogin(host.tailnetLogin)
-    Toggle("Connect through Velo's own Tailscale node", s.tailnet, host::setTailnet)
-    Text(tailnetStatusLine(state, host.tailnetPaused), color = VeloTheme.surface.secondary)
-    if (state is TailnetState.NeedsLogin) {
-        Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
-        // Through the app's login, so the start screen shows the wait for this page too.
-        VeloButton("Log in", { login.open(uri, state.url) }, kind = ButtonKind.Primary)
-    }
-    if (state == TailnetState.LoggedOut) {
-        Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
-        VeloButton("Log in again", login::start, kind = ButtonKind.Primary)
-    }
-    // No browser took the login page: its address, to open elsewhere.
-    login.unopened?.let {
-        Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
-        SelectionContainer { Text("Open in a browser: $it", color = VeloTheme.surface.secondary) }
-    }
-    if (state is TailnetState.Running) {
-        for (ip in state.ips) Text(ip, color = VeloTheme.surface.secondary, style = VeloTheme.type.caption)
-    }
-    Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
-    var name by rememberSaveable(s.tailnetName) { mutableStateOf(s.tailnetName) }
-    // The name is kept with the question: the field may change while the dialog is open, and the answer is for what was asked.
-    var asking by remember { mutableStateOf<Pair<TailnetAction, String>?>(null) }
-    val askRename = { if (renameAsksFirst(name, s.tailnetName)) asking = TailnetAction.Rename to name }
-    VeloTextField(
-        name, { name = it.filter { c -> c.isLetterOrDigit() || c == '-' } },
-        label = "Node name",
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { askRename() }),
-        trailing = {
-            if (renameAsksFirst(name, s.tailnetName)) VeloButton("Rename", { askRename() })
-        },
-    )
-    if (state is TailnetState.Running) {
-        Spacer(Modifier.height(VeloTheme.sizes.menuPadding))
-        VeloButton("Log out", { asking = TailnetAction.LogOut to name })
-    }
-    asking?.let { (action, asked) ->
-        val q = tailnetQuestion(action, asked)
-        VeloDialog(q.title, onDismissRequest = { asking = null }, text = q.text, confirmText = q.confirm, destructive = q.destructive,
-            onConfirm = {
-                asking = null
-                when (action) {
-                    TailnetAction.LogOut -> host.logoutTailnet()
-                    TailnetAction.Rename -> host.setTailnetName(asked)
-                }
-            })
-    }
-}

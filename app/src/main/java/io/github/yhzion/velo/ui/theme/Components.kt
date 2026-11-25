@@ -402,7 +402,8 @@ fun VeloButton(
     val style = (if (words || small || row) type.value else type.body)
         .copy(fontWeight = if (kind == ButtonKind.Primary) FontWeight.SemiBold else FontWeight.Medium)
     val padding = when {
-        words -> VeloTheme.space.s8
+        // Words at the end of a settings row keep 12 at their sides (Rename); beside a status, 8 (Check for updates).
+        words -> if (row) VeloTheme.space.s12 else VeloTheme.space.s8
         small || row -> VeloTheme.medium(18.dp)
         else -> VeloTheme.space.s20
     }
