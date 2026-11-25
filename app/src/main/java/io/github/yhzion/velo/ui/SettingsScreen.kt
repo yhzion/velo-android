@@ -442,48 +442,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     }
 }
 
-/** About: the app's version, Updates and the licenses. */
-@Composable
-private fun AboutSettings(openUpdates: () -> Unit, openLicenses: () -> Unit) {
-    val context = LocalContext.current
-    val about = remember(context) {
-        val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        "${context.applicationInfo.loadLabel(context.packageManager)} ${info.versionName} (${info.longVersionCode})"
-    }
-    GroupCard(Modifier.padding(top = VeloTheme.sizes.menuPadding)) {
-        Box(Modifier.fillMaxWidth().heightIn(min = VeloTheme.sizes.row), contentAlignment = Alignment.CenterStart) {
-            Text(about)
-        }
-        GroupDivider()
-        UpdatesRow(onClick = openUpdates)
-        GroupDivider()
-        ListRow("Open source licenses", onClick = openLicenses)
-    }
-}
-
-/**
- * About's Updates row. While a newer release is found it says "X.Y.Z available" until that build is
- * installed, with the dot until the Updates page has shown it ([UpdateStatus]).
- */
-@Composable
-private fun UpdatesRow(onClick: () -> Unit) {
-    val status = rememberUpdateStatus()
-    val installed = rememberInstalledCode()
-    val available = status.available(installed)
-    val dot = status.unseen(installed)
-    val c = VeloTheme.surface
-    ListRow(
-        "Updates", onClick = onClick,
-        modifier = Modifier.semantics { if (available != null) stateDescription = "$available available" },
-        trailing = if (available == null) null else {
-            {
-                Text("$available available", style = VeloTheme.type.body, color = c.accent, maxLines = 1)
-                if (dot) AttentionBadge(c.accent, Modifier.size(VeloTheme.sizes.mark))
-            }
-        },
-    )
-}
-
 private val PaneStyles = listOf("comfortable", "compact")
 
 @Composable
