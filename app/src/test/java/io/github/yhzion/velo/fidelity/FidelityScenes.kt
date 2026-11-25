@@ -25,4 +25,5 @@ val FidelityScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
         }
     },
     *StartSplashScenes.toList().toTypedArray(),
+    *WorkspaceScenes.toList().toTypedArray(),
 )

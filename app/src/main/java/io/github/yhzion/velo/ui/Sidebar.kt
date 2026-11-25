@@ -143,6 +143,20 @@ fun remoteRowNote(status: String, removed: Boolean, needsAnswer: Boolean = false
     else -> if (needsAnswer) NEEDS_ANSWER_NOTE else phase.words.lowercase()
 }
 
+/**
+ * What the sidebar keeps while it is open: whether Activity is on, the filter's text, the remotes
+ * ([collapsed], by id) and sessions ([collapsedSessions], by the server's ids: one set serves every
+ * remote) folded away, and the one tab row that shows Close after a left swipe ([revealed]).
+ */
+@Stable
+internal class SidebarState(collapsedSessions: Set<String> = emptySet()) {
+    var activityOnly by mutableStateOf(false)
+    var query by mutableStateOf("")
+    var collapsed by mutableStateOf(emptySet<String>())
+    var collapsedSessions by mutableStateOf(collapsedSessions)
+    var revealed by mutableStateOf<String?>(null)
+}
+
 /** A length the Sidebar board gives, at the current size ([VeloTheme.medium]). */
 private val Int.bd: Dp @Composable @ReadOnlyComposable get() = VeloTheme.medium(this.dp)
 
@@ -158,15 +172,14 @@ internal fun Sidebar(
     device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, actions: SidebarActions,
     /** The gear's dot: an update was found that the Updates page has not shown yet. */
     settingsBadge: Boolean = false,
+    state: SidebarState = remember { SidebarState() },
 ) = VeloSurface(VeloTheme.colors.sidebar) {
     val c = VeloTheme.surface
-    var activityOnly by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    var collapsed by remember { mutableStateOf(emptySet<String>()) }
-    // Session IDs are the server's UUIDs: one set serves every remote.
-    var collapsedSessions by remember { mutableStateOf(emptySet<String>()) }
-    // The one tab row that shows Close after a left swipe.
-    var revealed by remember { mutableStateOf<String?>(null) }
+    var activityOnly by state::activityOnly
+    var query by state::query
+    var collapsed by state::collapsed
+    var collapsedSessions by state::collapsedSessions
+    var revealed by state::revealed
 
     Column(modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface)) {
         // Rex for Mac lights the eye's dot only while some tab's row draws its unread dot (a
@@ -177,7 +190,9 @@ internal fun Sidebar(
                 wantsAttention(host.readState.activity(row, true))
             }.isNotEmpty()
         }
-        Row(Modifier.testTag("sidebar-toolbar").fillMaxWidth().padding(start = 12.bd, end = 12.bd, top = 12.bd, bottom = 8.bd),
+        // Each block of the sidebar keeps the board's height as its least, its content within it: the
+        // half pixels of the board's paddings at this density do not add up from one block to the next.
+        Row(Modifier.testTag("sidebar-toolbar").fillMaxWidth().heightIn(min = 72.bd).padding(start = 12.bd, end = 12.bd, top = 10.bd, bottom = 6.bd),
             verticalAlignment = Alignment.CenterVertically) {
             // Rex for Mac's hide-sidebar glyph is an SF Symbol like the capsule's, so it is drawn for this app too.
             GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Toggle Sidebar", actions.toggleSidebar,
@@ -263,7 +278,7 @@ internal fun Sidebar(
                 if (actions.found.isNotEmpty()) {
                     item(key = "found") {
                         Text("FOUND ON TAILNET", Modifier.testTag("found-on-tailnet-header").fillMaxWidth().semantics { heading() }
-                            .padding(start = 20.bd, end = 20.bd, top = 16.bd, bottom = 6.bd),
+                            .heightIn(min = 36.bd).padding(start = 20.bd, end = 20.bd, top = 16.bd, bottom = 5.bd),
                             style = VeloTheme.type.eyebrow.naturalLines(), color = c.secondary, maxLines = 1)
                     }
                     items(actions.found, key = { "f:" + it.url }) { server ->
@@ -271,7 +286,7 @@ internal fun Sidebar(
                     }
                 }
                 item(key = "add") {
-                    ListRow(AddRemoteCommand, actions.addRemote, Modifier.testTag("add-remote-row"), strong = true, minHeight = 48.bd,
+                    ListRow(AddRemoteCommand, actions.addRemote, Modifier.testTag("add-remote-row"), minHeight = 48.bd,
                         leading = { Icon(Icons.Default.Add, null, Modifier.size(20.bd), tint = c.text) })
                 }
             }
@@ -280,7 +295,7 @@ internal fun Sidebar(
             // row above the band.
             SearchField(query, { query = it }, Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .background(c.surface).padding(12.bd).testTag("sidebar-filter"), placeholder = "Filter",
-                inputModifier = Modifier.testTag("sidebar-filter-input"))
+                inputModifier = Modifier.testTag("sidebar-filter-input").heightIn(min = 21.bd))
         }
     }
 }
@@ -397,8 +412,9 @@ private fun TabRowView(
                 when (rowMark(mark)) {
                     RowMark.Working -> WorkingDots(5.bd, 4.bd, Modifier.testTag("tab-working-$id").padding(end = 8.bd),
                         description = mark?.description ?: TabIndicator.Working.description)
+                    // The second line says it waits: the dot is drawn only.
                     RowMark.Waiting -> Box(Modifier.padding(end = 10.bd).testTag("tab-attention-$id").size(9.bd)
-                        .background(VeloTheme.surface.warning, CircleShape).semantics { contentDescription = mark?.description.orEmpty() })
+                        .background(VeloTheme.surface.warning, CircleShape))
                     RowMark.Offline -> TabStatusMark(TabIndicator.Offline)
                     null -> Unit
                 }
@@ -461,13 +477,13 @@ private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
         .semantics {
             contentDescription = if (device.name == "This Device") "This Device, ${device.line}"
                 else "This Device, ${device.name}, ${device.line}"
-        }.padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd + line),
+        }.heightIn(min = 53.bd).padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
         Icon(Icons.Outlined.Smartphone, null, Modifier.size(20.bd), tint = c.secondary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.bd)) {
-            Text(device.name, Modifier.testTag("this-device-name"), color = c.text, style = type.header.copy(fontWeight = FontWeight.SemiBold).naturalLines(),
+            Text(device.name, Modifier.testTag("this-device-name").fillMaxWidth(), color = c.text, style = type.header.copy(fontWeight = FontWeight.SemiBold).naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(device.line, Modifier.testTag("this-device-status"), color = c.secondary, style = type.caption.naturalLines(),
+            Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth(), color = c.secondary, style = type.caption.naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         StatusMark(status, "Node ${device.state}", Modifier.testTag("this-device-dot"))
@@ -493,7 +509,7 @@ private fun RemoteHeader(host: SidebarHost, expanded: Boolean, actions: SidebarA
     Row(Modifier.testTag("remote-row-$name").fillMaxWidth()
         .clickable(enabled = !host.removed) { actions.selectRemote(remote) }
         .semantics { if (host.active) selected = true }
-        .padding(start = 18.bd, end = 4.bd, top = 4.bd).heightIn(min = 52.bd),
+        .heightIn(min = 56.bd).padding(start = 18.bd, end = 4.bd, top = 4.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
         Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(22.bd), tint = when {
             host.active -> c.accent
@@ -501,7 +517,7 @@ private fun RemoteHeader(host: SidebarHost, expanded: Boolean, actions: SidebarA
             else -> c.text
         })
         Column(Modifier.weight(1f)) {
-            Text(name, Modifier.testTag("remote-name-$name"), style = VeloTheme.type.bodyStrong.naturalLines(), maxLines = 1,
+            Text(name, Modifier.testTag("remote-name-$name").fillMaxWidth(), style = VeloTheme.type.bodyStrong.naturalLines(), maxLines = 1,
                 overflow = TextOverflow.Ellipsis, color = when {
                     host.removed -> c.disabled
                     note != null -> c.secondary

@@ -68,8 +68,8 @@ class VeloSpace(
 class VeloSizes(
     /** A round glass control and the least touch target (D12 rail disc 47.3, L06 49.6). */
     val control: Dp = 48.dp,
-    /** The thickness of a capsule that holds several icons (D12 51.2, L06 54.3). */
-    val capsule: Dp = 52.dp,
+    /** The thickness of a capsule that holds several icons: its round controls and 2 around them (Sidebar board, sidebar-actions: 52). */
+    val capsule: Dp = 48.dp + medium(2f) * 2,
     /** One icon's share of that capsule's length (L06 55.5). */
     val capsuleCell: Dp = 56.dp,
     /** How far a selected cell stays inside its capsule (Controls board: the segmented track's 3 around its cells). */
@@ -257,7 +257,7 @@ fun veloSizes(size: UiSize): VeloSizes {
     val keyHeight = base.keyHeight.at(MinKey)
     return VeloSizes(
         control = control,
-        capsule = base.capsule.at(MinTouch),
+        capsule = control + medium(2f) * (2 * f),
         capsuleCell = base.capsuleCell.at(MinTouch),
         cellInset = base.cellInset.s(),
         icon = base.icon.s(),

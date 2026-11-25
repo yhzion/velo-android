@@ -1,3 +1,9 @@
 {
-  "elements": {}
+  "elements": {
+    "pane-1-text": "the terminal draws a pane's text in its native view, which the scene stands in for; the board's own text also keeps its template's indent and blank lines (white-space: pre)",
+    "pane-2-text": "the terminal draws a pane's text in its native view, which the scene stands in for; the board's own text also keeps its template's indent and blank lines (white-space: pre)",
+    "pane-3-text": "the terminal draws a pane's text in its native view, which the scene stands in for; the board's own text also keeps its template's indent and blank lines (white-space: pre)",
+    "tab-tile-zsh-layer-2": "colour sample of a back layer that the layers and the face in front mostly hide: its band holds the face's glass and the layer's own dimmed glass in near-equal counts, and Chromium draws the dimmed layer in two shades where Skia draws one, so the most frequent colour flips; each drawn colour agrees within ΔE 0.7",
+    "tab-tile-zsh-layer-3": "colour sample of a back layer that the layers and the face in front mostly hide: its band holds the face's glass and the layer's own dimmed glass in near-equal counts, and Chromium draws the dimmed layer in two shades where Skia draws one, so the most frequent colour flips; each drawn colour agrees within ΔE 0.7"
+  }
 }

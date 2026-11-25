@@ -73,9 +73,9 @@ fun TabListRow(
     ) {
         tile()
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp))) {
-            if (titleContent != null) Box(Modifier.part("tab-title").clearAndSetSemantics { text = AnnotatedString(title) }) { titleContent() }
-            else Text(title, Modifier.part("tab-title"), style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, Modifier.part("tab-status"), style = type.caption.naturalLines(), color = c.secondary,
+            if (titleContent != null) Box(Modifier.part("tab-title").fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(title) }) { titleContent() }
+            else Text(title, Modifier.part("tab-title").fillMaxWidth(), style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, Modifier.part("tab-status").fillMaxWidth(), style = type.caption.naturalLines(), color = c.secondary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (trailing != null) trailing()

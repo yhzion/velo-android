@@ -129,15 +129,16 @@ fun CapsuleIcon(
             .semantics {
                 if (selected) this.selected = true
                 if (stateDescription != null) this.stateDescription = stateDescription
-            }
-            // The selected cell stays a little inside the control, as a segmented track's cell does.
-            .padding(s.cellInset).clip(Capsule).background(if (selected) c.glassSelected else Color.Transparent),
-        contentAlignment = Alignment.Center,
+            },
     ) {
-        Box {
+        // The selected cell stays a little inside the control, as a segmented track's cell does.
+        Box(Modifier.matchParentSize().padding(s.cellInset).clip(Capsule).background(if (selected) c.glassSelected else Color.Transparent),
+            contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription, Modifier.size(s.icon), tint = if (enabled) c.onGlass else c.disabled)
-            if (badge) AttentionBadge(c.accent, badgeModifier.align(Alignment.TopEnd).offset(x = s.dot / 4, y = -s.dot / 4).size(s.dot), ring = c.glass)
         }
+        // The dot 9 in from the control's top right (Sidebar board, update-dot).
+        val inset = VeloTheme.medium(9.dp)
+        if (badge) AttentionBadge(c.accent, Modifier.align(Alignment.TopEnd).offset(x = -inset, y = inset).then(badgeModifier).size(s.dot), ring = c.glass)
     }
 }
 
