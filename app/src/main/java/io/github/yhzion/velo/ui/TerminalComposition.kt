@@ -49,15 +49,80 @@ fun armedLatinKey(text: String, stickyMeta: Int): Char? =
     if (takesComposedKey(stickyMeta)) twoSetLatinKey(text) ?: asciiLetter(text) else null
 
 /**
- * How the remote follows a composition that ended as [text] when it already has [taken]: the
- * front of that composition, the character before the cursor that the keyboard took back into
- * it (Samsung Keyboard does so with a digit or a letter before the next jamo, #282). The pair is
- * the number of characters to erase first and the text to send after. A [text] that still starts
- * with [taken] sends only the rest; any other [text] erases [taken] and sends all of itself.
+ * How the remote follows a composition that is now [text] when it already has [taken]: what it
+ * was sent of that composition. That is the character before the cursor that the keyboard took
+ * back into it (Samsung Keyboard does so with a digit or a letter before the next jamo, #282), or
+ * the letters it got as they were typed (#18). The pair is the number of characters to erase
+ * first and the text to send after: [taken] is erased back to where it and [text] part
+ * ([commonFront]), and the rest of [text] is sent. Autocorrect at a space (teh to "the ") erases
+ * two and sends "he ".
  */
-fun remoteEdit(text: String, taken: String): Pair<Int, String> =
-    if (text.startsWith(taken)) 0 to text.substring(taken.length)
-    else taken.codePointCount(0, taken.length) to text
+fun remoteEdit(text: String, taken: String): Pair<Int, String> {
+    val front = commonFront(text, taken)
+    return taken.codePointCount(front, taken.length) to text.substring(front)
+}
+
+/**
+ * The length of the front [a] and [b] share, in UTF-16 units, ending between two code points: two
+ * emoji that share their high surrogate are different characters, and a Backspace erases a whole one.
+ */
+fun commonFront(a: CharSequence, b: CharSequence): Int {
+    var index = 0
+    while (index < a.length && index < b.length) {
+        val point = Character.codePointAt(a, index)
+        if (point != Character.codePointAt(b, index)) break
+        index += Character.charCount(point)
+    }
+    return index
+}
+
+/**
+ * Whether the composition [preedit], of which the remote has [sent] (its front), goes to the
+ * remote as it is typed instead of when it ends (#18). Latin letters compose nothing: Samsung
+ * Keyboard composes an English word only for its suggestions, and holding the word until the
+ * space keeps the remote's completion (Claude Code's / and @, a shell's menu) from seeing it.
+ * True while all of these hold:
+ * - It is typing: at most one character past [sent]. A jump of many (a suggestion taken, a voice
+ *   transcript that grows) waits for the commit, which may still change it.
+ * - Nothing in it composes in place ([composesInPlace]): a Hangul syllable changes as it is typed.
+ * - No control character: a composition with a line break ends as a paste ([keyboardTextIsPaste]).
+ * - [latinFinal]: the keyboard does not turn Latin letters into other characters
+ *   ([keyboardLatinIsFinal]). Asked last, and only then: the keyboard is asked across processes.
+ */
+fun streamsTerminalComposition(preedit: String, sent: String, latinFinal: () -> Boolean): Boolean {
+    if (!preedit.startsWith(sent) || preedit.codePointCount(sent.length, preedit.length) > 1) return false
+    // Nothing is left to send: the keyboard need not be asked.
+    if (preedit.length == sent.length) return true
+    var index = 0
+    while (index < preedit.length) {
+        val point = preedit.codePointAt(index)
+        if (Character.isISOControl(point) || composesInPlace(point)) return false
+        index += Character.charCount(point)
+    }
+    return latinFinal()
+}
+
+/**
+ * A character a keyboard composes and may still change: Hangul (jamo of every block, syllables,
+ * halfwidth), kana, CJK ideographs and the bopomofo of a Chinese Zhuyin keyboard.
+ */
+private fun composesInPlace(point: Int): Boolean = when (Character.UnicodeScript.of(point)) {
+    Character.UnicodeScript.HANGUL, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA,
+    Character.UnicodeScript.HAN, Character.UnicodeScript.BOPOMOFO -> true
+    else -> false
+}
+
+/** Languages whose keyboards compose Latin letters into other characters: pinyin into hanzi, romaji into kana. */
+private val LATIN_COMPOSING_LANGUAGES = setOf("zh", "ja", "yue")
+
+/**
+ * Whether the Latin letters of a keyboard whose current subtype has [languageTag] (a BCP 47 tag,
+ * or an old locale string such as zh_CN) are the text they show: not for Chinese or Japanese,
+ * whose keyboards compose the letters of a word into other characters. A keyboard that names no
+ * language streams them.
+ */
+fun keyboardLatinIsFinal(languageTag: String?): Boolean =
+    languageTag.orEmpty().substringBefore('-').substringBefore('_').lowercase() !in LATIN_COMPOSING_LANGUAGES
 
 /**
  * Whether the press of a hardware key that is about to be forwarded sends the composition first:
@@ -69,7 +134,8 @@ fun keyFlushesComposition(modifier: Boolean): Boolean = !modifier
 
 /**
  * Whether the editors of the terminal hold a composition: [preedit] the keyboard still composes
- * (a character it took back counts, #282), or writes that wait behind a window over the app
+ * (a character it took back counts, #282, and so do letters the remote got as they were typed,
+ * #18: the keyboard would extend them in the next pane), or writes that wait behind a window over the app
  * ([deferredWrites]). When the bound pane changes or gets text from elsewhere, the terminal
  * drops that text and restarts the keyboard's input only if this holds: the restart makes the
  * keyboard forget the composition, so that it does not send it a second time or into another

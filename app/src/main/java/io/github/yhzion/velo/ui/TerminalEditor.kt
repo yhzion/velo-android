@@ -33,11 +33,13 @@ internal class TerminalEditorState(
     val preedit = SpannableStringBuilder().also { Selection.setSelection(it, 0) }
 
     /**
-     * The front of [preedit] the remote already has: the last character, which the keyboard took
-     * back into its composition ([takeBack]). Only what the composition makes of it is sent and
-     * shown. "" when nothing was taken back.
+     * The front of [preedit] the remote already has, and all it has of it: the last character,
+     * which the keyboard took back into its composition ([takeBack]), and the letters sent as they
+     * were typed ([stream], #18). After each change of the preedit the remote follows it
+     * ([releaseSent], then [stream]), so this stays its front. Only the rest is sent at the end
+     * and shown on the pane. "" when the remote has nothing of the composition.
      */
-    var takenBack = ""
+    var sent = ""
         private set
     private val clients = Collections.newSetFromMap(WeakHashMap<TerminalEditor, Boolean>())
     private data class Pending(val source: TerminalEditor, val send: () -> Unit)
@@ -95,7 +97,7 @@ internal class TerminalEditorState(
     /**
      * Samsung Keyboard takes a digit or a letter before the cursor back into its composition
      * before the next jamo (#282). The last character of [source] becomes the
-     * preedit, as [takenBack]: the keyboard's cursor stays after it, so nothing is told.
+     * preedit, as [sent]: the keyboard's cursor stays after it, so nothing is told.
      */
     fun takeBack(source: TerminalEditor) {
         val character = contextFor(source)?.toString() ?: return
@@ -103,24 +105,38 @@ internal class TerminalEditorState(
         lastCharacter.clear()
         preedit.replace(0, preedit.length, character)
         Selection.setSelection(preedit, preedit.length)
-        takenBack = character
+        sent = character
     }
 
     /**
-     * The keyboard changed or deleted the character it took back, or [always] when a deletion
-     * reaches the remote before it: forgets it and returns how many characters the remote must
-     * erase, 0 while the preedit still starts with it. The preedit then sends all of itself.
+     * The keyboard changed or deleted what the remote has of its composition, or [always] when a
+     * deletion reaches the remote before it: [sent] keeps only the front it shares with the
+     * preedit ([commonFront]), none when [always], and this returns how many characters the remote
+     * must erase for that, 0 while the preedit still starts with all of it.
      */
-    fun releaseTakenBack(always: Boolean = false): Int {
-        if (takenBack.isEmpty() || !always && preedit.startsWith(takenBack)) return 0
-        val count = takenBack.codePointCount(0, takenBack.length)
-        takenBack = ""
+    fun releaseSent(always: Boolean = false): Int {
+        val kept = if (always) 0 else commonFront(sent, preedit)
+        val count = sent.codePointCount(kept, sent.length)
+        sent = sent.substring(0, kept)
         return count
+    }
+
+    /**
+     * Counts all of the preedit as [sent] when it goes to the remote as it is typed
+     * ([streamsTerminalComposition]) and returns what the remote still needs of it; "" when it
+     * has all of it or the composition is held. [sent] is the preedit's front ([releaseSent]).
+     */
+    fun stream(latinFinal: () -> Boolean): String {
+        val text = preedit.toString()
+        if (!streamsTerminalComposition(text, sent, latinFinal)) return ""
+        val rest = text.substring(sent.length)
+        sent = text
+        return rest
     }
 
     fun clearPreedit() {
         composing = null
-        takenBack = ""
+        sent = ""
         preedit.clear()
         showPreedit()
     }
@@ -140,8 +156,8 @@ internal class TerminalEditorState(
      * input call: the keyboard edits the preedit through the editable as well as by the calls.
      */
     fun showPreedit() {
-        // A character taken back is on the pane already, as the remote shows it.
-        val now = if (preeditHidden) "" else remoteEdit(preedit.toString(), takenBack).second
+        // What the remote has of the composition is on the pane already, as the remote shows it.
+        val now = if (preeditHidden) "" else remoteEdit(preedit.toString(), sent).second
         if (now == shown) return
         shown = now
         preeditShown(now)
@@ -183,6 +199,9 @@ internal class TerminalEditorState(
  * [armedKey] is asked about each preedit text: true when the view sent it as a key with an armed
  * modifier of the key bar, so that nothing of it is composed. A submitted text that is a paste
  * ([keyboardTextIsPaste]) goes to [paste] instead of [commit] or [finish].
+ * A composition of Latin letters goes to the remote as it is typed, through [finish] as the
+ * composition's own text ([TerminalEditorState.sent], #18); [latinFinal] is false while the
+ * keyboard turns Latin letters into other characters ([keyboardLatinIsFinal]).
  */
 internal class TerminalEditor(
     view: View,
@@ -196,6 +215,7 @@ internal class TerminalEditor(
     private val armedKey: (String) -> Boolean = { false },
     private val plainInput: () -> Boolean = { true },
     private val paste: (String) -> Unit = commit,
+    private val latinFinal: () -> Boolean = { true },
 ) : BaseInputConnection(view, true) {
     private var closed = false
     init { state.attach(this) }
@@ -248,6 +268,7 @@ internal class TerminalEditor(
             state.takeBack(this)
         }
         if (!canEdit() || !super.setComposingRegion(start, end)) return false
+        follow()
         state.setComposing(this)
         state.showPreedit()
         return true
@@ -260,10 +281,11 @@ internal class TerminalEditor(
         state.forgetContext(composing = true)
         // Sent as a key: the preedit before it went when the modifier was armed, and none follows.
         // Only while this editor writes at once: an interrupted one defers what it gets. Of a
-        // composition over a character taken back, the key is what was typed after it (the jamo, not the digit).
-        if (active() && armedKey(remoteEdit(text.toString(), state.takenBack).second)) return true
+        // composition the remote has the front of, the key is what was typed after it: the jamo,
+        // not the digit taken back (#282), and the letter, not the word streamed before it (#18).
+        if (active() && armedKey(remoteEdit(text.toString(), state.sent).second)) return true
         if (!super.setComposingText(text, newCursorPosition)) return false
-        eraseReleased()
+        follow()
         state.setComposing(this)
         state.showPreedit()
         return true
@@ -273,16 +295,26 @@ internal class TerminalEditor(
 
     override fun finishComposingText() = submit(null, finish)
 
-    /** The keyboard changed or deleted the character it took back: the remote loses it as well. */
-    private fun eraseReleased() {
-        val count = state.releaseTakenBack()
-        if (count > 0) write { repeat(count) { key(KeyEvent.KEYCODE_DEL) } }
+    /**
+     * The remote follows the preedit the keyboard has just changed: it loses what it has past
+     * their common front (a Backspace in an English word, the digit taken back and then changed),
+     * and gets the rest at once while the composition streams (#18). An interrupted editor holds
+     * that rest for the commit: only the erasure waits for the focus, with the writes before it.
+     */
+    private fun follow() {
+        val erase = state.releaseSent()
+        val rest = if (active()) state.stream(latinFinal) else ""
+        if (erase == 0 && rest.isEmpty()) return
+        write {
+            repeat(erase) { key(KeyEvent.KEYCODE_DEL) }
+            if (rest.isNotEmpty()) finish(rest)
+        }
     }
 
     private fun submit(text: CharSequence?, send: (String) -> Unit, atEnd: Boolean = true): Boolean {
         if (!canEdit()) return false
         if (text != null && text.isEmpty()) state.forgetContext()
-        submitTerminalComposition(state.preedit, text, state::clearPreedit, state.takenBack) { erase, value, whole ->
+        submitTerminalComposition(state.preedit, text, state::clearPreedit, state.sent) { erase, value, whole ->
             write {
                 repeat(erase) { key(KeyEvent.KEYCODE_DEL) }
                 if (keyboardTextIsPaste(value)) {
@@ -338,11 +370,13 @@ internal class TerminalEditor(
         val start = if (codePoints) Character.offsetByCodePoints(buffer, cursor, -takeLeft) else cursor - takeLeft
         val end = if (codePoints) Character.offsetByCodePoints(buffer, cursor, takeRight) else cursor + takeRight
         buffer.delete(start, end)
-        // The remote's cursor is after a character taken back, not at the front of the preedit:
-        // a deletion past that front erases the character first.
-        repeat(state.releaseTakenBack(always = remoteBefore > takeLeft)) { key(KeyEvent.KEYCODE_DEL) }
-        state.showPreedit()
+        // The remote's cursor is after what it has of the preedit ([TerminalEditorState.sent]), not
+        // at the front of the preedit: a deletion past that front erases all of it first.
+        repeat(state.releaseSent(always = remoteBefore > takeLeft)) { key(KeyEvent.KEYCODE_DEL) }
         sendSurroundingDeletes(remoteBefore - takeLeft, after - takeRight, key)
+        // What is left of an English word stays on the remote, or goes back to it after such a deletion.
+        state.stream(latinFinal).takeIf { it.isNotEmpty() }?.let(finish)
+        state.showPreedit()
         return true
     }
 
@@ -377,20 +411,20 @@ internal class TerminalEditor(
 }
 
 /**
- * A commit replaces preedit, including an explicit empty commit which cancels it. [taken] is the
- * front of the preedit the remote already has ([TerminalEditorState.takenBack]): [send] gets the
+ * A commit replaces preedit, including an explicit empty commit which cancels it. [sent] is the
+ * front of the preedit the remote already has ([TerminalEditorState.sent]): [send] gets the
  * characters to erase first ([remoteEdit]), the text to send, and the whole text the composition
- * ended as. Nothing is sent for an empty composition that took nothing back.
+ * ended as. Nothing is sent for an empty composition the remote has nothing of.
  */
 internal fun submitTerminalComposition(
     preedit: CharSequence,
     committed: CharSequence?,
     clear: () -> Unit,
-    taken: String = "",
+    sent: String = "",
     send: (erase: Int, text: String, whole: String) -> Unit,
 ) {
     val whole = (committed ?: preedit).toString()
     clear()
-    val (erase, text) = remoteEdit(whole, taken)
+    val (erase, text) = remoteEdit(whole, sent)
     if (erase > 0 || whole.isNotEmpty()) send(erase, text, whole)
 }

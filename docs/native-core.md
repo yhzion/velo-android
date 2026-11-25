@@ -630,7 +630,9 @@ windows of every other one, so that the state lists each session's tabs.
 ### Keyboard composition preview
 
 The pane draws up to 256 bytes of uncommitted IME text locally, using Ghostty's cell widths.
-The limit applies to the preview, not to the text sent on commit. Before displaying an edit,
+The limit applies to the preview, not to the text sent on commit. The app sends Latin letters
+that a keyboard composes only for its suggestions as they are typed, so the preview holds only
+what the remote does not have yet: a Hangul syllable, kana, or a suggestion before its commit. Before displaying an edit,
 the core asks for the block's `terminal.input_mode` and `terminal.process` in parallel. Neither
 request contains the composition. A canonical read with echo off, or a foreground program named
 `sudo`, `su`, `passwd` or `doas`, hides the preview. Bash readline disables both echo and canonical
