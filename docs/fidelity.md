@@ -50,6 +50,14 @@ and the box of every node with a testTag. It runs only when Gradle gets `-Pvelo.
 the normal unit test run skips it. A screen is measured once it has a scene. Add one in
 `FidelityScenes.kt`, keyed by the screen id.
 
+**Previews.** The splash has no device boards: its preview board, Main, draws the three devices
+side by side, each a `screen-splash` element, and plays the 1.4 s timeline once. `PREVIEWS` in
+`fidelity.py` lists such screens: `splash-0ms`, `splash-240ms`, `splash-480ms`, `splash-660ms`,
+`splash-1000ms` and `splash` (1400 ms) are Main with its animations paused at that time
+(`boards.mjs` renders `Main@<ms>`), and `splash-reduced` is Main with prefers-reduced-motion. Each
+device is cut out of the board at its `screen-splash` box, with the elements inside it, and
+compared like a device board. The app's scenes draw `SplashScreen(splashFrame(t))`.
+
 **Pairing.** A board element's `data-el` name pairs with the app node whose testTag is the same
 string. When a name repeats, the n-th element pairs with the n-th node, in document order on the
 board and tree order in the app.
@@ -88,8 +96,10 @@ The report lists these apart from the scores:
 - **Status bar.** Robolectric draws no system bars, and the boards draw none. Nothing is masked.
 - **Font hinting.** Chromium and Robolectric's Skia anti-alias text differently. This lowers SSIM
   by a few hundredths on screens with much text.
-- **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900), so
-  weight 600 draws as 700 on both. Devices use variable Roboto and draw 600.
+- **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
+  Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
+  Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.
+  Devices use variable Roboto and draw 600.
 - **SDK.** Captures run on Robolectric SDK 34. Newer SDKs need Java 21, and the build runs tests on
   Java 17.
 

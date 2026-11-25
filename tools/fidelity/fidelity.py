@@ -32,6 +32,14 @@ import metrics as m  # noqa: E402
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DEVICES = {"bar": (393, 894), "closed": (475, 751), "open": (821, 1088)}
 DEVICE_ORDER = list(DEVICES)
+# Screens drawn on a preview board rather than on device boards of their own. The splash's preview (board Main) draws
+# the three devices side by side, each a screen-splash element, and plays the splash's timeline once. Each screen is
+# that board paused at a time in ms, or drawn with reduced motion ("reduced"); boards.mjs renders Main@<time>.
+PREVIEWS = [
+    {"board": "Main", "clip": "screen-splash", "screens": {
+        "splash-0ms": "0", "splash-240ms": "240", "splash-480ms": "480", "splash-660ms": "660",
+        "splash-1000ms": "1000", "splash": "1400", "splash-reduced": "reduced"}},
+]
 # The token comparison test (layer 1); its JUnit results give the token match rate.
 TOKEN_TESTS = "io.github.yhzion.velo.ui.theme.RedesignTokens*"
 
@@ -53,7 +61,8 @@ def parse_args():
 
 
 def plan_of(canvas_dir, only):
-    """One capture per device board of the canvas: its screen, device and size."""
+    """One capture per device board of the canvas: its screen, device and size. Then the screens of the preview
+    boards (PREVIEWS): one capture per screen and device, the board at that time cut to that device's screen."""
     canvas = json.load(open(os.path.join(canvas_dir, "canvas.json")))
     out = []
     for file, b in canvas["boards"].items():
@@ -63,6 +72,16 @@ def plan_of(canvas_dir, only):
         if screen and device and (not only or screen in only):
             out.append({"screen": screen, "device": device, "board": board, "w": b["w"], "h": b["h"],
                         "title": b.get("title", "")})
+    for p in PREVIEWS:
+        b = canvas["boards"].get(p["board"] + ".dc.html")
+        if not b:
+            continue
+        for screen, at in p["screens"].items():
+            if only and screen not in only:
+                continue
+            for i, (device, (w, h)) in enumerate(DEVICES.items()):
+                out.append({"screen": screen, "device": device, "board": f"{p['board']}@{at}", "w": w, "h": h,
+                            "title": f"{b.get('title', '')} · {at}", "clip": p["clip"], "clip_index": i})
     return out
 
 
@@ -202,6 +221,8 @@ def main():
         else:
             board, app = json.load(open(board_file + ".json")), json.load(open(app_file + ".json"))
             board_img, app_img = load_png(board_file + ".png"), load_png(app_file + ".png")
+            if cap.get("clip"):
+                board, board_img = m.clip_board(board, board_img, cap["clip"], cap["clip_index"], board["dsf"])
             r, smap, app_img = compare(cap, board, app, board_img, app_img, exceptions, board["dsf"])
             name = f"{cap['screen']}@{cap['device']}"
             heat = heatmap(board_img, smap)
@@ -243,7 +264,7 @@ def main():
 
 def platform_exceptions(index, exceptions):
     font = ("Boards drawn with Robolectric's static Roboto faces (300/400/500/700/900), the same files the app "
-            "screenshots use; weight 600 resolves to 700 on both sides. Devices use variable Roboto."
+            "screenshots use; weight 600 resolves to 500 (Medium) on both sides. Devices use variable Roboto."
             if index.get("fonts") == "local" else
             "Boards drawn with Google Fonts Roboto; app screenshots with Robolectric's static Roboto faces.")
     return [

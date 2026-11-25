@@ -79,6 +79,22 @@ class CompareTest(unittest.TestCase):
                              [("settings-updates", "bar", 1240), ("settings-updates", "open", 1088)])
             self.assertEqual(f.plan_of(d, {"settings-about"}), [])
 
+    def test_preview_screens_are_cut_from_their_board_at_each_time(self):
+        canvas = {"boards": {"Main.dc.html": {"w": 1880, "h": 1270, "title": "Splash"}}}
+        import json
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            json.dump(canvas, open(os.path.join(d, "canvas.json"), "w"))
+            plan = f.plan_of(d, {"splash", "splash-240ms"})
+            self.assertEqual([(p["screen"], p["device"], p["board"], p["w"], p["clip_index"]) for p in plan], [
+                ("splash-240ms", "bar", "Main@240", 393, 0), ("splash-240ms", "closed", "Main@240", 475, 1),
+                ("splash-240ms", "open", "Main@240", 821, 2),
+                ("splash", "bar", "Main@1400", 393, 0), ("splash", "closed", "Main@1400", 475, 1),
+                ("splash", "open", "Main@1400", 821, 2),
+            ])
+            self.assertTrue(all(p["clip"] == "screen-splash" for p in plan))
+
 
 if __name__ == "__main__":
     unittest.main()

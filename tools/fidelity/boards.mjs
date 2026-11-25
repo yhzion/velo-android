@@ -11,7 +11,10 @@
 //
 // No npm dependencies: Chromium is driven over the DevTools protocol with Node's own WebSocket.
 //
-// Usage: node boards.mjs --canvas DIR --runtime FILE --out DIR [--boards A,B] [--chrome PATH]
+// A board named Board@<ms> is a frame of a board that animates (the splash's preview, Main): the board with its
+// animations paused at that time since they started. Board@reduced is the board with prefers-reduced-motion.
+//
+// Usage: node boards.mjs --canvas DIR --runtime FILE --out DIR [--boards A,B,Main@240] [--chrome PATH]
 //                        [--dsf 2.625] [--fonts local|web] [--roboto DIR]
 
 import { spawn } from 'node:child_process';
@@ -76,9 +79,13 @@ function serve(canvas, runtime) {
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
 }
 
-/** @font-face rules for the weights the boards ask for, from Robolectric's static Roboto files. */
+/**
+ * @font-face rules for the weights the boards ask for, from Robolectric's static Roboto files. Weight 600 gets the face
+ * Robolectric draws it with: its sans-serif family lists Medium before Bold, and Android's closest match takes the
+ * first of the two (both 100 away). Without the rule Chromium would take Bold, the heavier one.
+ */
 function localRobotoCss() {
-  const faces = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [700, 'Bold'], [900, 'Black']];
+  const faces = [[300, 'Light'], [400, 'Regular'], [500, 'Medium'], [600, 'Medium'], [700, 'Bold'], [900, 'Black']];
   return faces.map(([w, n]) =>
     `@font-face{font-family:'Roboto';font-style:normal;font-weight:${w};src:url(https://fonts.gstatic.com/local/Roboto-${n}.ttf) format('truetype')}`,
   ).join('\n');
@@ -142,9 +149,25 @@ const EXTRACT = `(() => {
 const PROBE = `JSON.stringify([document.querySelectorAll('[data-el]').length, document.fonts.status,
   document.querySelectorAll('dc-import:empty').length])`;
 
+/** The board file and the frame of a board name: "Main@240" is Main at 240 ms, "Main@reduced" Main with reduced motion. */
+export function frameOf(name) {
+  const [file, at] = name.split('@');
+  return { file, at: at ?? null };
+}
+
+// Runs in the page: every animation paused at AT ms since it started, then two frames drawn.
+const PAUSE = (at) => `(async () => {
+  for (const a of document.getAnimations()) { a.pause(); a.currentTime = ${Number(at)}; }
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return document.getAnimations().length;
+})()`;
+
 async function renderBoard(cdp, session, base, board, [w, h], dsf, out) {
+  const { file, at } = frameOf(board);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: dsf, mobile: false }, session);
-  await cdp.send('Page.navigate', { url: `${base}/${board}.dc.html` }, session);
+  await cdp.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-motion', value: at === 'reduced' ? 'reduce' : 'no-preference' }] }, session);
+  await cdp.send('Page.navigate', { url: `${base}/${file}.dc.html` }, session);
   let last = '', same = 0;
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline && same < 3) {
@@ -154,6 +177,9 @@ async function renderBoard(cdp, session, base, board, [w, h], dsf, out) {
     const [count, fonts] = JSON.parse(v);
     same = v === last && count > 0 && fonts === 'loaded' ? same + 1 : 0;
     last = v;
+  }
+  if (at !== null && at !== 'reduced') {
+    await cdp.send('Runtime.evaluate', { expression: PAUSE(at), awaitPromise: true, returnByValue: true }, session);
   }
   const { result } = await cdp.send('Runtime.evaluate', { expression: EXTRACT, returnByValue: true }, session);
   const shot = await cdp.send('Page.captureScreenshot', {
@@ -169,6 +195,11 @@ async function main() {
   const boards = Object.entries(canvas.boards)
     .map(([file, b]) => ({ name: file.replace(/\.dc\.html$/, ''), device: deviceOf(b.w, b.h), size: [b.w, b.h], title: b.title }))
     .filter((b) => b.device && (!wanted || wanted.has(b.name)));
+  // Frames of an animating board are asked for by name only; they keep the board's own size.
+  for (const name of wanted ?? []) {
+    const b = name.includes('@') && canvas.boards[`${frameOf(name).file}.dc.html`];
+    if (b) boards.push({ name, device: null, size: [b.w, b.h], title: b.title });
+  }
   mkdirSync(a.out, { recursive: true });
 
   const server = await serve(a.canvas, resolve(a.runtime));
