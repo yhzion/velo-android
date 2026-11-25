@@ -1,16 +1,7 @@
 package io.github.yhzion.velo.ui
 
 import io.github.yhzion.velo.ui.theme.lineBox
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import io.github.yhzion.velo.ActivitySound
-import io.github.yhzion.velo.PaneAlertKind
-import io.github.yhzion.velo.NotificationAccess
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,8 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,41 +34,31 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.yhzion.velo.R
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.Settings
-import io.github.yhzion.velo.Tailnet
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.isSshLocator
 import io.github.yhzion.velo.findLicense
 import io.github.yhzion.velo.licenseParent
-import io.github.yhzion.velo.ui.theme.AttentionBadge
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.CloseButton
 import io.github.yhzion.velo.ui.theme.GlassIconButton
 import io.github.yhzion.velo.ui.theme.GroupCard
 import io.github.yhzion.velo.ui.theme.GroupDivider
 import io.github.yhzion.velo.ui.theme.GroupHeader
-import io.github.yhzion.velo.ui.theme.KeyChoice
-import io.github.yhzion.velo.ui.theme.ListRow
 import io.github.yhzion.velo.ui.theme.MenuItem
 import io.github.yhzion.velo.ui.theme.OverlayHost
-import io.github.yhzion.velo.ui.theme.VeloSurface
 import io.github.yhzion.velo.ui.theme.SettingsPanelSurface
 import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloMenu
-import io.github.yhzion.velo.ui.theme.VeloSegmented
-import io.github.yhzion.velo.ui.theme.VeloSlider
 import io.github.yhzion.velo.ui.theme.VeloSwitch
 import io.github.yhzion.velo.ui.theme.VeloTextField
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.RowIconButton
-import io.github.yhzion.velo.ui.theme.SettingRow
-import io.github.yhzion.velo.ui.theme.UiSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -97,7 +76,6 @@ import io.github.yhzion.velo.ui.theme.CategoryIcon
 import io.github.yhzion.velo.ui.theme.CategoryTints
 import io.github.yhzion.velo.ui.theme.MinKey
 import io.github.yhzion.velo.ui.theme.rounded
-import kotlin.math.roundToInt
 
 // Settings is a modal over the originating screen (OverlayHost). On a phone and the folded
 // screen it fills the window: the categories first, each opening a page with Back in its header.
@@ -339,7 +317,7 @@ private fun SettingsPageContent(
         else when (category) {
             SettingsCategory.Appearance -> AppearanceSettings(host, openFont = { openLevel(SettingsLevel.Font) })
             SettingsCategory.Keyboard -> KeyboardSettings(host.settings)
-            SettingsCategory.Notifications -> ActivitySettings(host)
+            SettingsCategory.Notifications -> NotificationSettings(host)
             SettingsCategory.Remotes -> RemoteSettings(host, openDevice = { openLevel(SettingsLevel.Device) },
                 openSshKey = { openLevel(SettingsLevel.SshKey) })
             SettingsCategory.About -> AboutSettings(openUpdates = { openLevel(SettingsLevel.Updates) },
@@ -472,81 +450,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     }
 }
 
-@Composable
-private fun ActivitySettings(host: SettingsHost) {
-    val settings = host.settings
-    val context = LocalContext.current
-    val system = host.notifications
-    var blocked by remember { mutableStateOf(emptyList<PaneAlertKind>()) }
-    fun refresh() {
-        system.createChannels()
-        blocked = PaneAlertKind.entries.filter { system.access(it) != NotificationAccess.Allowed }
-    }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh() }
-    LifecycleResumeEffect(Unit) { refresh(); onPauseOrDispose { } }
-    GroupHeader("Program activity")
-    GroupCard {
-        Toggle("Show background notifications", settings.activityNotices, settings::saveActivityNotices)
-        if (settings.activityNotices && blocked.isNotEmpty()) {
-            val kind = blocked.first()
-            if (Build.VERSION.SDK_INT >= 33 && system.access(kind) == NotificationAccess.RequestPermission) {
-                VeloButton("Allow notifications", { permission.launch(Manifest.permission.POST_NOTIFICATIONS) })
-            }
-            VeloButton("Open Android settings", { context.startActivity(system.settingsIntent(kind)) })
-        }
-        GroupDivider()
-        Toggle("Play activity sounds", settings.activitySounds, settings::saveActivitySounds)
-        if (settings.activitySounds) {
-            Text("Sound volume · ${(settings.activityVolume * 100).roundToInt()}%")
-            VeloSlider(settings.activityVolume, settings::saveActivityVolume, valueRange = 0f..2f, modifier = Modifier.fillMaxWidth().semantics {
-                contentDescription = "Activity sound volume"
-            })
-        }
-    }
-    GroupHeader("Background")
-    GroupCard {
-        BackgroundSettings(host)
-    }
-    for (kind in PaneAlertKind.entries) {
-        // Rex for Mac marks each kind with its own coloured badge in Notifications.
-        Row(
-            Modifier.padding(horizontal = VeloTheme.sizes.overlayPadding, vertical = VeloTheme.sizes.menuPadding).semantics(mergeDescendants = true) { heading() },
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.sizes.rowGap),
-        ) {
-            Image(painterResource(alertIcon(kind)), null, Modifier.size(VeloTheme.sizes.iconSmall))
-            Text(kind.label, style = VeloTheme.type.header, color = VeloTheme.surface.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        GroupCard {
-            Toggle("Background notification", settings.posts(kind)) { settings.savePosts(kind, it) }
-            GroupDivider()
-            Toggle("Activity sound", settings.plays(kind)) { settings.savePlays(kind, it) }
-            if (settings.plays(kind)) {
-                var chooseSound by remember { mutableStateOf(false) }
-                Box {
-                    VeloButton("Sound · ${settings.soundFor(kind).name}", { chooseSound = true })
-                    VeloMenu(chooseSound, onDismissRequest = { chooseSound = false }) {
-                        for (sound in ActivitySound.entries) {
-                            MenuItem(sound.name, {
-                                chooseSound = false
-                                settings.saveSound(kind, sound)
-                                if (settings.activitySounds) host.notifications.play(kind, sound, settings.activityVolume)
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** The badge shown beside each kind of pane notification. */
-@DrawableRes
-private fun alertIcon(kind: PaneAlertKind): Int = when (kind) {
-    PaneAlertKind.Blocked -> R.drawable.ic_alert_blocked
-    PaneAlertKind.Done -> R.drawable.ic_alert_done
-    PaneAlertKind.Error -> R.drawable.ic_alert_error
-    PaneAlertKind.Working -> R.drawable.ic_alert_working
-}
 
 @Composable
 private fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshKey: () -> Unit) {

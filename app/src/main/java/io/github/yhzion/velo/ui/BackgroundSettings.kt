@@ -1,5 +1,26 @@
 package io.github.yhzion.velo.ui
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.groupBleed
+import io.github.yhzion.velo.ui.theme.SwitchRow
+import io.github.yhzion.velo.ui.theme.GroupDivider
+import io.github.yhzion.velo.ui.theme.ActionRow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import android.content.ActivityNotFoundException
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -8,14 +29,11 @@ import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.BackgroundConnection
-import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
@@ -36,21 +54,31 @@ internal const val BackgroundExplanation =
 internal const val UnrestrictedExplanation =
     "Allow Velo to run without battery restrictions, or Android may cut its connection after a while."
 
-/** Settings → Program activity: the switch and, while it is on, the battery request. */
+/**
+ * Notifications → Background (canvas SetNotifications block): staying connected, which Android
+ * marks with a quiet notification, and while it is on the battery: Unrestricted with a check, or a
+ * row that asks Android to let Velo run without its restrictions.
+ */
 @Composable
 internal fun BackgroundSettings(host: SettingsHost) {
     val settings = host.settings
     val background = host.background
+    val space = VeloTheme.space
     var unrestricted by remember { mutableStateOf(background.unrestricted()) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { unrestricted = background.unrestricted() }
     LifecycleResumeEffect(Unit) { unrestricted = background.unrestricted(); onPauseOrDispose { } }
-    Toggle("Stay connected in the background", settings.stayConnected) { settings.saveStayConnected(it) }
+    SwitchRow("Stay connected in the background", settings.stayConnected, { settings.saveStayConnected(it) },
+        subtitle = "Android shows a quiet notification while Velo stays connected.", tag = "notifications-stay-connected", paragraph = true)
     if (settings.stayConnected) {
-        if (unrestricted) {
-            Text("Battery: unrestricted", style = VeloTheme.type.caption, color = VeloTheme.surface.secondary)
-        } else {
-            VeloButton("Allow background running", { ask.askUnrestricted(background) })
-        }
+        GroupDivider()
+        if (unrestricted) Row(
+            Modifier.groupBleed().testTag("notifications-battery-row").fillMaxWidth().heightIn(min = VeloTheme.sizes.row).groupInset().padding(end = space.s4),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.s12),
+        ) {
+            Text("Battery", Modifier.weight(1f).testTag("notifications-battery-label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
+            Icon(Icons.Default.Check, null, Modifier.size(VeloTheme.medium(18.dp)), tint = VeloTheme.surface.ok)
+            Text("Unrestricted", Modifier.testTag("notifications-battery-status"), style = VeloTheme.type.value, color = VeloTheme.colors.textOnRaised)
+        } else ActionRow("Allow background running", Icons.Default.BatteryAlert, { ask.askUnrestricted(background) }, tag = "notifications-battery-row")
     }
 }
 

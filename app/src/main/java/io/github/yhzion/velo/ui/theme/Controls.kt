@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui.theme
 
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.github.yhzion.velo.ui.keyName
 import androidx.compose.animation.core.animateFloatAsState
@@ -252,14 +253,21 @@ fun SwitchRow(
     subtitle: String? = null, enabled: Boolean = true,
     /** Names the parts for tests: `<tag>-row`, `-label`, `-caption` (the subtitle) and `-switch`. */
     tag: String? = null,
+    /** A subtitle of more than a line: set at 1.4 of its size, 12 above and below the row's words (Notifications' Stay connected). */
+    paragraph: Boolean = false,
 ) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
+    val padding = when {
+        subtitle == null -> 6.dp
+        paragraph -> 12.dp
+        else -> 10.dp
+    }
     Row(
-        modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = if (subtitle != null) VeloTheme.medium(64.dp) else VeloTheme.sizes.row)
+        modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = if (subtitle != null && !paragraph) VeloTheme.medium(64.dp) else VeloTheme.sizes.row)
             .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange).groupInset()
             // A switch keeps 16 from the group's border, 4 more than the group's other rows.
-            .padding(vertical = VeloTheme.medium(if (subtitle != null) 10.dp else 6.dp)).padding(end = VeloTheme.space.s4),
+            .padding(vertical = VeloTheme.medium(padding)).padding(end = VeloTheme.space.s4),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
     ) {
@@ -267,7 +275,8 @@ fun SwitchRow(
         Box(Modifier.weight(1f)) {
             Column(Modifier.width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(3.dp))) {
                 Text(label, Modifier.fillMaxWidth().then(tagged(tag, "label")), style = type.body, color = if (enabled) c.text else c.disabled)
-                if (subtitle != null) Text(subtitle, Modifier.fillMaxWidth().then(tagged(tag, "caption")), style = type.caption, color = if (enabled) c.secondary else c.disabled)
+                if (subtitle != null) Text(subtitle, Modifier.fillMaxWidth().then(tagged(tag, "caption")),
+                    style = if (paragraph) type.caption.paragraph(1.4.em) else type.caption, color = if (enabled) c.secondary else c.disabled)
             }
         }
         VeloSwitch(checked, tagged(tag, "switch"), enabled = enabled)
@@ -558,19 +567,21 @@ fun MenuButton(
     text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, contentDescription: String? = null,
     /** The test tag of the drawn pill, inside the least touch target. */
     tag: String? = null,
+    /** The 40 high pill of a row that holds a switch too, such as an alert's sound; Compose still takes a touch 48 high. */
+    small: Boolean = false,
 ) {
     val c = VeloTheme.surface
     Row(
         modifier.minimumInteractiveComponentSize().then(if (tag != null) Modifier.testTag(tag) else Modifier)
-            .heightIn(min = VeloTheme.medium(44.dp)).glassControl(Capsule)
+            .heightIn(min = VeloTheme.medium(if (small) 40.dp else 44.dp)).glassControl(Capsule)
             .clickable(enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
-            .padding(start = VeloTheme.space.s16, end = VeloTheme.space.s12),
+            .padding(start = VeloTheme.medium(if (small) 14.dp else 16.dp), end = VeloTheme.medium(if (small) 10.dp else 12.dp)),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp)),
+        horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(if (small) 4.dp else 6.dp)),
     ) {
-        Text(text, style = VeloTheme.type.value, color = if (enabled) c.onGlass else c.disabled, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(VeloTheme.space.s16), tint = c.secondary)
+        Text(text, style = if (small) textAt(14f) else VeloTheme.type.value, color = if (enabled) c.onGlass else c.disabled, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(VeloTheme.medium(if (small) 14.dp else 16.dp)), tint = c.secondary)
     }
 }
 
