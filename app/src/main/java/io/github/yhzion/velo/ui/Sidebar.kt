@@ -55,12 +55,19 @@ import kotlinx.coroutines.delay
  * on it ([readState]); [removed] is the active remote the user removed. [needsAnswer]: its SSH login
  * waits for the user's answer, or for Reconnect after none came ([io.github.yhzion.velo.SshQuestions.needsAnswer]).
  */
-internal class SidebarHost(
-    val remote: Remote, val state: UiState, val readState: ActivityReadState, val active: Boolean, val removed: Boolean,
-    val needsAnswer: Boolean = false,
+internal class SidebarHost private constructor(
+    val remote: Remote, private val stateNow: () -> UiState, val readState: ActivityReadState, val active: Boolean, val removed: Boolean,
+    val needsAnswer: Boolean,
 ) {
+    /** Read where the sidebar draws it, so that a change of another remote's state redraws the sidebar, not the workspace. */
+    val state: UiState get() = stateNow()
+
     constructor(remote: Remote, conn: HostConnection, active: Boolean, removed: Boolean, needsAnswer: Boolean = false) :
-        this(remote, conn.state, conn.activityReadState, active, removed, needsAnswer)
+        this(remote, { conn.state }, conn.activityReadState, active, removed, needsAnswer)
+
+    /** A remote of a fixed [state], such as a fidelity scene draws. */
+    constructor(remote: Remote, state: UiState, readState: ActivityReadState, active: Boolean, removed: Boolean, needsAnswer: Boolean = false) :
+        this(remote, { state }, readState, active, removed, needsAnswer)
 }
 
 /** Status of the local phone, shown above (not as part of) the remote list. */
