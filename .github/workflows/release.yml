@@ -42,6 +42,13 @@ jobs:
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "tag-object=$(git rev-parse "$GITHUB_REF")" >> "$GITHUB_OUTPUT"
 
+      # Velo shows this section before updating; a preview or edge tag uses its base version's.
+      - name: Check CHANGELOG.md has this release
+        run: |
+          set -eu
+          base=${GITHUB_REF_NAME#v}
+          bash .github/scripts/changelog.sh section "${base%%-*}"
+
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: native/tailscale/go.mod
@@ -145,6 +152,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only the changelog and its script, from the commit the build job checked and built.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            CHANGELOG.md
+            .github/scripts/changelog.sh
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build.outputs.artifact }}
@@ -166,8 +182,12 @@ jobs:
           [[ $(gh api "repos/$GH_REPO/git/ref/tags/$GITHUB_REF_NAME" --jq .object.sha) == "$TAG_OBJECT" ]]
           status=$(gh api "repos/$GH_REPO/compare/$COMMIT...main" --jq .status)
           [[ $status == identical || $status == ahead ]]
+          # The version-code marker, then the change block the app reads; generated notes follow.
+          base=${GITHUB_REF_NAME#v}
+          notes=$(bash "$GITHUB_WORKSPACE/.github/scripts/changelog.sh" body "${base%%-*}" \
+            "${APK_VERSION_CODE:?Missing APK versionCode}")
           flags=(--latest)
           if [[ $GITHUB_REF_NAME == *-* ]]; then flags=(--prerelease --latest=false); fi
           gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" \
             --verify-tag --title "$GITHUB_REF_NAME" "${flags[@]}" --generate-notes \
-            --notes "<!-- android-version-code: ${APK_VERSION_CODE:?Missing APK versionCode} -->"
+            --notes "$notes"
