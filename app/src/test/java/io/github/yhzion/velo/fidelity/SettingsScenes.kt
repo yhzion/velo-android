@@ -167,7 +167,7 @@ private fun SettingsScene(route: SettingsRoute, prepare: FakeSettingsHost.() -> 
 internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-home" to { SettingsScene(SettingsRoute()) },
     "settings-appearance" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance)) },
-    "settings-font" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance, SettingsLevel.Font)) },
+    "settings-font" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance, SettingsLevel.Font)) { fonts = SampleFonts } },
     "settings-keyboard" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
     "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
     "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) },
@@ -195,4 +195,14 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
             notices = mapOf("notices/third-party/native/ghostty-MIT.txt" to SampleGhosttyLicense)
         }
     },
+)
+
+/** The board's fonts: the bundled ones, two of the device's and one imported (canvas SetFont block). */
+private val SampleFonts = listOf(
+    TerminalFont.JETBRAINS, TerminalFont.FIRA_CODE, TerminalFont.CASCADIA_CODE,
+    TerminalFont.D2CODING.copy(label = "D2Coding Ligature"),
+    TerminalFont("sarasa-term-k-velo", "Sarasa Term K Velo", true, hangul = true),
+    TerminalFont("device:Droid Sans Mono", "Droid Sans Mono", true),
+    TerminalFont("device:Noto Sans Mono", "Noto Sans Mono", true),
+    TerminalFont("import:ab12:Iosevka Term", "Iosevka Term", true),
 )
