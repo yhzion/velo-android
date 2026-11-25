@@ -1,7 +1,12 @@
 package io.github.yhzion.velo.ui.theme
 
+import androidx.compose.ui.text.font.Typeface
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.ReadOnlyComposable
@@ -370,6 +375,42 @@ internal fun TextStyle.onPixels(density: Density): TextStyle {
     val scale = density.density * density.fontScale
     val px = Math.round(lineHeight.value * scale).coerceAtLeast(1)
     return copy(lineHeight = ((px - 0.01f) / scale).sp)
+}
+
+/**
+ * As tall as one line of [style], as the browser sets it. Android never makes a line shorter
+ * than the font's own (25.8 at 22 sp, where the board's is 25), so a heading or a title that
+ * stacks with others is held to its line; its glyphs may reach a fraction past it.
+ */
+@Composable
+fun Modifier.lineBox(style: TextStyle): Modifier {
+    val density = LocalDensity.current
+    return if (!style.lineHeight.isSp) this else height(with(density) { style.lineHeight.toDp() })
+}
+
+/**
+ * A style of [size] sp at Medium that the type scale does not name (the boards' 14, 12.5),
+ * scaled with the Size setting and on the browser's line of Roboto, as the type scale's styles are.
+ */
+@Composable
+fun textAt(size: Float, weight: FontWeight = FontWeight.Normal): TextStyle {
+    val scale = VeloTheme.medium(1.dp).value
+    return TextStyle(fontSize = (size * scale).sp, lineHeight = (browserLine(size) * scale).sp, fontWeight = weight, lineHeightStyle = BrowserLines)
+        .onPixels(LocalDensity.current)
+}
+
+/**
+ * JetBrains Mono, which the boards set keys, addresses and license texts in: the terminal's
+ * bundled face, read as the terminal reads it, not the device's monospace.
+ */
+@Composable
+fun rememberMono(): FontFamily {
+    val assets = LocalContext.current.assets
+    return remember(assets) {
+        val regular = android.graphics.fonts.Font.Builder(assets, "fonts/JetBrainsMono-Regular.ttf").build()
+        FontFamily(Typeface(android.graphics.Typeface.CustomFallbackBuilder(android.graphics.fonts.FontFamily.Builder(regular).build())
+            .setSystemFallback("monospace").build()))
+    }
 }
 
 /** Every style of [this] with its line on a whole pixel ([TextStyle.onPixels]). */

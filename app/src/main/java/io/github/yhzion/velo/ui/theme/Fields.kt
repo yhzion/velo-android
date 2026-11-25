@@ -68,7 +68,8 @@ fun labelNamesField(label: String?): Boolean = !label.isNullOrEmpty()
  * while it is empty. [trailing] sits at its end, inside the pill. While it has the keys its rim is
  * the chrome accent, twice as wide. [help] under it says what to type; an [error] takes its place
  * in the red and turns the rim red. [mono] sets the text in the monospace face, for an address or
- * a path. [tagPrefix] names the parts for tests: `<prefix>-field` (the whole), `-input`, `-help`, `-error`.
+ * a path. [tagPrefix] names the parts for tests: `<prefix>-field` (the whole), `-input` (where the text is
+ * typed, beside the icon), `-help`, `-error`.
  */
 @Composable
 fun VeloTextField(
@@ -103,7 +104,7 @@ fun VeloTextField(
         // The input says the label itself ([fieldDescription]): drawn text only, so it is not read twice.
         if (label != null) Text(label, Modifier.padding(start = VeloTheme.space.s4).clearAndSetSemantics {}, style = type.caption, color = c.secondary)
         BasicTextField(
-            value, onValueChange, Modifier.fillMaxWidth().part("input").semantics { description?.let { contentDescription = it } }, singleLine = true,
+            value, onValueChange, Modifier.fillMaxWidth().semantics { description?.let { contentDescription = it } }, singleLine = true,
             textStyle = textStyle.copy(color = c.onGlass), cursorBrush = SolidColor(focusColor),
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             interactionSource = interaction,
@@ -115,7 +116,7 @@ fun VeloTextField(
                     Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = c.secondary)
                     Spacer(Modifier.width(iconGap))
                 }
-                Box(Modifier.weight(1f).then(inputModifier), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.weight(1f).part("input").then(inputModifier), contentAlignment = Alignment.CenterStart) {
                     // Without a label the placeholder is the input's name, which the input already says.
                     if (value.isEmpty()) Text(placeholder, if (!labelNamesField(label)) Modifier.clearAndSetSemantics {} else Modifier, style = textStyle, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     field()
