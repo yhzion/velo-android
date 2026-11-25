@@ -22,7 +22,7 @@ private fun contrast(a: Color, b: Color): Double {
 private class Pair(val what: String, val on: String, val fg: Color, val bg: Color)
 
 /** A surface group as it is drawn: a name and the fills its content can sit on. */
-private class Drawn(val name: String, val c: SurfaceColors, val surfaces: List<Color>, val textOnGlass: Boolean)
+private class Drawn(val name: String, val c: SurfaceColors, val surfaces: List<Color>, val textOnGlass: Boolean, val rows: Boolean = true)
 
 class TokensContrastTest {
     private val appearances = listOf("dark" to VeloTheme.colors, "reference light" to ReferencePalettes.light)
@@ -33,15 +33,26 @@ class TokensContrastTest {
     }
 
     /**
-     * The four groups of an appearance. An overlay shows a blur of the terminals through its
-     * fill, and a terminal can show any colour: its surface is taken over every colour of
-     * [anyColour], as the material the app draws ([VeloColors.overlayOver]).
+     * The five groups of an appearance, and the raised card, which keeps the colours of the sheet
+     * or the sidebar it stands on. An overlay shows a blur of the terminals through its fill, and
+     * a terminal can show any colour: its surface is taken over every colour of [anyColour], as
+     * the material the app draws ([VeloColors.overlayOver]).
      */
-    private fun groups(colors: VeloColors): List<Drawn> = listOf(
+    private fun groups(colors: VeloColors): List<Drawn> = listOfNotNull(
         Drawn("backdrop", colors.backdrop, listOf(colors.backdrop.surface), textOnGlass = false),
         Drawn("sidebar", colors.sidebar, listOf(colors.sidebar.surface), textOnGlass = true),
         Drawn("chrome", colors.chrome, listOf(colors.chrome.surface), textOnGlass = true),
         Drawn("overlay", colors.overlay, anyColour.map { colors.overlayOver(it) }.distinct(), textOnGlass = true),
+        Drawn("sheet", colors.sheet, listOf(colors.sheet.surface), textOnGlass = true),
+        // A card holds no selected row; the light reference's sidebar is black, so a card stands on it only in Dark.
+        Drawn("card on the sheet", colors.sheet.copyOn(colors.raised), listOf(colors.raised), textOnGlass = true, rows = false),
+        if (colors.dark) Drawn("card on the sidebar", colors.sidebar.copyOn(colors.raised), listOf(colors.raised), textOnGlass = true, rows = false) else null,
+    )
+
+    /** The group's colours on [surface]: a card is drawn with the colours of what it stands on. */
+    private fun SurfaceColors.copyOn(surface: Color) = SurfaceColors(
+        surface, text, secondary, disabled, glass, glassEdge, onGlass, glassSelected, selected, divider,
+        accent, onAccent, ok, warning, danger, dangerText, onDanger,
     )
 
     /** Every place text is drawn: body, secondary and destructive text on a surface, on glass and on a selected row. */
@@ -50,7 +61,7 @@ class TokensContrastTest {
         for (s in g.surfaces) {
             add(Pair("text", "surface", c.text, s))
             add(Pair("secondary", "surface", c.secondary, s))
-            add(Pair("danger", "surface", c.danger, s))
+            add(Pair("dangerText", "surface", c.dangerText, s))
         }
         add(Pair("text", "selected", c.text, c.selected))
         add(Pair("secondary", "selected", c.secondary, c.selected))
@@ -104,9 +115,24 @@ class TokensContrastTest {
         assertEquals(emptyList<String>(), failures(3.0, ::markPairs))
     }
 
+    @Test fun aParagraphOnACardOrADialogIsReadable() {
+        for ((appearance, colors) in appearances) {
+            val ratio = contrast(colors.textOnRaised, colors.raised)
+            assertTrue("$appearance textOnRaised on raised is %.2f".format(ratio), ratio >= 4.5)
+        }
+    }
+
+    @Test fun aCardStandsOutOfTheSheetByItsEdge() {
+        // The card's fill is a step above the sheet; its border, the divider, is what draws its shape.
+        for ((appearance, colors) in appearances) {
+            val ratio = maxOf(contrast(colors.raised, colors.sheet.surface), contrast(colors.sheet.divider, colors.raised))
+            assertTrue("$appearance raised %.3f".format(ratio), ratio >= 1.1)
+        }
+    }
+
     @Test fun aSelectedRowShowsOnItsSurface() {
         // The Duo's own pill is this faint: 1.12 on the sidebar. Below 1.1 it cannot be seen.
-        for ((appearance, colors) in appearances) for (g in groups(colors)) for (s in g.surfaces) {
+        for ((appearance, colors) in appearances) for (g in groups(colors).filter { it.rows }) for (s in g.surfaces) {
             val ratio = contrast(g.c.selected, s)
             assertTrue("$appearance ${g.name}: selected on its surface is %.3f".format(ratio), ratio >= 1.1)
         }
