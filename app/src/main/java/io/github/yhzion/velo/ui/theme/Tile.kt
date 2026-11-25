@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -69,8 +71,8 @@ enum class TileBrand(
     val glyphShare: Float = GlyphShare,
 ) {
     Claude("Claude Code", logo = R.drawable.ic_brand_claude, ink = Color.White, filled = true),
-    // The C drawn with a pen, not a Simple Icons logo: it fills less of its box than a logo does.
-    Codex("Codex", logo = R.drawable.ic_agent_codex, ink = Color.Black, filled = true, glyphShare = 0.54f),
+    // A black C in Roboto Bold, as the Tile board sets it (owner decision 5).
+    Codex("Codex", letter = "C", ink = Color.Black, filled = true),
     // Not on the Tile board: the agents the app marked before the redesign keep their own tile.
     Omp("omp", logo = R.drawable.ic_agent_omp, ink = Color.White, filled = true, glyphShare = 0.62f),
     Pi("pi", letter = "π", ink = Color.White, filled = true),
@@ -136,6 +138,19 @@ fun tileBackLayers(panes: Int, size: Float): List<TileLayer> {
     return (tileLayers(panes) - 1 downTo 1).map { i ->
         TileLayer(i + 1, i * step, -i * step, 1 - i * 0.12f, 1 - i * 0.2f, 0.6f - i * 0.08f)
     }
+}
+
+/**
+ * Where [layer] stands in the tile's box, for a face [size] across (the face at the box's lower left):
+ * the face made [TileLayer.scale] as large towards its top right corner, which is moved
+ * [TileLayer.dx] right and [TileLayer.dy] down. The layer is laid out there, not transformed, so its
+ * box is the one it draws in.
+ */
+fun tileLayerRect(layer: TileLayer, size: Float): Rect {
+    val side = size * layer.scale
+    val right = size + layer.dx
+    val top = tileBox(size) - size + layer.dy
+    return Rect(right - side, top, right, top + side)
 }
 
 /** The face's corner radius. */
@@ -228,17 +243,11 @@ fun TabTile(
             } else Modifier),
     ) {
         for (layer in tileBackLayers(panes, s)) {
+            val r = tileLayerRect(layer, s)
             Box(
-                Modifier.align(Alignment.BottomStart).size(size).tagged("layer-${layer.number}")
-                    .graphicsLayer {
-                        transformOrigin = TransformOrigin(1f, 0f)
-                        scaleX = layer.scale
-                        scaleY = layer.scale
-                        translationX = u(layer.dx).toPx()
-                        translationY = u(layer.dy).toPx()
-                        alpha = layer.alpha
-                    }
-                    .drawBehind { drawLayer(fill, corner.toPx(), layer.brightness) },
+                Modifier.offset(u(r.left), u(r.top)).size(u(r.width)).tagged("layer-${layer.number}")
+                    .graphicsLayer { alpha = layer.alpha }
+                    .drawBehind { drawLayer(fill, corner.toPx() * layer.scale, layer.brightness, 1.dp.toPx() * layer.scale) },
             )
         }
         Box(
@@ -250,8 +259,10 @@ fun TabTile(
             if (brand.logo != null) {
                 Icon(painterResource(brand.logo), null, Modifier.size(u((s * brand.glyphShare).roundToInt().toFloat())).tagged("logo"), tint = ink)
             } else if (brand.letter != null) {
+                // The letter's box is its size high, as the board sets it (line-height 1); the glyph keeps its own room.
                 Text(
-                    brand.letter, Modifier.tagged("letter"), color = ink, maxLines = 1,
+                    brand.letter, Modifier.tagged("letter").height(u(tileLetter(s, brand.mono))).wrapContentHeight(unbounded = true),
+                    color = ink, maxLines = 1,
                     fontSize = (tileLetter(s, brand.mono) * unit).sp, lineHeight = (tileLetter(s, brand.mono) * unit).sp,
                     fontWeight = FontWeight.Bold, fontFamily = if (brand.mono) FontFamily.Monospace else null,
                 )
@@ -288,13 +299,15 @@ fun TabTile(
     }
 }
 
-/** A layer behind the face: the fill, dimmed to [brightness], and a faint rim. */
-private fun DrawScope.drawLayer(fill: Brush, corner: Float, brightness: Float) {
+/**
+ * A layer behind the face: the fill and a faint rim [line] wide, both dimmed to [brightness], as
+ * the board's brightness filter dims the whole layer.
+ */
+private fun DrawScope.drawLayer(fill: Brush, corner: Float, brightness: Float, line: Float) {
     val radius = CornerRadius(corner)
     drawRoundRect(fill, cornerRadius = radius)
-    drawRoundRect(Color.Black.copy(alpha = 1 - brightness), cornerRadius = radius)
-    val line = 1.dp.toPx()
     drawRoundRect(LayerRim, Offset(line / 2, line / 2), Size(size.width - line, size.height - line), CornerRadius(corner - line / 2), Stroke(line))
+    drawRoundRect(Color.Black.copy(alpha = 1 - brightness), cornerRadius = radius)
 }
 
 /** The face: the fill, and a filled tile's light top edge or a glass tile's rim. */

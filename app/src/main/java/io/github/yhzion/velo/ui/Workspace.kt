@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filterNotNull
@@ -652,7 +653,7 @@ internal fun Workspace(
                 }
             }
             val device = deviceRow(Tailnet.state)
-            Sidebar(device, hosts, if (covers) Modifier.weight(1f).fillMaxHeight() else Modifier.width(sizes.sidebar).fillMaxHeight(), SidebarActions(
+            Sidebar(device, hosts, sidebarSlot(if (covers) SidebarPlace.Covers else SidebarPlace.Beside), SidebarActions(
                 toggleSidebar = { sidebar = false },
                 openSettings = onSettings,
                 openPalette = ::openPalette,
@@ -687,7 +688,7 @@ internal fun Workspace(
             ), settingsBadge = updateDot())
             if (!covers) Spacer(Modifier.width(gap))
         }
-        if (!panesHidden) Column(Modifier.testTag("pane-area").weight(1f).fillMaxHeight()) {
+        if (!panesHidden) Column(paneColumnSlot()) {
             if (activeSearch != null) key(conn, activeSearch) {
                 PaneSearchBar(conn, activeSearch, paneLabel(tabPanes, activeSearch) ?: "Pane", ::closeSearch)
             }
@@ -810,10 +811,9 @@ internal fun Workspace(
             // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
             FocusedTabCaption(conn, focused, window?.row(state, state.session.orEmpty(), true), connected,
-                host = hostLabel, modifier = Modifier.padding(top = gap))
+                host = hostLabel, modifier = captionSlot(gap))
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
-                // The bar keeps the board's width at most, in the middle of a wide pane column (WsOpenPanes).
-                KeyBar(s.keyBar, armed, Modifier.padding(top = gap).widthIn(max = sizes.keyBarMax).align(Alignment.CenterHorizontally),
+                KeyBar(s.keyBar, armed, keyBarSlot(gap),
                     enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
                     // A modifier is felt turning on or off, any other key as a key (#309).
                     if (!repeated) haptic(barKeyFeel(k, armed))
@@ -1094,6 +1094,25 @@ internal fun Workspace(
 private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, host: String, modifier: Modifier) {
     PaneCaption(row, connected, conn.activityReadState, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier)
 }
+
+// Where each part of the workspace goes in its row (WsBar*, WsClosed*, WsOpen* boards): the open sidebar, the pane
+// column, and under the panes the caption and the key bar, [gap] apart. The fidelity scenes place their parts with these too.
+
+/** The open sidebar's place in the workspace's row: the whole width beside the rail where it covers the panes, else its own width. */
+@Composable
+internal fun RowScope.sidebarSlot(place: SidebarPlace): Modifier =
+    if (place == SidebarPlace.Covers) Modifier.weight(1f).fillMaxHeight() else Modifier.width(VeloTheme.sizes.sidebar).fillMaxHeight()
+
+/** The pane column (pane-area): the panes, the caption and the key bar, in what the sidebar and the rail leave. */
+internal fun RowScope.paneColumnSlot(): Modifier = Modifier.testTag("pane-area").weight(1f).fillMaxHeight()
+
+/** The caption's place: [gap] under the panes. */
+internal fun captionSlot(gap: Dp): Modifier = Modifier.padding(top = gap)
+
+/** The key bar's place: [gap] under the caption, at most the board's width, in the middle of a wide pane column (WsOpenPanes). */
+@Composable
+internal fun ColumnScope.keyBarSlot(gap: Dp): Modifier =
+    Modifier.padding(top = gap).widthIn(max = VeloTheme.sizes.keyBarMax).align(Alignment.CenterHorizontally)
 
 /** True on the folded (cover) screen and on split-screen halves: the short side of the window is under 600dp. */
 fun isCompact(widthDp: Float, heightDp: Float): Boolean = minOf(widthDp, heightDp) < 600f

@@ -290,8 +290,8 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | token | dp | for, and source |
 |---|---|---|
 | `control` | 48 | A round glass control and the least touch target (D12 rail disc 47.3, L06 49.6). |
-| `capsule` | 52 | The thickness of a capsule that holds several icons (D12 51.2, L06 54.3). |
-| `capsuleCell` | 56 | One icon's share of that capsule's length (L06 55.5). |
+| `capsule` | 52 at Medium | The thickness of a capsule that holds several icons: its round controls (`control`) and 2 at Medium around them (Sidebar board, sidebar-actions). |
+| `capsuleCell` | 56 | One icon's share of a vertical capsule's length (L06 55.5). A `CapsuleIcon` is a round control (`control`). |
 | `cellInset` | 3 at Medium | How far a selected cell stays inside its capsule (Controls board: the segmented track's 3). |
 | `icon` | 28 | An icon in a control (D12 ink 22.0 to 27.8; a Material icon inks five sixths of its box). |
 | `iconSmall` | 20 | An icon beside a header or inside a row (L06 "+" ink 17.3). |
@@ -306,11 +306,12 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `dot` | 9 at Medium | The update dot and a tab tile's state dot, each in a ring of the surface (Controls board). |
 | `tabTile` | 30 at Medium | A tab tile's face in a sidebar row (Controls board, sample-tab-row). |
 | `field` | 48 | The search field and a field in a dialog (D12 45.3, L06 50.2). |
-| `sidebar` | 366 | The sidebar (D12 365.9). |
-| `rail` | 68 | The rail. derived: a control and a gap on each side; the Duo's rail (109) is built around its camera. |
-| `keyBar` | 63 | The key bar strip (L20 62.7). |
-| `key` | 50 | The least width of a key (D12 label pitch 50.5). |
-| `keyHeight` | 47 | A key that has its own capsule (D12 46.6, 47.3). |
+| `sidebar` | 320 at Medium | The sidebar beside the panes (WsOpenDocked board; D12 365.9). |
+| `rail` | 60 at Medium | The rail: a control and 6 on each side (Rail board); never narrower than that at any size. |
+| `keyBar` | 56 at Medium | The key bar strip (KeyBar board). |
+| `keyBarMax` | 560 at Medium | The widest the key bar grows, in the middle of a wide pane column (WsOpenPanes board). |
+| `key` | 32 at Medium | The least width of a key's cap (KeyBar board). A key takes the taps in its share of the bar, up to halfway to the next key. |
+| `keyHeight` | 48 at Medium | A key's height in the strip (KeyBar board); a modifier's cap is a pill 40 high inside it. |
 | `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
 | `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style. |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |
@@ -334,7 +335,7 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `sheetList` | 236 | The list of categories beside the details in the settings sheet. derived: as `sheetWidth`. |
 | `statusIcon` | 16 | A tab's state icon, and the height of its working dots (1.5 times as wide). derived: the app's size today. |
 | `markIcon`, `markTile` | 14, 20 | A program's icon beside a tab's caption, and in a row's tile. derived: the app's size today. |
-| `gauge`, `gaugeStroke` | 48, 4.3 | The rail's battery gauge and ring stroke. `gauge` matches the rail's round buttons (`control`); the stroke is based on the proportions of M01's status ring. |
+| `gauge`, `gaugeStroke` | 46 at Medium, 4.3 | The rail's battery gauge (Rail board) and ring stroke; the stroke is based on the proportions of M01's status ring. |
 
 ### Text styles (`VeloTheme.type`), the same in both appearances
 
@@ -781,7 +782,7 @@ As the redesign's Controls board draws them, at Medium. A switch's knob is white
 ### Tab tile (`ui/theme/Tile.kt`)
 
 `TabTile(brand: TileBrand, modifier, panes = 1, size = sizes.tabTile, dot: TileDot? = null,
-ring = surface.surface, tag: String? = null, contentDescription = tileLabel(brand, panes))`
+ring = surface.surface, tag: String? = null, contentDescription = tileLabel(brand, panes), stateDescription = null)`
 draws the redesign's tab tile (Tile and TabTiles boards). The rules are pure functions of the
 face's size at Medium and are unit-tested (`TabTileTest`):
 
@@ -790,24 +791,33 @@ face's size at Medium and are unit-tested (`TabTileTest`):
 | One layer per pane, at most four (`MaxTileLayers`) | `tileLayers(panes)` |
 | The pane count shows from five panes, at the front tile's lower right | `tilePaneCountShown(panes)`, `tileCountRect(size, digits)` |
 | The state dot (`TileDot.Unread` accent, `Waiting` warning, `Failed` danger) keeps the upper right; the two never overlap | `tileDotRect(size)` |
-| Each layer behind steps `max(2.5, size × 0.115)` up and right, 12 % smaller, 20 % fainter and darker | `tileStep`, `tileBackLayers(panes, size)` |
+| Each layer behind steps `max(2.5, size × 0.115)` up and right, 12 % smaller, 20 % fainter and darker; it is laid out where it draws, rim and all dimmed | `tileStep`, `tileBackLayers(panes, size)`, `tileLayerRect(layer, size)` |
 | The box is the face and three steps, so a row's words never move | `tileBox(size)` |
 | Corner `size × 0.27`, logo `size × 0.6`, letter `size × 0.56` (`>_` 0.4) | `tileCorner`, `tileGlyph`, `tileLetter` |
 | What a screen reader says: "Claude Code, 3 panes" | `tileLabel(brand, panes)` |
 | A program's brand from its name | `tileBrand(program)` |
 
 `TileBrand` holds each brand's label, logo and colours. Claude and Codex fill their tile (the
-orange gradient; white to `#E3E3E3` with Codex's own C, `ic_agent_codex`); the tools draw a
-Simple Icons 16.38.1 logo (`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass;
-Azure and Heroku are letter tiles; any other program is `>_`. The parts carry the canvas's
-test tags under `tag`: `-face`, `-logo`, `-letter`, `-layer-2` to `-layer-4`, `-badge`, `-pane-count`.
-The sidebar does not use it yet.
+orange gradient; white to `#E3E3E3` with a black C in Roboto Bold, as the Tile board sets it);
+omp and pi, which the board does not show, keep the marks the app gave them before (omp's
+gradient with its ring, pi's `#30556B` tile with a π). The tools draw a Simple Icons 16.38.1 logo
+(`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass; Azure and Heroku are letter tiles;
+any other program is `>_`. A login shell (`-zsh`) has its shell's brand. The parts carry the
+canvas's test tags under `tag`: `-face`, `-logo`, `-letter`, `-layer-2` to `-layer-4`, `-badge`,
+`-pane-count`.
+
+The sidebar's tab rows (`TabListRow`, `ui/theme/TabRow.kt`: Controls board sample-tab-row, Sidebar
+board tab-row) draw it, the caption under the panes too (`PaneCaption`, 18). What a tab's tile
+shows is a pure function of its report (`ui/TabTiles.kt`, `TabTilesTest`): the brand of the agent
+the report names, else of the program (`tabTile`); the dot of a report not yet seen (`tileDot`:
+a finish blue, a failure red, a program waiting for the user orange); and, at the row's end, what
+the program does now (`rowMark`: three dots while it works, an orange dot while it waits).
 
 ### Fields (`ui/theme/Fields.kt`)
 
 | component | signature | replaces |
 |---|---|---|
-| Search field | `SearchField(query: String, onQueryChange: (String) -> Unit, modifier = Modifier, placeholder: String = "Search")` | the outlined "Filter" box (`ui/Sidebar.kt:206`). Place it over the bottom of the list (`Modifier.align(Alignment.BottomCenter)` in a `Box` around the `LazyColumn`), as the gallery does. In the sidebar it lies on a band of the surface colour from `sizes.gap` above it to the bottom (`.background(VeloTheme.surface.surface).padding(vertical = sizes.gap)`), so rows that scroll under it do not show around it; give the list a bottom content padding of `sizes.field` plus the band's two gaps |
+| Search field | `SearchField(query: String, onQueryChange: (String) -> Unit, modifier = Modifier, placeholder: String = "Search", inputModifier = Modifier)` | the Sidebar board's filter: 52 high, the magnifier 12 before the text. Place it over the bottom of the list (`Modifier.align(Alignment.BottomCenter)` in a `Box` around the `LazyColumn`). In the sidebar it lies on a band of the surface colour with the board's 12 around it, so rows that scroll under it do not show around it; the list has a bottom content padding as tall as the band |
 | Text field | `VeloTextField(value: String, onValueChange: (String) -> Unit, modifier = Modifier, placeholder = "", label: String? = null, error: String? = null, icon: Painter? = null, keyboardOptions = KeyboardOptions.Default, keyboardActions = KeyboardActions.Default, trailing: (@Composable () -> Unit)? = null, visualTransformation, help: String? = null, mono = false, tagPrefix: String? = null)` | a `glassControl` pill, 48 high (Controls and Overlays boards). While it has the keys its ring is `colors.chrome.accent`; an `error` turns the ring `danger` and takes the place of `help` in `dangerText`. `mono` sets an address or a path in the monospace face. `tagPrefix` tags `-field`, `-input`, `-help` and `-error` |
 
 ### Overlays (`ui/theme/Overlays.kt`)
@@ -882,7 +892,7 @@ These notes compare Velo's layout and surfaces with the visual references above.
 | Icons and sounds | Velo uses its own Android glyphs for settings, alerts, connection status, pane actions, and agent indicators. Activity sounds use Velo's own presets. |
 | Round glass button | The fill and rim match. The Duo's disc has a soft highlight inside its upper rim and a faint shadow under it (PK, M01); here the rim is one line and there is no inner highlight |
 | Capsule of icons | In D12 the sidebar toggle is a separate disc to the right of the capsule; that is layout, which the sidebar screen decides. The capsule itself matches in height and radius. The capsule's order is Activity, command palette, Settings |
-| Row with a tile | The reference tile uses a full-colour program mark. The sidebar still uses a smaller glass chip with a glyph; `TabTile` draws the redesign's brand tile and waits to be placed in the sidebar. |
+| Row with a tile | The sidebar draws the redesign's brand tile (`TabTile`) in every tab row. |
 | Row with an icon (a remote, This Device) | Matches in size and position. The Duo's remote row has no state dot; the app's has one (it shows the connection) |
 | Selected pill | Matches in height, radius and inset. In Light the Duo's pill reads `#131313` on black, a ratio of 1.13; here it is the same value |
 | Section header | The Duo's "+" is a circled plus and its chevron is thinner; the text matches in size, weight and colour |
@@ -891,7 +901,7 @@ These notes compare Velo's layout and surfaces with the visual references above.
 | Tab capsule | The Duo's is 28 dp high with 2 dp around its selected cell (D12, L01); the gallery shows the tabs in the 52 dp capsule of the sidebar's toolbar. A token for the small capsule is not here; see Open |
 | Key cap | Labels match in size and face (monospace). The Duo's arrows are thin SF Symbols; here Material's arrows. The Duo shows no armed key; the accent fill is derived |
 | Key bar strip | Height and radius match. On the Duo the strip's glass discs at both ends have the rim highlight described above |
-| Rail | The Duo's rail is 109 dp wide around the camera and its link mark is a ring with a Wi-Fi glyph; the app's rail is 68 dp and the mark is a glyph in the state's colour |
+| Rail | The Duo's rail is 109 dp wide around the camera and its link mark is a ring with a Wi-Fi glyph; the app's rail is the Rail board's 60 dp at Medium and the mark is a glyph in the state's colour |
 | Menu | Radius, width, text size and item height (48 against the Duo's 45.7) match. The Duo's menu is the system's: it has no dividers between groups and its icons are thin. Its material shows what is behind it more faintly than ours over a strongly coloured picture; over a terminal the two agree (`overlayAnchor`) |
 | Dialog | The Duo shows sheets, not dialogs: a sheet is as wide as the screen less 8 dp and rises from the bottom, with a round close button in its corner. Ours is a centred dialog 386 dp wide (the sheet's width on the phone) with Cancel and a confirming button; fill, radius, padding, title size and the field's shape are the sheet's |
 | Popover, palette | Not on the Duo in any image; derived from the sheet and the menu |
