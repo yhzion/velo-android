@@ -388,8 +388,10 @@ fun VeloButton(
         small -> VeloTheme.medium(18.dp)
         else -> VeloTheme.space.s20
     }
+    // The caller's modifier goes inside the least touch target: a small button's box (its test tag, its semantics) is
+    // the button drawn, 40 high, while the row still gives it 48 to take a tap.
     Row(
-        modifier.minimumInteractiveComponentSize().heightIn(min = height).then(frame)
+        Modifier.minimumInteractiveComponentSize().then(modifier).heightIn(min = height).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = padding, vertical = VeloTheme.space.s4),
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8, Alignment.CenterHorizontally),
