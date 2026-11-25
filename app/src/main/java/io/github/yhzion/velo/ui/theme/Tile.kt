@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -194,13 +195,14 @@ private val LayerRim = Color.White.copy(alpha = 0.18f)
  *
  * [tag] is the tile's test tag, `tab-tile-<tab id>`; its parts get the canvas's names under it
  * (`-face`, `-logo`, `-letter`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
- * what a screen reader says; null leaves the tile out, for a row that says it itself.
+ * what a screen reader says, with [stateDescription] (the state its dot shows); a null
+ * [contentDescription] leaves the tile out, for a row that says it itself.
  */
 @Composable
 fun TabTile(
     brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, size: Dp = VeloTheme.sizes.tabTile,
     dot: TileDot? = null, ring: Color = VeloTheme.surface.surface, tag: String? = null,
-    contentDescription: String? = tileLabel(brand, panes),
+    contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null,
 ) {
     val colors = VeloTheme.colors.sheet
     // One board unit at this size, and the face in board units: the rules are in those.
@@ -219,7 +221,11 @@ fun TabTile(
     val shape = RoundedCornerShape(corner)
     Box(
         modifier.size(u(tileBox(s))).tagged("")
-            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription; role = Role.Image } else Modifier),
+            .then(if (contentDescription != null) Modifier.semantics {
+                this.contentDescription = contentDescription
+                role = Role.Image
+                if (stateDescription != null) this.stateDescription = stateDescription
+            } else Modifier),
     ) {
         for (layer in tileBackLayers(panes, s)) {
             Box(

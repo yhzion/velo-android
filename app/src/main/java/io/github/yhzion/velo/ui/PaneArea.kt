@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -305,6 +306,26 @@ private fun LayoutTree(
     }
 }
 
+/**
+ * A pane's card (Pane board): black with round corners of [radius], its content clipped to them. The
+ * pane that takes the keys ([focused]) has the highlight's edge, as strong as [focusMark] says (it
+ * fades as the tab becomes a card); any other pane a hairline, which tells it from the gutters.
+ */
+@Composable
+internal fun Modifier.paneFrame(focused: Boolean, radius: Dp, focusMark: () -> Float = { 1f }): Modifier {
+    val focusColor = VeloTheme.paneFocus
+    val focusWidth = VeloTheme.sizes.paneFocus
+    val hairline = VeloTheme.colors.chrome.selected
+    val edge = VeloTheme.sizes.edge
+    return clip(rounded(radius)).background(VeloTheme.colors.backdrop.surface).drawWithContent {
+        drawContent()
+        val width = (if (focused) focusWidth else edge).toPx()
+        val color = if (focused) focusColor.copy(alpha = focusColor.alpha * focusMark()) else hairline
+        drawRoundRect(color, Offset(width / 2, width / 2), Size(size.width - width, size.height - width),
+            CornerRadius(radius.toPx() - width / 2), Stroke(width))
+    }
+}
+
 private tailrec fun LayoutNode.firstBlock(): String? = block ?: first?.firstBlock()
 private tailrec fun LayoutNode.lastBlock(): String? = block ?: second?.lastBlock()
 
@@ -321,21 +342,9 @@ private fun PaneCard(
     if (reading && !preview) {
         TerminalReader(conn, block, label) { reading = false }
     }
-    val shape = rounded(radius)
-    val focusColor = VeloTheme.paneFocus
-    val focusWidth = VeloTheme.sizes.paneFocus
-    Box(
-        modifier.clip(shape).background(VeloTheme.colors.backdrop.surface).drawWithContent {
-            drawContent()
-            if (focused) {
-                val width = focusWidth.toPx()
-                drawRoundRect(
-                    focusColor.copy(alpha = focusColor.alpha * focusMark()), Offset(width / 2, width / 2),
-                    Size(size.width - width, size.height - width), CornerRadius(radius.toPx() - width / 2), Stroke(width),
-                )
-            }
-        }
-    ) {
+    // The Pane board names a tab's panes pane-1, pane-2, … in layout order; a preview in the overview is no pane of the screen.
+    val number = tabBlocks(window).indexOf(block) + 1
+    Box(modifier.then(if (!preview && number > 0) Modifier.testTag("pane-$number") else Modifier).paneFrame(focused, radius, focusMark)) {
         AndroidView(
             factory = { ctx -> PaneSurfaceView(ctx, conn, floating) },
             update = { v ->

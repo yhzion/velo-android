@@ -13,6 +13,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.testTag
 import io.github.yhzion.velo.ui.theme.Feel
 import io.github.yhzion.velo.ui.theme.KeyCap
 import io.github.yhzion.velo.ui.theme.KeyStrip
@@ -84,57 +85,125 @@ internal fun moveKey(saved: List<String>, key: String, delta: Int): List<String>
     return saved.toMutableList().apply { add(to, removeAt(from)) }
 }
 
-/** Share spare pixels equally, reserving extra space only for keys whose labels need it. */
-internal fun keyWidths(minimum: List<Int>, available: Int): List<Int> {
-    if (minimum.sum() >= available) return minimum
-    val widths = minimum.toMutableList()
-    var remaining = available
-    for ((position, index) in minimum.indices.sortedByDescending { minimum[it] }.withIndex()) {
-        val width = maxOf(minimum[index], remaining / (minimum.size - position))
-        widths[index] = width
-        remaining -= width
+/**
+ * The keys' widths on a bar with [available] room inside it (KeyBar board): each key at its own
+ * width ([natural]: its label and padding, at least [floor]) while they all fit. When they do not,
+ * the keys wider than [floor] give up the room that is missing in proportion to their widths, none
+ * below [floor], as the board's CTRL does on the bar phone. Null when the keys do not fit even at
+ * [floor]: the bar scrolls.
+ */
+internal fun keyCapWidths(natural: List<Int>, floor: Int, available: Int): List<Int>? {
+    if (natural.sum() <= available) return natural
+    val widths = natural.map { it.toFloat() }.toMutableList()
+    val frozen = BooleanArray(natural.size) { natural[it] <= floor }
+    var missing = (natural.sum() - available).toFloat()
+    while (missing > 0.001f) {
+        val open = natural.indices.filter { !frozen[it] }
+        if (open.isEmpty()) return null
+        val basis = open.sumOf { natural[it] }.toFloat()
+        var given = 0f
+        for (i in open) {
+            val share = missing * natural[i] / basis
+            if (widths[i] - share <= floor) {
+                given += widths[i] - floor
+                widths[i] = floor.toFloat()
+                frozen[i] = true
+            } else {
+                widths[i] -= share
+                given += share
+            }
+        }
+        missing -= given
     }
-    return widths
+    return roundToTotal(widths, available)
+}
+
+/** [values] rounded to whole pixels that add up to [total], the largest fractions rounded up. */
+private fun roundToTotal(values: List<Float>, total: Int): List<Int> {
+    val down = values.map { kotlin.math.floor(it).toInt() }.toMutableList()
+    var left = total - down.sum()
+    for (i in values.indices.sortedByDescending { values[it] - down[it] }) {
+        if (left <= 0) break
+        down[i]++
+        left--
+    }
+    return down
 }
 
 /**
- * The keys in the saved order. They share the width ([keyWidths]); when their labels need more
- * than the bar has, the bar scrolls sideways and the edge with more keys beyond it fades out.
- * A sticky key in [armed] is lit until the next key uses it. While the bar is not [enabled]
- * (the panes' input is paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
+ * The part of the bar each key takes the taps in, for keys [caps] wide on a bar with [available]
+ * room. The room the keys leave goes between them in equal gaps (the board's space-between): the
+ * first key starts at the bar's start, the last ends at its end. Each key takes the taps up to half
+ * of the gap on each side, and the first and the last up to the bar's ends, so a tap anywhere on the
+ * bar reaches the nearest key. Without room left (or while the bar scrolls) the cells are the keys.
+ */
+internal fun keyCells(caps: List<Int>, available: Int): List<Int> {
+    if (caps.isEmpty()) return emptyList()
+    if (caps.size == 1) return listOf(maxOf(caps[0], available))
+    val spare = available - caps.sum()
+    if (spare <= 0) return caps
+    val gap = spare.toFloat() / caps.lastIndex
+    val edges = FloatArray(caps.size + 1)
+    var start = 0f
+    for (i in 1 until caps.size) {
+        start += caps[i - 1]
+        edges[i] = start + gap * i - gap / 2
+    }
+    edges[caps.size] = available.toFloat()
+    return caps.indices.map { Math.round(edges[it + 1]) - Math.round(edges[it]) }
+}
+
+/** The test tag of [key]'s cap, as the KeyBar board names it: `key-slash`, `key-ctrl`, `key-left`. */
+internal fun keyTestTag(key: String): String = "key-" + when (key) {
+    "/" -> "slash"
+    else -> key.lowercase()
+}
+
+/**
+ * The keys in the saved order (KeyBar board). Each key keeps its own width ([keyCapWidths]); the room
+ * left goes between them, and each key takes the taps up to halfway to the next ([keyCells]). When
+ * their labels need more than the bar has, the bar scrolls sideways and the edge with more keys
+ * beyond it fades out. A sticky key in [armed] is lit until the next key uses it. While the bar is
+ * not [enabled] (the panes' input is paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
  */
 @Composable
 internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, enabled: Boolean = true, onKey: (String, Boolean) -> Unit) {
-    val gap = VeloTheme.sizes.gapCompact
     val sizes = VeloTheme.sizes
     val scroll = rememberScrollState()
-    KeyStrip(modifier) {
+    KeyStrip(modifier.testTag("key-bar")) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val viewport = constraints.maxWidth
             Layout(
                 modifier = Modifier.fillMaxSize().horizontalScroll(scroll),
                 content = {
-                    for (key in keys) {
+                    for ((i, key) in keys.withIndex()) {
                         key(key) {
-                            KeyCap(key, { onKey(key, false) }, armed = key in armed,
+                            // The cap stands where the board draws it inside the part of the bar it takes the taps in.
+                            val place = when {
+                                keys.size == 1 -> Alignment.Center
+                                i == 0 -> Alignment.CenterStart
+                                i == keys.lastIndex -> Alignment.CenterEnd
+                                else -> Alignment.Center
+                            }
+                            KeyCap(key, { onKey(key, false) }, armed = key in armed, latching = key in StickyKeys,
                                 contentDescription = if (key == "Ctrl") "Control" else key, enabled = enabled,
-                                holdRepeat = key in REPEAT_KEYS, onRepeat = { onKey(key, true) })
+                                holdRepeat = key in REPEAT_KEYS, onRepeat = { onKey(key, true) },
+                                capAlignment = place, capModifier = Modifier.testTag(keyTestTag(key)))
                         }
                     }
                 },
             ) { buttons, limits ->
-                val gapPx = gap.roundToPx()
-                val totalGap = (buttons.size - 1).coerceAtLeast(0) * gapPx
-                val minimum = buttons.map { it.maxIntrinsicWidth(limits.maxHeight) }
-                val widths = keyWidths(minimum, viewport - totalGap)
+                val natural = buttons.map { it.maxIntrinsicWidth(limits.maxHeight) }
+                val caps = keyCapWidths(natural, sizes.key.roundToPx(), viewport) ?: natural
+                val cells = keyCells(caps, viewport)
                 val children = buttons.mapIndexed { i, button ->
-                    button.measure(Constraints(minWidth = widths[i], maxWidth = widths[i], maxHeight = limits.maxHeight))
+                    button.measure(Constraints(minWidth = cells[i], maxWidth = cells[i], maxHeight = limits.maxHeight))
                 }
-                layout(maxOf(viewport, widths.sum() + totalGap), limits.maxHeight) {
+                layout(maxOf(viewport, cells.sum()), limits.maxHeight) {
                     var x = 0
                     for (child in children) {
                         child.placeRelative(x, (limits.maxHeight - child.height) / 2)
-                        x += child.width + gapPx
+                        x += child.width
                     }
                 }
             }

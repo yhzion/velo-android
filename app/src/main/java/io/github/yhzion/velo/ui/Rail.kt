@@ -22,6 +22,11 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import io.github.yhzion.velo.ui.theme.naturalLines
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -59,20 +64,22 @@ internal fun railTopPadding(statusBar: Float, railTop: Float, clearance: Float, 
     maxOf(least, statusBar + clearance - railTop)
 
 /**
- * The rail beside the panes: the clock, the device's battery and network ([BatteryGauge]), the
- * active remote's connection mark ([mark], a status that opens a popover naming [remote] and the
- * [failure] that keeps it down, with "Copy command" for its one-line [fix]), the focused pane's
- * menu (off while [menuEnabled] is false: no pane is focused), the keyboard, the free [strip] (empty, or the window
- * wheel of #304, [RailScrubber]), then the keep-screen-on toggle ([keepScreenOn], the setting of the same name), the tab
- * overview and the sidebar.
+ * The rail beside the panes (Rail board): the clock, the device's battery and network
+ * ([BatteryGauge]), the active remote's connection mark ([mark], a status that opens a popover
+ * naming [remote] and the [failure] that keeps it down, with "Copy command" for its one-line [fix]),
+ * the focused pane's menu (off while [menuEnabled] is false: no pane is focused), the keyboard, the
+ * free [strip] (empty, or the window wheel of #304, [RailScrubber]), the shown tab's place among the
+ * session's tabs ([page], [railPage]), then the keep-screen-on toggle ([keepScreenOn], the setting of
+ * the same name), the tab overview and the sidebar. It reads the clock, the battery and the network
+ * itself and draws them with [RailColumn].
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RightRail(
     mark: ConnectionMark, remote: String, failure: String?, keyboard: Boolean, onReconnect: () -> Unit, menuEnabled: Boolean,
     fix: String? = null, onCopyCommand: () -> Unit = {},
     overviewOpen: Boolean, sidebarOpen: Boolean, keepScreenOn: Boolean, onKeepScreenOn: () -> Unit,
     keyboardAvailable: Boolean = true, onMenu: () -> Unit, onKeyboard: () -> Unit, onSidebar: () -> Unit, onOverview: () -> Unit, menu: @Composable () -> Unit,
+    page: RailPage? = null,
     strip: @Composable ColumnScope.() -> Unit = { Spacer(Modifier.weight(1f)) },
 ) {
     // The network first: both are registered off the main thread one after the other (#336), and a battery shown
@@ -81,13 +88,46 @@ internal fun RightRail(
     val battery = rememberBatteryState()
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) { while (true) { now = Date(); delay(15_000) } }
-    val sizes = VeloTheme.sizes
     val locale = Locale.getDefault()
     val clock = remember(locale) { SimpleDateFormat("H:mm", locale) }
+    RailColumn(clock.format(now), battery, network, mark, remote, failure, keyboard, onReconnect, menuEnabled, fix, onCopyCommand,
+        overviewOpen, sidebarOpen, keepScreenOn, onKeepScreenOn, keyboardAvailable, onMenu, onKeyboard, onSidebar, onOverview, menu, page, strip)
+}
+
+/** The shown tab's place among the session's tabs, as the rail counts them: [number] of [count], from 1. */
+internal data class RailPage(val number: Int, val count: Int) {
+    /** The counter's text (Rail board: "2 / 4"). */
+    val text: String get() = "$number / $count"
+    /** What a screen reader says for it. */
+    val description: String get() = "Tab $number of $count"
+}
+
+/** The shown tab's place among [tabs], the session's tabs in order; null without a shown tab or with a single tab. */
+internal fun railPage(tabs: List<String>, shown: String?): RailPage? {
+    val at = tabs.indexOf(shown)
+    return if (at < 0 || tabs.size < 2) null else RailPage(at + 1, tabs.size)
+}
+
+/** A length the Rail board gives, at the current size ([VeloTheme.medium]). */
+private val Int.rd: Dp @Composable @ReadOnlyComposable get() = VeloTheme.medium(this.dp)
+
+/** The rail as [RightRail] describes it, with the [clock]'s text, the [battery] (null: not known yet) and the [network] given. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun RailColumn(
+    clock: String, battery: BatteryState?, network: DeviceNetwork,
+    mark: ConnectionMark, remote: String, failure: String?, keyboard: Boolean, onReconnect: () -> Unit, menuEnabled: Boolean,
+    fix: String?, onCopyCommand: () -> Unit,
+    overviewOpen: Boolean, sidebarOpen: Boolean, keepScreenOn: Boolean, onKeepScreenOn: () -> Unit,
+    keyboardAvailable: Boolean, onMenu: () -> Unit, onKeyboard: () -> Unit, onSidebar: () -> Unit, onOverview: () -> Unit, menu: @Composable () -> Unit,
+    page: RailPage?,
+    strip: @Composable ColumnScope.() -> Unit,
+) {
+    val sizes = VeloTheme.sizes
     // "00:00" is the widest text the clock can show, so one measurement at scale 1 bounds every time of day.
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val clockStyle = VeloTheme.type.clock
+    val clockStyle = VeloTheme.type.clock.naturalLines()
     val clockWidth = remember(measurer, clockStyle, density.density) {
         measurer.measure("00:00", clockStyle, maxLines = 1, softWrap = false, density = Density(density.density, 1f)).size.width
     }
@@ -96,34 +136,36 @@ internal fun RightRail(
     val statusBar = WindowInsets.statusBarsIgnoringVisibility.getTop(density).toFloat()
     var railTop by remember { mutableStateOf(0f) }
     val top = with(density) {
-        railTopPadding(statusBar, railTop, StatusBarClearance.toPx(), sizes.gap.toPx()).toDp()
+        railTopPadding(statusBar, railTop, StatusBarClearance.toPx(), 16.rd.toPx()).toDp()
     }
-    BoxWithConstraints(Modifier.width(sizes.rail).fillMaxHeight().onGloballyPositioned { railTop = it.positionInWindow().y }
-        .clip(rounded(VeloTheme.radii.bar)).background(VeloTheme.surface.surface)) {
+    BoxWithConstraints(Modifier.testTag("rail").width(sizes.rail).fillMaxHeight().onGloballyPositioned { railTop = it.positionInWindow().y }
+        .clip(rounded(30.rd)).background(VeloTheme.surface.surface)) {
         // With the IME up the rail can be shorter than its controls. Keep the bottom actions reachable.
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(top = top, bottom = sizes.gap),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(sizes.rowGap)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CompositionLocalProvider(LocalDensity provides clockDensity) {
-                    Text(clock.format(now), color = VeloTheme.surface.text, style = clockStyle, maxLines = 1)
-                }
-                if (battery != null) {
-                    Spacer(Modifier.height(sizes.gapCompact * 2))
-                    BatteryGauge(battery, network)
-                }
-                ConnectionStatus(mark, remote, failure, onReconnect, fix, onCopyCommand)
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(top = top, bottom = 6.rd),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.rd)) {
+            CompositionLocalProvider(LocalDensity provides clockDensity) {
+                Text(clock, Modifier.testTag("rail-clock"), color = VeloTheme.surface.text, style = clockStyle, maxLines = 1)
             }
+            if (battery != null) BatteryGauge(battery, network, Modifier.testTag("rail-battery"), faceModifier = Modifier.testTag("rail-battery-level"))
+            ConnectionStatus(mark, remote, failure, onReconnect, fix, onCopyCommand)
+            // The board's 6 between the status above and the controls under it.
+            Spacer(Modifier.height(6.rd))
             Box {
-                GlassIconButton(Icons.Default.MoreHoriz, "Pane menu", onMenu, enabled = menuEnabled)
+                GlassIconButton(Icons.Default.MoreHoriz, "Pane menu", onMenu, Modifier.testTag("rail-pane-menu"), enabled = menuEnabled)
                 menu()
             }
-            if (keyboardAvailable) GlassIconButton(if (keyboard) Icons.Default.KeyboardHide else Icons.Default.Keyboard, "Keyboard", onKeyboard, selected = keyboard)
+            if (keyboardAvailable) GlassIconButton(if (keyboard) Icons.Default.KeyboardHide else Icons.Default.Keyboard, "Keyboard", onKeyboard,
+                Modifier.testTag("rail-keyboard"), selected = keyboard)
             // What is left between the top and the bottom buttons: it takes the room, however little.
             strip()
-            GlassIconButton(if (keepScreenOn) CupFull else CupEmpty, "Keep screen on", onKeepScreenOn, selected = keepScreenOn)
-            GlassIconButton(Icons.Default.GridView, "Overview", onOverview, selected = overviewOpen)
+            if (page != null) Text(page.text, Modifier.testTag("rail-page-counter").clearAndSetSemantics { contentDescription = page.description },
+                color = VeloTheme.surface.secondary, style = VeloTheme.type.caption.naturalLines(), maxLines = 1)
+            GlassIconButton(if (keepScreenOn) CupFull else CupEmpty, "Keep screen on", onKeepScreenOn, Modifier.testTag("rail-keep-screen-on"),
+                selected = keepScreenOn)
+            GlassIconButton(Icons.Default.GridView, "Overview", onOverview, Modifier.testTag("rail-overview"), selected = overviewOpen)
             // The same glyph as the sidebar's own Toggle Sidebar button: both buttons do one thing, so they look alike.
-            GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Sidebar", onSidebar, selected = sidebarOpen)
+            GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Sidebar", onSidebar, Modifier.testTag("rail-sidebar"),
+                selected = sidebarOpen)
         }
     }
 }
@@ -138,9 +180,11 @@ internal fun RightRail(
 private fun ConnectionStatus(mark: ConnectionMark, remote: String, failure: String?, onReconnect: () -> Unit, fix: String?, onCopyCommand: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        // The touch target is wider than the mark; nothing is drawn around it.
-        Box(Modifier.size(VeloTheme.sizes.control).clickable(role = Role.Button, onClickLabel = "Connection") { open = true }, contentAlignment = Alignment.Center) {
-            ConnectionMarkIcon(mark)
+        // The mark at the Rail board's 22; the touch target reaches the least size around it, over the gauge
+        // above, which takes no tap ([androidx.compose.ui.platform.ViewConfiguration.minimumTouchTargetSize]).
+        Box(Modifier.testTag("rail-connection").size(22.rd).clickable(role = Role.Button, onClickLabel = "Connection") { open = true },
+            contentAlignment = Alignment.Center) {
+            ConnectionMarkIcon(mark, size = 22.rd)
         }
         VeloPopover(open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = VeloTheme.sizes.menuMinWidth)) {
             Text(remote, color = VeloTheme.surface.text, style = VeloTheme.type.bodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -173,7 +217,7 @@ internal const val ConnectingAlpha = 0.45f
  * it, so the two cannot show different marks for one connection.
  */
 @Composable
-internal fun ConnectionMarkIcon(mark: ConnectionMark, ink: Color = VeloTheme.surface.text) {
+internal fun ConnectionMarkIcon(mark: ConnectionMark, ink: Color = VeloTheme.surface.text, size: Dp = VeloTheme.sizes.iconSmall) {
     // This is the link to the remote, not the device's network (the battery gauge shows that):
     // the remote's own icon, the one the sidebar and Settings give a remote. Connecting dims it;
     // down crosses the screen out.
@@ -182,5 +226,5 @@ internal fun ConnectionMarkIcon(mark: ConnectionMark, ink: Color = VeloTheme.sur
         ConnectionLevel.Down -> Icons.Default.DesktopAccessDisabled
     }
     val tint = if (mark.level == ConnectionLevel.Busy) ink.copy(alpha = ConnectingAlpha) else ink
-    Icon(icon, "Connection: ${mark.word}", Modifier.size(VeloTheme.sizes.iconSmall), tint = tint)
+    Icon(icon, "Connection: ${mark.word}", Modifier.size(size), tint = tint)
 }

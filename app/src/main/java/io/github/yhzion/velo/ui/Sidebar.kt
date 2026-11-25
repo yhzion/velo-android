@@ -17,6 +17,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -41,11 +51,17 @@ import io.github.yhzion.velo.ui.theme.MenuItem as VeloMenuItem
 import kotlinx.coroutines.delay
 
 /**
- * One remote row as the sidebar draws it; [removed] is the active remote the user removed.
- * [needsAnswer]: its SSH login waits for the user's answer, or for Reconnect after none came
- * ([io.github.yhzion.velo.SshQuestions.needsAnswer]).
+ * One remote row as the sidebar draws it: the remote, its connection's [state] and the reports seen
+ * on it ([readState]); [removed] is the active remote the user removed. [needsAnswer]: its SSH login
+ * waits for the user's answer, or for Reconnect after none came ([io.github.yhzion.velo.SshQuestions.needsAnswer]).
  */
-class SidebarHost(val remote: Remote, val conn: HostConnection, val active: Boolean, val removed: Boolean, val needsAnswer: Boolean = false)
+internal class SidebarHost(
+    val remote: Remote, val state: UiState, val readState: ActivityReadState, val active: Boolean, val removed: Boolean,
+    val needsAnswer: Boolean = false,
+) {
+    constructor(remote: Remote, conn: HostConnection, active: Boolean, removed: Boolean, needsAnswer: Boolean = false) :
+        this(remote, conn.state, conn.activityReadState, active, removed, needsAnswer)
+}
 
 /** Status of the local phone, shown above (not as part of) the remote list. */
 data class DeviceRow(val name: String, val line: String, val state: String)
@@ -127,19 +143,23 @@ fun remoteRowNote(status: String, removed: Boolean, needsAnswer: Boolean = false
     else -> if (needsAnswer) NEEDS_ANSWER_NOTE else phase.words.lowercase()
 }
 
+/** A length the Sidebar board gives, at the current size ([VeloTheme.medium]). */
+private val Int.bd: Dp @Composable @ReadOnlyComposable get() = VeloTheme.medium(this.dp)
+
 /**
- * The sidebar of Rex for Mac: a toolbar of app-level controls (sidebar, activity, command
- * palette, settings), then This Device, one block per saved remote (its row and, when expanded,
- * a group per session: a header and one row per tab), the Rex servers found on the tailnet
- * and "Add Remote…". Activity and the filter cover every remote.
+ * The sidebar of Rex for Mac, as the Sidebar board draws it: a toolbar of app-level controls
+ * (sidebar, activity, command palette, settings), then This Device, one block per saved remote
+ * (its row and, when expanded, a group per session: a header and one row per tab), the Rex servers
+ * found on the tailnet and "Add Remote…", over the filter. Activity and the filter cover every remote.
+ * Every part carries the board's name as its test tag.
  */
 @Composable
-fun Sidebar(
+internal fun Sidebar(
     device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, actions: SidebarActions,
     /** The gear's dot: an update was found that the Updates page has not shown yet. */
     settingsBadge: Boolean = false,
 ) = VeloSurface(VeloTheme.colors.sidebar) {
-    val s = VeloTheme.sizes
+    val c = VeloTheme.surface
     var activityOnly by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var collapsed by remember { mutableStateOf(emptySet<String>()) }
@@ -148,34 +168,37 @@ fun Sidebar(
     // The one tab row that shows Close after a left swipe.
     var revealed by remember { mutableStateOf<String?>(null) }
 
-    Column(modifier.clip(rounded(VeloTheme.radii.card)).background(VeloTheme.surface.surface).padding(horizontal = s.rowInset)) {
+    Column(modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface)) {
         // Rex for Mac lights the eye's dot only while some tab's row draws its unread dot (a
         // finished, failed or waiting report not yet seen); seeing the last one puts it out.
         val anyUnread = hosts.any { host ->
-            val connected = host.conn.state.status == "connected"
-            !host.removed && connected && sessionGroups(host.conn.state, host.active, emptySet(), true, "") { row ->
-                wantsAttention(host.conn.activityReadState.activity(row, true))
+            val connected = host.state.status == "connected"
+            !host.removed && connected && sessionGroups(host.state, host.active, emptySet(), true, "") { row ->
+                wantsAttention(host.readState.activity(row, true))
             }.isNotEmpty()
         }
-        Row(Modifier.fillMaxWidth().padding(vertical = s.menuPadding), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.testTag("sidebar-toolbar").fillMaxWidth().padding(start = 12.bd, end = 12.bd, top = 12.bd, bottom = 8.bd),
+            verticalAlignment = Alignment.CenterVertically) {
             // Rex for Mac's hide-sidebar glyph is an SF Symbol like the capsule's, so it is drawn for this app too.
-            GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Toggle Sidebar", actions.toggleSidebar)
+            GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Toggle Sidebar", actions.toggleSidebar,
+                Modifier.testTag("sidebar-toggle"))
             Spacer(Modifier.weight(1f))
-            GlassCapsule {
+            GlassCapsule(Modifier.testTag("sidebar-actions")) {
                 // Rex for Mac draws eye while Activity is off and eye.fill while it is on.
                 CapsuleIcon(painterResource(if (activityOnly) R.drawable.ic_toolbar_eye_fill else R.drawable.ic_toolbar_eye),
-                    "Toggle Activity", { activityOnly = !activityOnly }, selected = activityOnly, badge = anyUnread,
-                    stateDescription = if (activityOnly) "On" else "Off")
-                CapsuleIcon(painterResource(R.drawable.ic_toolbar_command), "Command Palette", actions.openPalette)
-                CapsuleIcon(painterResource(R.drawable.ic_toolbar_gear), "Settings", actions.openSettings, badge = settingsBadge,
-                    stateDescription = if (settingsBadge) "Update available" else null)
+                    "Toggle Activity", { activityOnly = !activityOnly }, Modifier.testTag("activity-toggle"), selected = activityOnly,
+                    badge = anyUnread, stateDescription = if (activityOnly) "On" else "Off")
+                CapsuleIcon(painterResource(R.drawable.ic_toolbar_command), "Command Palette", actions.openPalette,
+                    Modifier.testTag("command-palette-button"))
+                CapsuleIcon(painterResource(R.drawable.ic_toolbar_gear), "Settings", actions.openSettings, Modifier.testTag("settings-gear"),
+                    badge = settingsBadge, stateDescription = if (settingsBadge) "Update available" else null,
+                    badgeModifier = Modifier.testTag("update-dot"))
             }
         }
 
         DeviceHeader(device, actions.openDevice)
-        HorizontalDivider(thickness = s.edge, color = VeloTheme.surface.divider)
         Box(Modifier.weight(1f)) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = s.field + s.gap * 2)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
                 for (host in hosts) {
                     val remote = host.remote
                     // A remote's id is its row key: distinct for every row, the removed one included.
@@ -185,9 +208,9 @@ fun Sidebar(
                         RemoteHeader(host, expanded, actions) { collapsed = if (key in collapsed) collapsed - key else collapsed + key }
                     }
                     if (!expanded || host.removed) continue
-                    val state = host.conn.state
+                    val state = host.state
                     val connected = state.status == "connected"
-                    val readState = host.conn.activityReadState
+                    val readState = host.readState
                     fun tabRow(row: TabRow) = item(key = "t:$key${row.session}${row.tab}") {
                         val id = "$key${row.session}${row.tab}"
                         // The session's whole order, also while a filter hides rows: a hidden neighbour is still a place.
@@ -204,7 +227,7 @@ fun Sidebar(
                     val empty = if (activityOnly) {
                         val groups = activityGroups(state, host.active, query) { readState.activity(it, connected) }
                         for (group in groups) {
-                            item(key = "p:$key${group.priority}") { SectionHeader(group.priority.title, Modifier.padding(start = s.gap)) }
+                            item(key = "p:$key${group.priority}") { GroupHeader(group.priority.title) }
                             group.rows.forEach(::tabRow)
                         }
                         groups.isEmpty()
@@ -233,45 +256,73 @@ fun Sidebar(
                             state.sessions.isEmpty() -> "No sessions"
                             activityOnly -> "Nothing is working or waiting."
                             else -> "No matching tab"
-                        }, color = VeloTheme.surface.secondary, style = VeloTheme.type.caption,
-                            modifier = Modifier.padding(start = s.rowPadding, top = s.cellInset, bottom = s.menuPadding))
+                        }, color = c.secondary, style = VeloTheme.type.caption,
+                            modifier = Modifier.padding(start = 20.bd, top = VeloTheme.sizes.cellInset, bottom = VeloTheme.sizes.menuPadding))
                     }
                 }
                 if (actions.found.isNotEmpty()) {
-                    item(key = "found") { SectionHeader("FOUND ON TAILNET") }
-                    items(actions.found, key = { "f:" + it.url }) { server -> FoundServerRow(server) { actions.addFound(server) } }
+                    item(key = "found") {
+                        Text("FOUND ON TAILNET", Modifier.testTag("found-on-tailnet-header").fillMaxWidth().semantics { heading() }
+                            .padding(start = 20.bd, end = 20.bd, top = 16.bd, bottom = 6.bd),
+                            style = VeloTheme.type.eyebrow.naturalLines(), color = c.secondary, maxLines = 1)
+                    }
+                    items(actions.found, key = { "f:" + it.url }) { server ->
+                        FoundServerRow(server, Modifier.testTag("found-row-${server.name}")) { actions.addFound(server) }
+                    }
                 }
                 item(key = "add") {
-                    ListRow(AddRemoteCommand, actions.addRemote, strong = true, leading = { RowIcon(Icons.Default.Add, null) })
+                    ListRow(AddRemoteCommand, actions.addRemote, Modifier.testTag("add-remote-row"), strong = true, minHeight = 48.bd,
+                        leading = { Icon(Icons.Default.Add, null, Modifier.size(20.bd), tint = c.text) })
                 }
             }
-            // The field lies on a band of the sidebar's own colour, from a gap above it to the
-            // bottom: rows that scroll under it do not show beside or below it. The list's bottom
-            // padding (the field and the band's two gaps) keeps its last row above the band.
+            // The field lies on a band of the sidebar's own colour, the board's 12 around it: rows that
+            // scroll under it do not show beside or below it. The list's bottom padding keeps its last
+            // row above the band.
             SearchField(query, { query = it }, Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(VeloTheme.surface.surface).padding(vertical = s.gap), placeholder = "Filter")
+                .background(c.surface).padding(12.bd).testTag("sidebar-filter"), placeholder = "Filter",
+                inputModifier = Modifier.testTag("sidebar-filter-input"))
         }
     }
 }
 
+/** The heading of one of Activity's groups (Blocked, Failed, Working, Done), as a session's header reads. */
+@Composable
+private fun GroupHeader(text: String) {
+    Text(text, Modifier.fillMaxWidth().heightIn(min = 44.bd).semantics { heading() }.padding(start = 20.bd, top = 13.bd, bottom = 13.bd),
+        style = VeloTheme.type.header.naturalLines(), color = VeloTheme.colors.textOnRaised, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
 /**
- * A session's header: its label (a tap collapses or expands its tabs, or selects a session
- * that shows none: [headerTap]), `+` for a new tab in it, and a `…` menu ([sessionMenu]). The
- * remote must be [connected] for `+` and the menu's items.
+ * A session's header (Sidebar board, session-header): its label (a tap collapses or expands its
+ * tabs, or selects a session that shows none: [headerTap]) with the chevron that says which, `+`
+ * for a new tab in it, and a `…` menu ([sessionMenu]). The remote must be [connected] for `+` and
+ * the menu's items.
  */
 @Composable
 private fun SessionHeader(
     group: SessionGroup, connected: Boolean, onTap: () -> Unit, onNewTab: () -> Unit, onRename: () -> Unit, onClose: () -> Unit,
 ) {
     val folds = headerTap(group) == HeaderTap.Collapse
+    val label = group.label
     var menu by remember { mutableStateOf(false) }
-    SectionHeader(group.label, Modifier.padding(start = VeloTheme.sizes.gap), onClick = onTap,
-        onClickLabel = if (!folds) "Select" else if (group.collapsed) "Expand" else "Collapse") {
-        if (folds) Icon(if (group.collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore, null,
-            tint = VeloTheme.surface.secondary, modifier = Modifier.size(VeloTheme.sizes.iconSmall))
-        RowIconButton(Icons.Default.Add, newTabDescription(group.label), onNewTab, enabled = connected)
+    val button = Modifier.size(40.bd, 44.bd)
+    Row(
+        Modifier.testTag("session-header-$label").fillMaxWidth().height(44.bd)
+            .clickable(onClickLabel = if (!folds) "Select" else if (group.collapsed) "Expand" else "Collapse", onClick = onTap)
+            .semantics { heading() }
+            .padding(start = 20.bd, end = 4.bd),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.bd),
+    ) {
+        Text(label, Modifier.weight(1f).testTag("session-name-$label"), style = VeloTheme.type.header.naturalLines(),
+            color = VeloTheme.colors.textOnRaised, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The chevron says what a tap on the header does; the header takes the tap.
+        if (folds) Box(button.testTag("session-collapse-$label"), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.ExpandMore, null, Modifier.size(VeloTheme.sizes.iconSmall).rotate(if (group.collapsed) -90f else 0f),
+                tint = VeloTheme.surface.secondary)
+        }
+        RowIconButton(Icons.Default.Add, newTabDescription(label), onNewTab, button.testTag("session-new-tab-$label"), enabled = connected)
         Box {
-            RowIconButton(Icons.Default.MoreHoriz, sessionMenuDescription(group.label), { menu = true })
+            RowIconButton(Icons.Default.MoreHoriz, sessionMenuDescription(label), { menu = true }, button.testTag("session-menu-$label"))
             VeloMenu(menu, onDismissRequest = { menu = false }) {
                 for (item in sessionMenu(connected)) {
                     val close = item.action == SessionAction.Close
@@ -284,11 +335,12 @@ private fun SessionHeader(
 }
 
 /**
- * A tab's row: icon, name, folder and what its program reports. A tap selects it, a long
- * press opens its menu ([tabMenu]). The shown tab's row has an X; any other shows Close after
- * a left swipe ([TabRow.closeControl], [closeRevealed]) until a right swipe or a tap takes it away.
- * As in Rex for Mac, the icon of a tab with an unread waiting or failed report bounces
- * ([bouncesIcon]) and a waiting program's [message] takes turns with the name ([showsTicker]).
+ * A tab's row ([TabListRow]): its tile ([tabTile]), name, what its program reports and its folder,
+ * and at its end what the program does now ([rowMark]). A tap selects it, a long press opens its
+ * menu ([tabMenu]). The shown tab's row has an X; any other shows Close after a left swipe
+ * ([TabRow.closeControl], [closeRevealed]) until a right swipe or a tap takes it away. As in Rex for
+ * Mac, the tile of a tab with an unread waiting or failed report bounces ([bouncesIcon]) and a
+ * waiting program's [message] takes turns with the name ([showsTicker]).
  */
 @Composable
 private fun TabRowView(
@@ -315,32 +367,44 @@ private fun TabRowView(
     } else {
         null
     }
-    // One status for the row: the mark draws it and the second line says it.
+    // One status for the row: the tile's dot, the mark at its end and the second line say it together.
     val mark = activity.indicator
     val subtitle = tabRowSubtitle(mark, age, row.folder)
     val motion = rememberAnimatorScale()
     val ticker = message?.takeIf { connected && showsTicker(activity.badge, it) }
     val type = VeloTheme.type
+    val tile = tabTile(row, activity)
+    val id = row.tab
     Box {
-        ListRow(row.name, onSelect, Modifier.padding(start = VeloTheme.sizes.gap).pointerInput(threshold) {
+        TabListRow(row.name, onSelect, Modifier.padding(horizontal = 8.bd).pointerInput(threshold) {
             var drag = 0f
             detectHorizontalDragGestures(onDragStart = { drag = 0f },
                 onDragEnd = { reveal(closeRevealed(shown, drag, threshold)) }) { _, dx ->
                 if (swipes) revealFeel(shown, drag, drag + dx, threshold)?.let(feel)
                 drag += dx
             }
-        }, subtitle = subtitle, selected = row.shown, dimmed = !row.shown, onLongClick = { menu = true },
+        }, subtitle = subtitle, selected = row.shown, onLongClick = { menu = true }, id = id,
             titleContent = if (ticker != null) {
-                { TitleTicker(row.name, ticker, type.body, if (row.shown) VeloTheme.surface.text else VeloTheme.surface.secondary, motion) }
+                { TitleTicker(row.name, ticker, type.body.naturalLines(), VeloTheme.surface.text, motion) }
             } else null,
-            leading = {
+            tile = {
                 BouncingMark(connected && bouncesIcon(activity.badge), motion) {
-                    TabProgramMark(activity.icon, tile = true, badge = activity.badge, status = mark)
+                    TabTile(tile.brand, panes = tile.panes, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
+                        contentDescription = tabTileDescription(tile, activity.icon ?: row.icon),
+                        stateDescription = activity.badge?.let { "Unread, ${it.description}" } ?: mark?.description)
                 }
             }, trailing = {
-                mark?.let { TabStatusMark(it) }
+                when (rowMark(mark)) {
+                    RowMark.Working -> WorkingDots(5.bd, 4.bd, Modifier.testTag("tab-working-$id").padding(end = 8.bd),
+                        description = mark?.description ?: TabIndicator.Working.description)
+                    RowMark.Waiting -> Box(Modifier.padding(end = 10.bd).testTag("tab-attention-$id").size(9.bd)
+                        .background(VeloTheme.surface.warning, CircleShape).semantics { contentDescription = mark?.description.orEmpty() })
+                    RowMark.Offline -> TabStatusMark(TabIndicator.Offline)
+                    null -> Unit
+                }
                 when (row.closeControl) {
-                    CloseControl.X -> RowIconButton(Icons.Default.Close, closeTabDescription(row.name), onClose, enabled = connected)
+                    CloseControl.X -> RowIconButton(Icons.Default.Close, closeTabDescription(row.name), onClose,
+                        Modifier.size(40.bd, 44.bd).testTag("tab-close-$id"), enabled = connected)
                     CloseControl.Swipe -> if (revealed && connected) VeloButton("Close", onClose, kind = ButtonKind.Destructive)
                 }
             })
@@ -368,84 +432,104 @@ private fun TabRowView(
     }
 }
 
-/** A Rex server found on the tailnet: one tap saves it as a remote. */
+/** A Rex server found on the tailnet (Sidebar board, found-row): one tap saves it as a remote. */
 @Composable
-fun FoundServerRow(server: DiscoveredServer, onAdd: () -> Unit) {
-    ListRow(server.name, onAdd, onClickLabel = "Add remote", leading = { RowIcon(Icons.Default.Add, null) })
+fun FoundServerRow(server: DiscoveredServer, modifier: Modifier = Modifier, onAdd: () -> Unit) {
+    ListRow(server.name, onAdd, modifier, onClickLabel = "Add remote", minHeight = 48.bd,
+        leading = { Icon(Icons.Default.Add, null, Modifier.size(20.bd), tint = VeloTheme.surface.text) })
 }
 
-/** This Device: the app's own tailnet node. It has no connection and no sessions; a tap opens its own screen. */
+/**
+ * This Device (Sidebar board, this-device-row): the app's own tailnet node, with a line under it.
+ * It has no connection and no sessions; a tap opens its own screen.
+ */
 @Composable
 private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
-    val s = VeloTheme.sizes
     val c = VeloTheme.surface
+    val type = VeloTheme.type
     val status = when (device.state) {
         "Running" -> Status.Ok
         "Starting", "Needs login" -> Status.Warning
         "Error" -> Status.Danger
         else -> Status.Off
     }
+    val line = VeloTheme.sizes.edge
     // A compact two-line control above the scrolling remote list, not a full-height list row.
-    Row(Modifier.fillMaxWidth().heightIn(min = s.control).clip(Capsule)
+    Row(Modifier.padding(horizontal = 12.bd).testTag("this-device-row").fillMaxWidth()
+        .drawBehind { drawRect(c.divider, Offset(0f, size.height - line.toPx()), Size(size.width, line.toPx())) }
         .clickable(role = Role.Button, onClickLabel = "Tailscale settings", onClick = onClick)
         .semantics {
             contentDescription = if (device.name == "This Device") "This Device, ${device.line}"
                 else "This Device, ${device.name}, ${device.line}"
-        }.padding(horizontal = s.menuPadding),
-        verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Smartphone, null, tint = c.secondary, modifier = Modifier.size(s.iconSmall))
-        Spacer(Modifier.width(s.gap))
-        Column(Modifier.weight(1f)) {
-            Text(device.name, color = c.text, style = VeloTheme.type.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(device.line, color = c.secondary, style = VeloTheme.type.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }.padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd + line),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
+        Icon(Icons.Outlined.Smartphone, null, Modifier.size(20.bd), tint = c.secondary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.bd)) {
+            Text(device.name, Modifier.testTag("this-device-name"), color = c.text, style = type.header.copy(fontWeight = FontWeight.SemiBold).naturalLines(),
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(device.line, Modifier.testTag("this-device-status"), color = c.secondary, style = type.caption.naturalLines(),
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        StatusMark(status, "Node ${device.state}")
+        StatusMark(status, "Node ${device.state}", Modifier.testTag("this-device-dot"))
     }
 }
 
 /**
- * A remote's row: icon, label, connection dot, chevron and a `…` menu ([remoteMenu]). A remote
- * that is not connected is dimmed with its note ([remoteRowNote]); it can still be selected,
- * renamed and removed, and an ssh remote shows its SSH details.
+ * A remote's row (Sidebar board, remote-row): icon, label, connection dot, chevron and a `…` menu
+ * ([remoteMenu]). A remote that is not connected is dimmed with its note ([remoteRowNote]); it can
+ * still be selected, renamed and removed, and an ssh remote shows its SSH details.
  */
 @Composable
 private fun RemoteHeader(host: SidebarHost, expanded: Boolean, actions: SidebarActions, onChevron: () -> Unit) {
     val remote = host.remote
-    val status = host.conn.state.status
+    val status = host.state.status
     val note = remoteRowNote(status, host.removed, host.needsAnswer)
     val items = remoteMenu(status, host.removed, isSshLocator(remote.url))
     var menu by remember { mutableStateOf(false) }
     val name = remote.label.ifEmpty { "Remote" }
-    // The row's pill is for the tab the panes show; the active remote is marked by its weight and icon, and says so here.
-    ListRow(name, { actions.selectRemote(remote) }, Modifier.semantics { if (host.active) selected = true }, subtitle = note, strong = host.active,
-        dimmed = note != null, enabled = !host.removed, leading = {
-            val c = VeloTheme.surface
-            RowIcon(Icons.Outlined.LaptopMac, "Remote", tint = when {
-                host.active -> c.accent
-                note != null -> c.secondary
-                else -> c.text
-            })
-        }, trailing = {
-            if (!host.removed) {
-                ConnectionDot(status)
-                RowIconButton(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-                    remoteFoldDescription(expanded, name), onChevron)
-            }
-            if (items.isNotEmpty()) Box {
-                RowIconButton(Icons.Default.MoreHoriz, remoteMenuDescription(name), { menu = true })
-                VeloMenu(menu, onDismissRequest = { menu = false }) {
-                    for (item in items) VeloMenuItem(item.label, onClick = {
-                        menu = false
-                        when (item.action) {
-                            RemoteAction.NewSession -> actions.newSession(remote)
-                            RemoteAction.Rename -> actions.renameRemote(remote)
-                            RemoteAction.SshDetails -> actions.sshDetails(remote)
-                            RemoteAction.Remove -> actions.removeRemote(remote)
-                        }
-                    }, icon = remoteActionIcon(item.action), enabled = item.enabled, destructive = item.action == RemoteAction.Remove)
-                }
-            }
+    val c = VeloTheme.surface
+    val button = Modifier.size(40.bd, 48.bd)
+    // The row's pill is for the tab the panes show; the active remote is marked by its icon's colour, and says so here.
+    Row(Modifier.testTag("remote-row-$name").fillMaxWidth()
+        .clickable(enabled = !host.removed) { actions.selectRemote(remote) }
+        .semantics { if (host.active) selected = true }
+        .padding(start = 18.bd, end = 4.bd, top = 4.bd).heightIn(min = 52.bd),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
+        Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(22.bd), tint = when {
+            host.active -> c.accent
+            note != null -> c.secondary
+            else -> c.text
         })
+        Column(Modifier.weight(1f)) {
+            Text(name, Modifier.testTag("remote-name-$name"), style = VeloTheme.type.bodyStrong.naturalLines(), maxLines = 1,
+                overflow = TextOverflow.Ellipsis, color = when {
+                    host.removed -> c.disabled
+                    note != null -> c.secondary
+                    else -> c.text
+                })
+            if (note != null) Text(note, style = VeloTheme.type.caption.naturalLines(), color = if (host.removed) c.disabled else c.secondary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (!host.removed) {
+            ConnectionDot(status, Modifier.testTag("remote-dot-$name"))
+            RowIconButton(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                remoteFoldDescription(expanded, name), onChevron, button.testTag("remote-collapse-$name"))
+        }
+        if (items.isNotEmpty()) Box {
+            RowIconButton(Icons.Default.MoreHoriz, remoteMenuDescription(name), { menu = true }, button.testTag("remote-menu-$name"))
+            VeloMenu(menu, onDismissRequest = { menu = false }) {
+                for (item in items) VeloMenuItem(item.label, onClick = {
+                    menu = false
+                    when (item.action) {
+                        RemoteAction.NewSession -> actions.newSession(remote)
+                        RemoteAction.Rename -> actions.renameRemote(remote)
+                        RemoteAction.SshDetails -> actions.sshDetails(remote)
+                        RemoteAction.Remove -> actions.removeRemote(remote)
+                    }
+                }, icon = remoteActionIcon(item.action), enabled = item.enabled, destructive = item.action == RemoteAction.Remove)
+            }
+        }
+    }
 }
 
 /** The icon of a remote menu's item; the Saved list in Settings gives its items the same. */
@@ -461,7 +545,7 @@ internal fun remoteActionIcon(action: RemoteAction) = when (action) {
  * same as on the rail. The removed remote's row has none.
  */
 @Composable
-private fun ConnectionDot(status: String) {
+private fun ConnectionDot(status: String, modifier: Modifier = Modifier) {
     val mark = connectionMark(status, removed = false)
-    StatusMark(levelStatus(mark.level), mark.word)
+    StatusMark(levelStatus(mark.level), mark.word, modifier)
 }

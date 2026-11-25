@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -87,19 +88,25 @@ fun GlassIconButton(
 
 private val LocalCapsuleVertical = staticCompositionLocalOf { false }
 
-/** One glass capsule that holds several icons ([CapsuleIcon]), side by side or, [vertical], one under the other. */
+/**
+ * One glass capsule that holds several icons ([CapsuleIcon]), side by side or, [vertical], one under
+ * the other. Its round controls keep the same distance from its ends as from its sides (Sidebar
+ * board, sidebar-actions: 2 around 48).
+ */
 @Composable
 fun GlassCapsule(modifier: Modifier = Modifier, vertical: Boolean = false, content: @Composable () -> Unit) {
     val thickness = VeloTheme.sizes.capsule
+    val end = ((thickness - VeloTheme.sizes.control) / 2).coerceAtLeast(0.dp)
     CompositionLocalProvider(LocalCapsuleVertical provides vertical) {
-        if (vertical) Column(modifier.width(thickness).glass(), horizontalAlignment = Alignment.CenterHorizontally) { content() }
-        else Row(modifier.height(thickness).glass(), verticalAlignment = Alignment.CenterVertically) { content() }
+        if (vertical) Column(modifier.width(thickness).glass().padding(vertical = end), horizontalAlignment = Alignment.CenterHorizontally) { content() }
+        else Row(modifier.height(thickness).glass().padding(horizontal = end), verticalAlignment = Alignment.CenterVertically) { content() }
     }
 }
 
 /**
- * An icon inside a [GlassCapsule]. [selected] fills its cell; [badge] puts the raised accent
- * dot on its corner ([AttentionBadge]). [stateDescription] says a toggle's state aloud.
+ * An icon inside a [GlassCapsule]: a round control (Sidebar board, 48). [selected] fills its cell;
+ * [badge] puts the raised accent dot on its corner ([AttentionBadge]; [badgeModifier] goes on the
+ * dot). [stateDescription] says a toggle's state aloud.
  */
 @Composable
 fun CapsuleIcon(
@@ -112,23 +119,24 @@ fun CapsuleIcon(
 fun CapsuleIcon(
     icon: Painter, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     enabled: Boolean = true, selected: Boolean = false, badge: Boolean = false, stateDescription: String? = null,
+    badgeModifier: Modifier = Modifier,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
-    val vertical = LocalCapsuleVertical.current
     Box(
-        modifier.size(if (vertical) s.capsule else s.capsuleCell, if (vertical) s.capsuleCell else s.capsule)
-            .padding(s.cellInset).clip(Capsule).background(if (selected) c.glassSelected else Color.Transparent)
+        modifier.size(s.control).clip(Capsule)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics {
                 if (selected) this.selected = true
                 if (stateDescription != null) this.stateDescription = stateDescription
-            },
+            }
+            // The selected cell stays a little inside the control, as a segmented track's cell does.
+            .padding(s.cellInset).clip(Capsule).background(if (selected) c.glassSelected else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
         Box {
             Icon(icon, contentDescription, Modifier.size(s.icon), tint = if (enabled) c.onGlass else c.disabled)
-            if (badge) AttentionBadge(c.accent, Modifier.align(Alignment.TopEnd).offset(x = s.dot / 4, y = -s.dot / 4).size(s.dot), ring = c.glass)
+            if (badge) AttentionBadge(c.accent, badgeModifier.align(Alignment.TopEnd).offset(x = s.dot / 4, y = -s.dot / 4).size(s.dot), ring = c.glass)
         }
     }
 }
@@ -258,15 +266,20 @@ fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = 
 }
 
 /**
- * A key on the key bar. [label] names the key, not the glyph drawn on it. An [armed] modifier is filled with the accent.
- * A key that is not [enabled] is drawn in the disabled colour, without that fill, and takes no tap.
- * With [holdRepeat], a hold sends [onClick] at the long-press timeout, then [onRepeat] until release or cancellation.
+ * A key on the key bar (KeyBar board). [label] names the key, not the glyph drawn on it. The key
+ * takes the taps in all the room its bar gives it; its cap, the board's button, stands in that room
+ * at [capAlignment]: as wide as its label with 4 on each side, at least `sizes.key`, and as high as
+ * the key. A [latching] key (a modifier) is a pill 40 high, 8 on each side of its label, filled with
+ * the accent while [armed]. [capModifier] goes on the cap. A key that is not [enabled] is drawn in
+ * the disabled colour, without that fill, and takes no tap. With [holdRepeat], a hold sends
+ * [onClick] at the long-press timeout, then [onRepeat] until release or cancellation.
  */
 @Composable
 fun KeyCap(
     label: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     armed: Boolean = false, contentDescription: String? = null, enabled: Boolean = true,
     holdRepeat: Boolean = false, onRepeat: () -> Unit = onClick,
+    latching: Boolean = false, capAlignment: Alignment = Alignment.Center, capModifier: Modifier = Modifier,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
@@ -274,21 +287,21 @@ fun KeyCap(
     val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.text
     val pill = VeloTheme.medium(40.dp)
     Box(
-        modifier.widthIn(min = s.key).height(s.keyHeight).clip(Capsule)
-            // A latched key is a pill of the accent, 40 high, inside the key's height (Controls board, sample-key-latched).
-            .drawBehind {
-                if (lit) {
-                    val h = minOf(size.height, pill.toPx())
-                    drawRoundRect(c.accent, Offset(0f, (size.height - h) / 2), Size(size.width, h), CornerRadius(h / 2))
-                }
-            }
+        modifier.height(s.keyHeight).clip(Capsule)
             .clickable(enabled = enabled, role = Role.Button) { if (enabled) onClick() }
             .then(if (enabled && holdRepeat) repeatKeyPress(label, onClick, onRepeat) else Modifier)
-            .semantics { if (lit) selected = true; this.contentDescription = contentDescription ?: label }
-            .padding(horizontal = s.rowGap / 2),
-        contentAlignment = Alignment.Center,
+            .semantics { if (lit) selected = true; this.contentDescription = contentDescription ?: label },
+        contentAlignment = capAlignment,
     ) {
-        KeyLegend(label, color)
+        Box(
+            capModifier.widthIn(min = s.key).height(if (latching) minOf(pill, s.keyHeight) else s.keyHeight)
+                // A latched key is a pill of the accent (Controls board, sample-key-latched).
+                .then(if (lit) Modifier.clip(Capsule).background(c.accent) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            // A cap the bar narrowed below its label's room keeps the label whole: it takes the padding.
+            KeyLegend(label, color, Modifier.wrapContentWidth(unbounded = true).padding(horizontal = VeloTheme.medium(if (latching) 8.dp else 4.dp)))
+        }
     }
 }
 

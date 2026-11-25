@@ -130,3 +130,21 @@ internal fun TabCaption(row: TabRow?, connected: Boolean, readState: ActivityRea
         activity?.indicator?.let { TabStatusMark(it, terminalFontPx?.let { px -> with(density) { px.toDp() } } ?: VeloTheme.sizes.statusIcon) }
     }
 }
+
+/**
+ * The working mark as the Sidebar and Pane boards draw it: three dots [dot] across, [gap] apart, in
+ * the accent, lit one after another. A screen reader hears [description] once for all three.
+ */
+@Composable
+internal fun WorkingDots(dot: Dp, gap: Dp, modifier: Modifier = Modifier, description: String = TabIndicator.Working.description) {
+    val accent = VeloTheme.surface.accent
+    val phase by rememberInfiniteTransition(label = "Working dots").animateFloat(
+        initialValue = 0f, targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(3 * DotIntervalMs, easing = LinearEasing)), label = "Dot phase",
+    )
+    Canvas(modifier.size(dot * 3 + gap * 2, dot).clearAndSetSemantics { contentDescription = description }) {
+        val radius = size.height / 2
+        val step = (size.width - size.height) / 2
+        repeat(3) { index -> drawCircle(accent.copy(alpha = workingDotAlpha(phase, index)), radius, Offset(radius + index * step, center.y)) }
+    }
+}
