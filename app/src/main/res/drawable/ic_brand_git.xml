@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Git: Simple Icons 16.38.1 (git.svg). Simple Icons records this logo as CC BY 3.0 (Git Logo by Jason Long); a trademark of its owner (NOTICE). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M13.09 23.549 a1.54 1.54 0 0 1 -2.18 0 L.451 13.089 a1.54 1.54 0 0 1 0 -2.179 l7.191 -7.19 l2.733 2.733 a1.85 1.85 0 0 0 .964 2.326 v6.66 a1.849 1.849 0 1 0 1.54 0 V8.957 l2.508 2.508 a1.85 1.85 0 1 0 1.09 -1.09 l-2.634 -2.634 a1.85 1.85 0 0 0 -2.378 -2.377 L8.73 2.63 L10.91 .451 a1.54 1.54 0 0 1 2.179 0 l10.459 10.46 a1.54 1.54 0 0 1 0 2.179 z" />
+</vector>

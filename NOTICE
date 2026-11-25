@@ -62,3 +62,16 @@ on their own or use reserved names for modified versions without permission.
 NAVER's D2Coding is based on Nanum Barun Gothic. See Powerline-MIT.txt
 for the basic Powerline symbols, originally drawn by Fabrizio Schiavi.
 Jetendard 0.1.0 is not redistributed. Its saved selection resolves to D2Coding.
+
+Program logos (app/src/main/res/drawable/ic_brand_*.xml)
+--------------------------------------------------------
+The logos on the sidebar's tab tiles come from Simple Icons 16.38.1
+(https://simpleicons.org). Simple Icons releases its SVG data under CC0 1.0:
+Claude, Google Gemini, Docker, Zsh, htop and Python. Simple Icons records two
+of the logos used here under licenses of their own, which apply instead: Git
+(CC BY 3.0; Git Logo by Jason Long) and Neovim (CC BY-SA 3.0). Each path is
+copied unchanged onto a 24 by 24 grid.
+
+The logos are trademarks of their owners. Velo uses them only to identify the
+program running in a tab. Their use implies no endorsement of Velo by, and no
+affiliation with, those owners. The Codex tile is Velo's own letter C.

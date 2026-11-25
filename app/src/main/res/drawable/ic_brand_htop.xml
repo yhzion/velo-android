@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- htop: Simple Icons 16.38.1 (htop.svg), CC0 path data; the logo is a trademark of its owner (NOTICE). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M6.928 16.738 v7.233 h1.414 v-7.233 H6.928 Z m10.912 0 v7.233 h1.414 v-7.233 H17.84 Z m2.179 0 v7.233 h1.414 v-7.233 h-1.414 Z m-4.366 0 v7.233 h1.414 v-7.233 h-1.414 Z m-13.089 0 v7.233 h1.415 v-7.233 H2.564 Z m2.183 0 v7.233 h1.414 v-7.233 H4.747 Z M24 16.771 l-.02 7.178 l-2.16 -.008 v-1.257 h.827 v-4.745 h-.814 V16.76 l2.167 .011 Z m-24 -.009 l.02 7.178 l2.16 -.008 v-1.257 h-.827 v-4.744 h.814 v-1.18 L0 16.762 Z m6.928 -8.356 v7.233 h1.414 V8.406 H6.928 Z m2.182 0 v7.233 h1.414 V8.406 H9.11 Z m2.181 0 v7.233 h1.414 V8.406 h-1.414 Z m4.362 0 v7.233 h1.414 V8.406 h-1.414 Z m2.187 0 v7.233 h1.414 V8.406 H17.84 Z m2.179 0 v7.233 h1.414 V8.406 h-1.414 Z m-17.455 0 v7.233 h1.415 V8.406 H2.564 Z m2.183 0 v7.233 h1.414 V8.406 H4.747 Z m8.726 0 v7.233 h1.415 V8.406 h-1.415 Z M24 8.433 l-.02 7.178 l-2.16 -.008 v-1.257 h.827 V9.601 h-.814 V8.422 L24 8.433 Z M0 8.43 l.02 7.178 l2.16 -.008 v-1.257 h-.827 V9.599 h.814 v-1.18 L0 8.43 Z M6.928 .029 v7.233 h1.414 V.029 H6.928 Z m8.725 0 v7.233 h1.414 V.029 h-1.414 Z m4.366 0 v7.233 h1.414 V.029 h-1.414 Z m-2.179 0 v7.233 h1.414 V.029 H17.84 Z m-15.276 0 v7.233 h1.415 V.029 H2.564 Z m2.183 0 v7.233 h1.414 V.029 H4.747 Z M24 .055 l-.02 7.178 l-2.16 -.009 V5.967 h.827 V1.223 h-.814 V.044 L24 .055 Z M0 .052 L.02 7.23 l2.16 -.008 V5.965 h-.827 V1.221 h.814 V.041 L0 .052 Z" />
+</vector>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Neovim: Simple Icons 16.38.1 (neovim.svg). Simple Icons records this logo as CC BY-SA 3.0; a trademark of its owner (NOTICE). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M2.214 4.954 v13.615 L7.655 24 V10.314 L3.312 3.845 L2.214 4.954 z m4.999 17.98 l-4.557 -4.548 V5.136 l.59 -.596 l3.967 5.908 v12.485 z m14.573 -4.457 l-.862 .937 l-4.24 -6.376 V0 l5.068 5.092 l.034 13.385 z M7.431 .001 l12.998 19.835 l-3.637 3.637 L3.787 3.683 L7.43 0 z" />
+</vector>
