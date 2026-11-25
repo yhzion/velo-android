@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- While Velo waits for you to log in in the browser, Cancel takes you back to the login step.
+
 ## 2.11.0 - 2026-11-26
 
 ### Added
