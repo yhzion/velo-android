@@ -6,12 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import io.github.yhzion.velo.ui.theme.MenuItem
-import io.github.yhzion.velo.ui.theme.VeloButton
-import io.github.yhzion.velo.ui.theme.VeloMenu
+import io.github.yhzion.velo.ui.theme.MenuButton
+import io.github.yhzion.velo.ui.theme.SelectMenu
 import io.github.yhzion.velo.ui.theme.SettingRow
 
 /**
@@ -27,17 +23,12 @@ fun pickedCorner(choice: CapsuleCorner, shown: CapsuleCorner): CapsuleCorner? = 
 @Composable
 internal fun CapsuleCornerRow(shown: CapsuleCorner, onPick: (CapsuleCorner) -> Unit) {
     var choosing by remember { mutableStateOf(false) }
-    SettingRow("Minimized windows") {
+    SettingRow("Minimized windows", tag = "appearance-minimized") {
         Box {
-            VeloButton(shown.label, { choosing = true }, modifier = Modifier.semantics { contentDescription = "Minimized windows: ${shown.label}" })
-            VeloMenu(choosing, onDismissRequest = { choosing = false }) {
-                for (choice in CapsuleCorner.entries) {
-                    MenuItem(choice.label, {
-                        choosing = false
-                        pickedCorner(choice, shown)?.let(onPick)
-                    })
-                }
-            }
+            MenuButton(shown.label, { choosing = true }, contentDescription = "Minimized windows: ${shown.label}", tag = "appearance-minimized-menu")
+            SelectMenu(choosing, { choosing = false }, CapsuleCorner.entries, shown, { it.label }, onPick = { choice ->
+                pickedCorner(choice, shown)?.let(onPick)
+            })
         }
     }
 }

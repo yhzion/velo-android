@@ -25,11 +25,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
 import io.github.yhzion.velo.cellLineHeight
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.rounded
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
+
+/** The colour of the branch in the sample: a prompt's own (canvas SetAppearance block). */
+private val BranchColour = Color(0xFFC792EA)
 
 /** The margin around a terminal grid in dp, which keeps text off the pane's rounded corners (HostConnection.pushDisplay). */
 fun panePaddingDp(paneStyle: String): Float = if (paneStyle == "compact") 6f else 10f
@@ -72,24 +79,29 @@ internal fun FontSizePreview(host: SettingsHost) {
     val lineHeight = metrics?.lineHeight ?: remember(font.id) { rasterizer.lineHeight }
     val cellW = ceil(fontPx * 0.6f)
     val cellH = ceil(fontPx * lineHeight.coerceIn(1f, 2f))
-    Column(Modifier.fillMaxWidth().padding(top = sizes.menuPadding)) {
+    val space = VeloTheme.space
+    val shape = rounded(VeloTheme.medium(10.dp))
+    // At least three of the board's lines tall (1.55 of the size), so that the box keeps its place
+    // while the lines in it keep the terminal's own height.
+    val least = with(density) { (settings.fontSize.sp.toDp() * 1.55f * 3) } + space.s12 * 2
+    Column(Modifier.fillMaxWidth().padding(top = space.s4)) {
         Box(
-            Modifier.fillMaxWidth().clip(rounded(VeloTheme.radii.paneCompact)).background(backdrop.surface)
-                .border(sizes.edge, VeloTheme.surface.divider, rounded(VeloTheme.radii.paneCompact)).padding(pad.dp)
+            Modifier.fillMaxWidth().testTag("appearance-font-sample").heightIn(min = least).clip(shape).background(backdrop.surface)
+                .border(sizes.edge, VeloTheme.surface.divider, shape).padding(horizontal = VeloTheme.medium(14.dp), vertical = space.s12)
                 .clearAndSetSemantics { contentDescription = "Preview of ${font.label} at $shown" },
         ) {
             if (face != null && metrics != null) {
+                val accent = VeloTheme.colors.chrome.accent
                 val sample = buildAnnotatedString {
-                    withStyle(SpanStyle(color = backdrop.accent)) { append("~/velo-android") }
-                    withStyle(SpanStyle(color = backdrop.secondary)) { append(" main") }
-                    append("\n")
-                    withStyle(SpanStyle(color = backdrop.accent)) { append("$") }
-                    append(" ls -la\n")
-                    withStyle(SpanStyle(color = backdrop.accent)) { append("app  docs  native") }
+                    withStyle(SpanStyle(color = accent)) { append("~/src/web") }
+                    withStyle(SpanStyle(color = BranchColour)) { append(" main") }
+                    withStyle(SpanStyle(color = backdrop.secondary)) { append("$ ") }
+                    append("ls\n")
+                    withStyle(SpanStyle(color = accent)) { append("app  docs  native") }
                     append("  README.md\n0O 1lI {}[] -> != 한글")
                 }
                 Text(
-                    sample, maxLines = 4, softWrap = false, overflow = TextOverflow.Clip, color = backdrop.text,
+                    sample, maxLines = 3, softWrap = false, overflow = TextOverflow.Clip, color = backdrop.text,
                     style = TextStyle(
                         fontFamily = remember(face) { FontFamily(face!!) },
                         // As the rasterizer does: the face's 'M' fills a cell, and a line is a cell high.

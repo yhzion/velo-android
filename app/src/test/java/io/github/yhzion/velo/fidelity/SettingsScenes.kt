@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.fidelity
 
+import io.github.yhzion.velo.ui.OverviewLayout
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -144,6 +145,7 @@ private fun FakeSettingsHost.boardSample(context: Context) {
     settings.saveTailnet(true)
     settings.saveTailnetName("velo-phone")
     settings.saveTapGestures(true)
+    settings.saveOverviewLayout(OverviewLayout.Grid)
     releases = listOf(SampleRelease)
     UpdateSettings.record(context, UpdateSettings.channel(context), System.currentTimeMillis(), SampleRelease)
 }
