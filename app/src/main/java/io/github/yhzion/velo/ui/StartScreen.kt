@@ -883,12 +883,16 @@ private fun OpeningCard(name: String, progress: Float, cancel: () -> Unit) {
     }
 }
 
-/** "Add by QR code or address" and "Settings", at the bottom of the screen; [settingsBadge] puts the update dot on Settings. */
+/**
+ * "Add by QR code or address" and "Settings", at the bottom of the screen; [settingsBadge] puts the update dot on Settings.
+ * Side by side, or Settings on a line of its own when both do not fit (a narrow window, large text).
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StartFooter(onAddByQr: () -> Unit, onSettings: () -> Unit, settingsBadge: Boolean, modifier: Modifier, horizontal: Dp) {
     val c = VeloTheme.surface
-    Row(modifier.testTag("start-footer").padding(start = horizontal, end = horizontal, top = VeloTheme.medium(8.dp), bottom = VeloTheme.medium(20.dp)),
-        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    FlowRow(modifier.testTag("start-footer").padding(start = horizontal, end = horizontal, top = VeloTheme.medium(8.dp), bottom = VeloTheme.medium(20.dp)),
+        horizontalArrangement = Arrangement.SpaceBetween, itemVerticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.testTag("add-by-qr-link").heightIn(min = VeloTheme.sizes.control).clip(Capsule).clickable(role = Role.Button, onClick = onAddByQr),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(8.dp))) {
             Icon(painterResource(R.drawable.ic_start_qr), null, Modifier.size(VeloTheme.medium(20.dp)), tint = c.accent)
