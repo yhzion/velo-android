@@ -70,6 +70,9 @@ enum class TileBrand(
     Claude("Claude Code", logo = R.drawable.ic_brand_claude, ink = Color.White, filled = true),
     // The C drawn with a pen, not a Simple Icons logo: it fills less of its box than a logo does.
     Codex("Codex", logo = R.drawable.ic_agent_codex, ink = Color.Black, filled = true, glyphShare = 0.54f),
+    // Not on the Tile board: the agents the app marked before the redesign keep their own tile.
+    Omp("omp", logo = R.drawable.ic_agent_omp, ink = Color.White, filled = true, glyphShare = 0.62f),
+    Pi("pi", letter = "π", ink = Color.White, filled = true),
     Gemini("Gemini", logo = R.drawable.ic_brand_googlegemini, ink = Color(0xFF8E75B2)),
     Neovim("Neovim", logo = R.drawable.ic_brand_neovim, ink = Color(0xFF57A143)),
     Docker("Docker", logo = R.drawable.ic_brand_docker, ink = Color(0xFF2496ED)),
@@ -87,9 +90,11 @@ enum class TileBrand(
 private const val GlyphShare = 0.6f
 
 /** The brand of the tile of a tab that runs [program] (the server's program name or icon hint). */
-fun tileBrand(program: String?): TileBrand = when (program?.trim()?.lowercase()) {
+fun tileBrand(program: String?): TileBrand = when (program?.trim()?.removePrefix("-")?.lowercase()) {
     "claude", "claude-code" -> TileBrand.Claude
     "codex", "codex-cli", "openai-codex" -> TileBrand.Codex
+    "omp", "oh-my-pi" -> TileBrand.Omp
+    "pi", "pi-coding-agent" -> TileBrand.Pi
     "gemini", "gemini-cli" -> TileBrand.Gemini
     "nvim", "neovim" -> TileBrand.Neovim
     "docker", "docker-compose" -> TileBrand.Docker
@@ -173,6 +178,9 @@ enum class TileDot { Unread, Waiting, Failed }
 
 private val ClaudeFill = Brush.verticalGradient(0f to Color(0xFFD59773), 0.6f to Color(0xFFC27649), 1f to Color(0xFFBB7146))
 private val CodexFill = Brush.verticalGradient(listOf(Color.White, Color(0xFFE3E3E3)))
+/** omp's and pi's fills: the marks the app drew for them before the redesign. */
+private val OmpFill = Brush.linearGradient(listOf(Color(0xFFEC5FCD), Color(0xFF696AFF)))
+private val PiFill = SolidColor(Color(0xFF30556B))
 
 /** A filled face's top highlight and a layer's rim (Tile board). */
 private val FaceHighlight = Color.White.copy(alpha = 0.25f)
@@ -203,6 +211,8 @@ fun TabTile(
     val fill: Brush = when (brand) {
         TileBrand.Claude -> ClaudeFill
         TileBrand.Codex -> CodexFill
+        TileBrand.Omp -> OmpFill
+        TileBrand.Pi -> PiFill
         else -> SolidColor(colors.glass)
     }
     val corner = u(tileCorner(s))

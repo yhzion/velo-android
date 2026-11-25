@@ -1,0 +1,109 @@
+package io.github.yhzion.velo.ui
+
+import io.github.yhzion.velo.core.SessionInfo
+import io.github.yhzion.velo.core.TabInfo
+import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.ui.theme.TileBrand
+import io.github.yhzion.velo.ui.theme.TileDot
+import io.github.yhzion.velo.ui.theme.tileLayers
+import io.github.yhzion.velo.ui.theme.tilePaneCountShown
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** A tab's tile and the mark at its row's end, from what the tab reports (TabTiles and Sidebar boards). */
+class TabTilesTest {
+    private fun row(tab: TabInfo): TabRow {
+        val state = UiState(status = "connected", sessions = listOf(SessionInfo("s", tabs = listOf(tab))))
+        return sessionGroups(state, false, emptySet(), false, "").single().rows.single()
+    }
+
+    /** What the row draws for [row] with nothing seen and nothing reported beyond the row itself. */
+    private fun drawn(row: TabRow, badge: TabIndicator? = null) = TabActivity(row.icon, row.indicator, badge, row.since)
+
+    @Test fun anAgentOrAProgramGetsItsBrand() {
+        for ((tab, brand) in listOf(
+            TabInfo("w", program = "claude") to TileBrand.Claude,
+            TabInfo("w", icon = "claude-code", program = "2.1.329") to TileBrand.Claude,
+            TabInfo("w", program = "/usr/local/bin/codex") to TileBrand.Codex,
+            TabInfo("w", program = "gemini") to TileBrand.Gemini,
+            TabInfo("w", program = "nvim") to TileBrand.Neovim,
+            TabInfo("w", program = "docker") to TileBrand.Docker,
+            // A login shell is named with a dash before it.
+            TabInfo("w", program = "-zsh") to TileBrand.Zsh,
+            TabInfo("w", program = "zsh") to TileBrand.Zsh,
+            TabInfo("w", program = "htop") to TileBrand.Htop,
+            TabInfo("w", program = "omp") to TileBrand.Omp,
+            TabInfo("w", program = "pi") to TileBrand.Pi,
+            TabInfo("w", program = "node") to TileBrand.Terminal,
+            // A version for a program name says nothing about the program.
+            TabInfo("w", program = "2.1.329") to TileBrand.Terminal,
+            TabInfo("w") to TileBrand.Terminal,
+        )) assertEquals(tab.toString(), brand, tabTile(row(tab), drawn(row(tab))).brand)
+    }
+
+    @Test fun theAgentAPaneReportsNamesTheTile() {
+        val r = row(TabInfo("w", program = "node", activity = "working"))
+        // The report's agent (Codex running under node) wins over the program.
+        assertEquals(TileBrand.Codex, tabTile(r, TabActivity("codex", TabIndicator.Working, null, null)).brand)
+    }
+
+    @Test fun aSplitTabStacksALayerPerPaneAndCountsFromFive() {
+        for (panes in listOf(1, 2, 3, 4, 5, 6, 12)) {
+            val r = row(TabInfo("w", program = "zsh", panes = panes))
+            val tile = tabTile(r, drawn(r))
+            assertEquals(panes, tile.panes)
+            assertEquals(minOf(panes, 4), tileLayers(tile.panes))
+            assertEquals(panes >= 5, tilePaneCountShown(tile.panes))
+        }
+        // A tab that draws no pane (every pane minimized) still has its one tile.
+        val minimized = row(TabInfo("w", program = "zsh", panes = 0, minimized = true))
+        assertEquals(1, tabTile(minimized, drawn(minimized)).panes)
+    }
+
+    @Test fun anUnseenReportPutsItsDotOnTheTile() {
+        val r = row(TabInfo("w", program = "claude"))
+        fun dot(badge: TabIndicator?) = tabTile(r, drawn(r, badge)).dot
+        assertNull(dot(null))
+        assertEquals(TileDot.Unread, dot(TabIndicator.Done))
+        assertEquals(TileDot.Failed, dot(TabIndicator.Error))
+        for (waiting in listOf(TabIndicator.Waiting, TabIndicator.Permission, TabIndicator.Question, TabIndicator.Auth)) {
+            assertEquals(waiting.toString(), TileDot.Waiting, dot(waiting))
+        }
+    }
+
+    @Test fun theRowEndShowsWorkWaitingOrOffline() {
+        assertEquals(RowMark.Working, rowMark(TabIndicator.Working))
+        assertEquals(RowMark.Working, rowMark(TabIndicator.CodexActive))
+        for (waiting in listOf(TabIndicator.Waiting, TabIndicator.Permission, TabIndicator.Question, TabIndicator.Auth)) {
+            assertEquals(waiting.toString(), RowMark.Waiting, rowMark(waiting))
+        }
+        assertEquals(RowMark.Offline, rowMark(TabIndicator.Offline))
+        // A finish and a failure are the tile's dot and the second line's words, not a mark at the end.
+        for (none in listOf(null, TabIndicator.Done, TabIndicator.Error, TabIndicator.Idle)) assertNull(none.toString(), rowMark(none))
+    }
+
+    @Test fun theDotAndTheRowMarkFollowTheSameReport() {
+        // A waiting program unseen: the tile's dot and the row's end both say it waits.
+        val r = row(TabInfo("w", program = "claude", activity = "blocked", kind = "permission"))
+        val activity = drawn(r, r.indicator)
+        assertEquals(TileDot.Waiting, tabTile(r, activity).dot)
+        assertEquals(RowMark.Waiting, rowMark(activity.indicator))
+        // Seen, the dot goes; the row still says it waits.
+        assertNull(tabTile(r, drawn(r)).dot)
+        assertEquals(RowMark.Waiting, rowMark(drawn(r).indicator))
+    }
+
+    @Test fun aScreenReaderHearsTheProgramAndThePanes() {
+        fun said(tab: TabInfo): String = row(tab).let { tabTileDescription(tabTile(it, drawn(it)), it.icon) }
+        assertEquals("Claude Code", said(TabInfo("w", program = "claude")))
+        assertEquals("Codex, 2 panes", said(TabInfo("w", program = "codex", panes = 2)))
+        // A program without a brand keeps its own name, as the mark said it before.
+        assertEquals("node, 3 panes", said(TabInfo("w", program = "node", panes = 3)))
+        assertEquals("Terminal", said(TabInfo("w")))
+        assertFalse(said(TabInfo("w", program = "htop", panes = 6)).isEmpty())
+        assertTrue(said(TabInfo("w", program = "htop", panes = 6)).endsWith("6 panes"))
+    }
+}

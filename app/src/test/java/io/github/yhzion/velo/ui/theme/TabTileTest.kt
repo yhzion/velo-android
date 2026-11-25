@@ -101,16 +101,19 @@ class TabTileTest {
             "docker" to TileBrand.Docker, "zsh" to TileBrand.Zsh, "htop" to TileBrand.Htop,
             "python" to TileBrand.Python, "python3" to TileBrand.Python, "git" to TileBrand.Git,
             "az" to TileBrand.Azure, "heroku" to TileBrand.Heroku,
+            "omp" to TileBrand.Omp, "oh-my-pi" to TileBrand.Omp, "pi" to TileBrand.Pi, "pi-coding-agent" to TileBrand.Pi,
+            // A login shell, as the process list names it.
+            "-zsh" to TileBrand.Zsh,
             "bash" to TileBrand.Terminal, "vim" to TileBrand.Terminal, "" to TileBrand.Terminal, null to TileBrand.Terminal,
         )
         for ((program, brand) in expected) assertEquals("$program", brand, tileBrand(program))
     }
 
     @Test fun onlyTheAgentsFillTheirTile() {
-        assertEquals(setOf(TileBrand.Claude, TileBrand.Codex), TileBrand.entries.filter { it.filled }.toSet())
+        assertEquals(setOf(TileBrand.Claude, TileBrand.Codex, TileBrand.Omp, TileBrand.Pi), TileBrand.entries.filter { it.filled }.toSet())
         // The tools draw a Simple Icons logo; the letter tiles and the default draw text.
         val logos = TileBrand.entries.filter { it.logo != null }.toSet()
-        assertEquals(setOf(TileBrand.Claude, TileBrand.Codex, TileBrand.Gemini, TileBrand.Neovim, TileBrand.Docker,
+        assertEquals(setOf(TileBrand.Claude, TileBrand.Codex, TileBrand.Omp, TileBrand.Gemini, TileBrand.Neovim, TileBrand.Docker,
             TileBrand.Zsh, TileBrand.Htop, TileBrand.Python, TileBrand.Git), logos)
         for (brand in TileBrand.entries) assertTrue("$brand", (brand.logo != null) != (brand.letter != null))
     }
