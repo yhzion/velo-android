@@ -1,6 +1,6 @@
 package io.github.yhzion.velo.ui
 
-import io.github.yhzion.velo.ui.theme.lineBox
+import io.github.yhzion.velo.ui.theme.lineBoxOrTaller
 import androidx.annotation.DrawableRes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -334,7 +334,8 @@ private fun PageTitle(title: String, above: String?, back: (() -> Unit)?) {
         title,
         Modifier.fillMaxWidth().testTag("settings-page-title")
             .padding(top = if (above != null) 0.dp else VeloTheme.medium(18.dp), bottom = VeloTheme.medium(if (above != null) 6.dp else 2.dp))
-            .lineBox(VeloTheme.type.pageTitle).semantics { heading() },
+            // A long name (a Go module's path) wraps and takes its lines' height.
+            .lineBoxOrTaller(VeloTheme.type.pageTitle).semantics { heading() },
         style = VeloTheme.type.pageTitle, color = c.text,
     )
 }
