@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- License texts in Open source licenses flow to the width of the screen instead of breaking lines in the middle.
+
 ## 2.10.1 - 2026-11-25
 
 ### Changed

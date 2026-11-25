@@ -108,6 +108,70 @@ class OpenSourceLicensesTest {
         assertEquals(listOf(""), licenseBlocks("", maxChars = 1000))
     }
 
+    @Test fun hardWrappedProseFlowsAsOneLinePerParagraph() {
+        val mit = """
+            MIT License
+
+            Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction.
+        """.trimIndent()
+        assertEquals(
+            """
+            MIT License
+
+            Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction.
+            """.trimIndent(),
+            reflowLicense(mit),
+        )
+    }
+
+    @Test fun listsIndentsAndShortLinesKeepTheirBreaks() {
+        val apache = listOf(
+            "   1. Definitions.",
+            "",
+            "      \"License\" shall mean the terms and conditions for use, reproduction,",
+            "      and distribution as defined by Sections 1 through 9 of this document.",
+            "",
+            "   The conditions are the following, each of them required by this License:",
+            "   - you must give any other recipients of the Work a copy of this License;",
+            "   - you must cause any modified files to carry prominent notices stating it.",
+            "Name: Velo",
+            "Version: 1.0",
+        ).joinToString("\n")
+        assertEquals(
+            listOf(
+                "   1. Definitions.",
+                "",
+                "      \"License\" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.",
+                "",
+                "   The conditions are the following, each of them required by this License:",
+                "   - you must give any other recipients of the Work a copy of this License;",
+                "   - you must cause any modified files to carry prominent notices stating it.",
+                "Name: Velo",
+                "Version: 1.0",
+            ).joinToString("\n"),
+            reflowLicense(apache),
+        )
+        // A numbered item whose text hangs under it, as in the Apache License.
+        assertEquals(
+            "   2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a license.\n" +
+                "   3. Grant of Patent License.",
+            reflowLicense(
+                "   2. Grant of Copyright License. Subject to the terms and conditions of\n" +
+                    "      this License, each Contributor hereby grants to You\n" +
+                    "      a license.\n" +
+                    "   3. Grant of Patent License.",
+            ),
+        )
+        assertEquals("", reflowLicense(""))
+        assertEquals("a\r\nb".replace("\r", ""), reflowLicense("a\r\nb"))
+    }
+
     @Test fun aLineLongerThanABlockStaysWhole() {
         val long = "x".repeat(2500)
         assertEquals(listOf("a", long, "b"), licenseBlocks("a\n$long\nb", maxChars = 1000))
