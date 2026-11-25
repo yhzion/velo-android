@@ -14,16 +14,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.yhzion.velo.AppController
+import io.github.yhzion.velo.BackgroundConnection
 import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
 /** Android's battery request for Velo, or the battery optimization list where the request is missing. */
-private fun ManagedActivityResultLauncher<Intent, ActivityResult>.askUnrestricted(app: AppController) {
+private fun ManagedActivityResultLauncher<Intent, ActivityResult>.askUnrestricted(background: BackgroundConnection) {
     try {
-        launch(app.background.requestUnrestricted())
+        launch(background.requestUnrestricted())
     } catch (_: ActivityNotFoundException) {
-        launch(app.background.unrestrictedSettings())
+        launch(background.unrestrictedSettings())
     }
 }
 
@@ -37,17 +38,18 @@ internal const val UnrestrictedExplanation =
 
 /** Settings → Program activity: the switch and, while it is on, the battery request. */
 @Composable
-internal fun BackgroundSettings(app: AppController) {
-    val settings = app.settings
-    var unrestricted by remember { mutableStateOf(app.background.unrestricted()) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { unrestricted = app.background.unrestricted() }
-    LifecycleResumeEffect(Unit) { unrestricted = app.background.unrestricted(); onPauseOrDispose { } }
+internal fun BackgroundSettings(host: SettingsHost) {
+    val settings = host.settings
+    val background = host.background
+    var unrestricted by remember { mutableStateOf(background.unrestricted()) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { unrestricted = background.unrestricted() }
+    LifecycleResumeEffect(Unit) { unrestricted = background.unrestricted(); onPauseOrDispose { } }
     Toggle("Stay connected in the background", settings.stayConnected) { settings.saveStayConnected(it) }
     if (settings.stayConnected) {
         if (unrestricted) {
             Text("Battery: unrestricted", style = VeloTheme.type.caption, color = VeloTheme.surface.secondary)
         } else {
-            VeloButton("Allow background running", { ask.askUnrestricted(app) })
+            VeloButton("Allow background running", { ask.askUnrestricted(background) })
         }
     }
 }
@@ -69,7 +71,7 @@ internal fun BackgroundPrompt(app: AppController) {
         onConfirm = {
             settings.saveStayConnected(true)
             settings.saveBackgroundAsked()
-            if (!app.background.unrestricted()) ask.askUnrestricted(app)
+            if (!app.background.unrestricted()) ask.askUnrestricted(app.background)
         },
         text = "$BackgroundExplanation $UnrestrictedExplanation You can change this in Settings → Program activity.",
         cancelText = "Not now",

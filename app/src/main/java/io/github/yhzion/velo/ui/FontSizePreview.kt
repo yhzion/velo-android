@@ -25,11 +25,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.cellLineHeight
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.rounded
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 
@@ -53,12 +51,12 @@ private fun faceMetrics(face: Typeface): FaceMetrics {
  * Both follow the focused pane's pinch scale, so they show what that pane will show.
  */
 @Composable
-internal fun FontSizePreview(app: AppController) {
-    val settings = app.settings
+internal fun FontSizePreview(host: SettingsHost) {
+    val settings = host.settings
     val font = settings.font
-    val rasterizer = app.rasterizer
+    val rasterizer = host.rasterizer
     val face by produceState<Typeface?>(null, font.id) {
-        value = withContext(Dispatchers.Default) { runCatching { synchronized(rasterizer) { rasterizer.regularFaceOf(font) } }.getOrNull() }
+        value = withContext(host.io) { runCatching { synchronized(rasterizer) { rasterizer.regularFaceOf(font) } }.getOrNull() }
     }
     val metrics = remember(face) { face?.let(::faceMetrics) }
     val density = LocalDensity.current
@@ -68,10 +66,8 @@ internal fun FontSizePreview(app: AppController) {
     val shown = fontSizeValue(settings.fontSize)
     // The focused pane's text size in px, its pinch scale with it, else the setting's; in the
     // terminal's own linear sp ([AppController] pxPerSp), not Compose's, which grows large text less.
-    val conn = app.active
-    val block = conn?.state?.focused
-    val fontPx = if (conn != null && block != null) conn.terminalFontPx(block)
-        else (settings.fontSize * density.density * density.fontScale).coerceAtLeast(4f)
+    val pane = host.focusedPaneText()
+    val fontPx = pane?.fontPx ?: (settings.fontSize * density.density * density.fontScale).coerceAtLeast(4f)
     // The line height the core uses: the face's, or the rasterizer's while the face loads or failed to.
     val lineHeight = metrics?.lineHeight ?: remember(font.id) { rasterizer.lineHeight }
     val cellW = ceil(fontPx * 0.6f)
@@ -104,7 +100,7 @@ internal fun FontSizePreview(app: AppController) {
                 )
             }
         }
-        val paneSize = if (conn != null && block != null) conn.shownPaneSize(block) else null
+        val paneSize = pane?.paneSize
         if (paneSize != null) {
             val grid = gridFit(paneSize.width, paneSize.height, fontPx, lineHeight, pad * density.density)
             Text(

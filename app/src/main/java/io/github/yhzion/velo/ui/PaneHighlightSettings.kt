@@ -51,7 +51,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import io.github.yhzion.velo.AppController
+import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.ui.theme.GroupCard
 import io.github.yhzion.velo.ui.theme.GroupDivider
 import io.github.yhzion.velo.ui.theme.GroupHeader
@@ -86,8 +86,7 @@ private val CustomRing = Brush.sweepGradient(
  * setting of the sheet, a choice applies at once.
  */
 @Composable
-internal fun PaneHighlightSettings(app: AppController) {
-    val settings = app.settings
+internal fun PaneHighlightSettings(settings: Settings) {
     val highlight = settings.paneHighlight
     val sizes = VeloTheme.sizes
     // Here, not in the picker: choosing a preset and Custom again keeps the hue a grey or black left.

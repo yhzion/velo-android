@@ -14,6 +14,10 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -111,8 +115,20 @@ private tailrec fun Context.activity(): Activity? = this as? Activity ?: (this a
 @Composable
 internal fun OverlayHost(
     onDismissRequest: () -> Unit, keepImeTarget: Boolean = false, closesOnBack: Boolean = true, closesOnTapOutside: Boolean = true,
+    /** The test tag of the scrim, such as `dialog-scrim`. */
+    scrimTag: String? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val layer = LocalOverlayLayer.current
+    if (layer != null) {
+        val body by rememberUpdatedState<@Composable () -> Unit> { OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, content) }
+        DisposableEffect(layer) {
+            val entry: @Composable () -> Unit = { body() }
+            layer.open += entry
+            onDispose { layer.open -= entry }
+        }
+        return
+    }
     val activity = LocalContext.current.activity()
     Dialog(onDismissRequest, DialogProperties(dismissOnBackPress = closesOnBack, dismissOnClickOutside = closesOnTapOutside,
         usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -131,16 +147,44 @@ internal fun OverlayHost(
                 hide(bars)
             }
         }
-        CompositionLocalProvider(LocalOverlayWindow provides true) {
-            // This window has haptics of its own: the setting gates them here too.
-            ProvideHaptics {
-                Box(
-                    Modifier.fillMaxSize().background(VeloTheme.colors.scrim)
-                        .pointerInput(onDismissRequest, closesOnTapOutside) { detectTapGestures { if (closesOnTapOutside) onDismissRequest() } }
-                        .windowInsetsPadding(WindowInsets.screenSafeDrawing),
-                    content = content,
-                )
-            }
+        OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, content)
+    }
+}
+
+/** The scrim of an overlay's window, with the overlay's [content] inside the safe area. */
+@Composable
+private fun OverlayScrim(onDismissRequest: () -> Unit, closesOnTapOutside: Boolean, scrimTag: String?, content: @Composable BoxScope.() -> Unit) {
+    CompositionLocalProvider(LocalOverlayWindow provides true) {
+        // This window has haptics of its own: the setting gates them here too.
+        ProvideHaptics {
+            Box(
+                Modifier.fillMaxSize().then(if (scrimTag != null) Modifier.testTag(scrimTag) else Modifier).background(VeloTheme.colors.scrim)
+                    .pointerInput(onDismissRequest, closesOnTapOutside) { detectTapGestures { if (closesOnTapOutside) onDismissRequest() } }
+                    .windowInsetsPadding(WindowInsets.screenSafeDrawing),
+                content = content,
+            )
+        }
+    }
+}
+
+/**
+ * The overlays open over [OverlayLayerBox], each drawn in the window it opens from instead of a
+ * window of its own: a test that captures one window then sees them ([LocalOverlayLayer]).
+ */
+class OverlayLayer {
+    internal val open = mutableStateListOf<@Composable () -> Unit>()
+}
+
+/** Where an overlay opens: in a window of its own while this is null, as in the app; over [OverlayLayerBox] in a test. */
+val LocalOverlayLayer = staticCompositionLocalOf<OverlayLayer?> { null }
+
+/** [content], with every overlay it opens drawn over it ([OverlayLayer]). */
+@Composable
+fun OverlayLayerBox(layer: OverlayLayer, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalOverlayLayer provides layer) {
+        Box(modifier) {
+            content()
+            for (overlay in layer.open) key(overlay) { overlay() }
         }
     }
 }
