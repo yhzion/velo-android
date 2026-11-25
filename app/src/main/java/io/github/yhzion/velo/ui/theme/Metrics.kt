@@ -2,6 +2,12 @@ package io.github.yhzion.velo.ui.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -21,11 +27,22 @@ private fun medium(value: Float): Dp = (value / UiSize.Medium.factor).dp
 private fun mediumSp(value: Float) = (value / UiSize.Medium.factor).sp
 
 /**
- * The line of a style [size] sp at Medium: Roboto's ascent and descent, 2400 of its 2048 units.
- * The boards set no line height on a line of text, so the browser gives it this one; a label
- * of the app is then as tall as the board's, and a paragraph sets its own (1.45 em, 1.5 em).
+ * The line of a style [size] sp at Medium as the browser sets Roboto: its ascent (1900 of its
+ * 2048 units) and descent (500), each rounded to a whole unit (19 at 16, 25 at 22). The boards
+ * set no line height on a line of text, so it gets this one; a label of the app is then as tall
+ * as the board's, and a paragraph sets its own ([paragraph]).
  */
-private fun robotoLine(size: Float) = mediumSp(size * 2400f / 2048f)
+internal fun robotoLine(size: Float) = mediumSp(browserLine(size))
+
+/**
+ * A line of text is as tall as its line height, the space over the font's own split above and
+ * below it, as the browser sets it. Compose's default trims that space off the first and the
+ * last line, so a label would be the font's own height instead (25.8 at 22, not the board's 25).
+ */
+internal val BrowserLines = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
+
+/** [robotoLine] in sp at the size it is given. */
+internal fun browserLine(size: Float): Float = Math.round(size * 1900f / 2048f) + Math.round(size * 500f / 2048f).toFloat()
 
 /** [value], given at the Medium size, as [size] draws it: what a screen uses for a board's number that is no token. */
 fun mediumAt(size: UiSize, value: Dp): Dp = value * (size.factor / UiSize.Medium.factor)
@@ -187,17 +204,17 @@ class VeloSizes(
 @Immutable
 class VeloType(
     /** Row titles, buttons, menu items, a field's text (Tokens board "body"). */
-    val body: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), fontWeight = FontWeight.Normal),
+    val body: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Normal),
     /** The same, for a label that stands out: a remote's name, a selected row, a button. derived: body at the board's button weight. */
-    val bodyStrong: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), fontWeight = FontWeight.Medium),
+    val bodyStrong: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Medium),
     /** Section headers of the sidebar's list (Sidebar board, session header: 15, 500). */
-    val header: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Medium),
+    val header: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Medium),
     /** The title of a header: a settings page's, a pane's (Tokens board "header-title"). */
-    val title: TextStyle = TextStyle(fontSize = mediumSp(18f), lineHeight = robotoLine(18f), fontWeight = FontWeight.SemiBold),
+    val title: TextStyle = TextStyle(fontSize = mediumSp(18f), lineHeight = robotoLine(18f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.SemiBold),
     /** Second lines, notes and the heading of a settings group (Tokens board "caption"). */
-    val caption: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = robotoLine(13f), fontWeight = FontWeight.Normal),
+    val caption: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = robotoLine(13f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Normal),
     /** The title of a dialog or a card (Tokens board "dialog-title"). */
-    val overlayTitle: TextStyle = TextStyle(fontSize = mediumSp(20f), lineHeight = robotoLine(20f), fontWeight = FontWeight.SemiBold),
+    val overlayTitle: TextStyle = TextStyle(fontSize = mediumSp(20f), lineHeight = robotoLine(20f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.SemiBold),
     /** Key labels (Controls and KeyBar boards: 13, 500, monospace). */
     val key: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = mediumSp(18f), fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace),
     /** The rail's clock (Rail board: 17, 600). */
@@ -205,17 +222,17 @@ class VeloType(
     /** The glyph inside a row's tile. derived: the tile's height less its padding. */
     val tileGlyph: TextStyle = TextStyle(fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
     /** The title of a full screen: Settings (Tokens board "screen-title"). */
-    val screenTitle: TextStyle = TextStyle(fontSize = mediumSp(26f), lineHeight = robotoLine(26f), fontWeight = FontWeight.SemiBold),
+    val screenTitle: TextStyle = TextStyle(fontSize = mediumSp(26f), lineHeight = robotoLine(26f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.SemiBold),
     /** The title of a page beside the categories on the unfolded screen (Tokens board "page-title"). */
-    val pageTitle: TextStyle = TextStyle(fontSize = mediumSp(22f), lineHeight = robotoLine(22f), fontWeight = FontWeight.SemiBold),
+    val pageTitle: TextStyle = TextStyle(fontSize = mediumSp(22f), lineHeight = robotoLine(22f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.SemiBold),
     /** The wordmark of the start screen (StartKit board: 38, 600; 44 on the unfolded screen). */
     val wordmark: TextStyle = TextStyle(fontSize = mediumSp(38f), lineHeight = mediumSp(44f), fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em),
     /** A cell of a segmented control; the selected cell is Medium (Controls board: 15). */
-    val control: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Normal),
+    val control: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Normal),
     /** A row's value and a menu button's choice (Tokens board "value"). */
-    val value: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Normal),
+    val value: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Normal),
     /** A small heading in capitals, such as NEW VERSION (Tokens board "eyebrow"). */
-    val eyebrow: TextStyle = TextStyle(fontSize = mediumSp(12f), lineHeight = robotoLine(12f), fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
+    val eyebrow: TextStyle = TextStyle(fontSize = mediumSp(12f), lineHeight = robotoLine(12f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
     /** A program's glyph beside a tab's caption. derived: the app's size today. */
     val markGlyph: TextStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp),
     /** A program's glyph in a row's tile. derived: the app's size today. */
@@ -326,6 +343,44 @@ private fun TextStyle.scaled(f: Float): TextStyle {
     val next = maxOf(size * f, minOf(size, MinTextSp))
     return copy(fontSize = next.sp, lineHeight = (lineHeight.value * (next / size)).sp)
 }
+
+/**
+ * [this] with lines [height] apart as a paragraph of the boards has them: the space a line adds
+ * over the font's own is split above and below every line, the first and the last too (CSS
+ * half-leading). Compose's default trims it off the first line's top and the last line's bottom.
+ */
+@Composable
+@ReadOnlyComposable
+fun TextStyle.paragraph(height: TextUnit): TextStyle {
+    // Android rounds a line up to a whole pixel; given a whole pixel, each line is as tall as the board's, not a third of a dp more.
+    val density = LocalDensity.current
+    val sp = if (height.isEm) fontSize.value * height.value else height.value
+    val px = Math.round(sp * density.density * density.fontScale).coerceAtLeast(1)
+    return copy(lineHeight = ((px - 0.01f) / (density.density * density.fontScale)).sp,
+        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None))
+}
+
+/**
+ * [this] with its line on the nearest whole pixel of [density]. Android draws a line a whole
+ * pixel tall, rounded up; a line that is already whole stays as tall, so a page of labels does
+ * not grow a third of a dp a line (19 dp is 49.875 px at 420 dpi: 50, not 49.875 rounded up twice).
+ */
+internal fun TextStyle.onPixels(density: Density): TextStyle {
+    if (!lineHeight.isSp) return this
+    val scale = density.density * density.fontScale
+    val px = Math.round(lineHeight.value * scale).coerceAtLeast(1)
+    return copy(lineHeight = ((px - 0.01f) / scale).sp)
+}
+
+/** Every style of [this] with its line on a whole pixel ([TextStyle.onPixels]). */
+internal fun VeloType.onPixels(density: Density) = VeloType(
+    body = body.onPixels(density), bodyStrong = bodyStrong.onPixels(density), header = header.onPixels(density),
+    title = title.onPixels(density), caption = caption.onPixels(density), overlayTitle = overlayTitle.onPixels(density),
+    key = key.onPixels(density), clock = clock.onPixels(density), tileGlyph = tileGlyph.onPixels(density),
+    screenTitle = screenTitle.onPixels(density), pageTitle = pageTitle.onPixels(density), wordmark = wordmark.onPixels(density),
+    control = control.onPixels(density), value = value.onPixels(density), eyebrow = eyebrow.onPixels(density),
+    markGlyph = markGlyph.onPixels(density), markGlyphTile = markGlyphTile.onPixels(density),
+)
 
 /** The text styles at [size]. */
 fun veloType(size: UiSize): VeloType {

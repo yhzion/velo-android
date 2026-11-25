@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 
 private val LocalSurface = staticCompositionLocalOf { VeloPalettes.dark.chrome }
@@ -62,7 +63,8 @@ object VeloTheme {
 @Composable
 fun VeloTheme(size: UiSize = UiSize.Large, paneHighlight: Color? = null, content: @Composable () -> Unit) {
     val sizes = remember(size) { veloSizes(size) }
-    val type = remember(size) { veloType(size) }
+    val density = LocalDensity.current
+    val type = remember(size, density) { veloType(size).onPixels(density) }
     val radii = remember(size) { veloRadii(size) }
     val space = remember(size) { veloSpace(size) }
     CompositionLocalProvider(

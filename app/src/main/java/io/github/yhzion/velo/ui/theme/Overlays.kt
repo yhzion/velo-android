@@ -430,7 +430,7 @@ fun DialogSurface(
             // The title scrolls with the content, so a long one cannot push the buttons out of the surface.
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gap)) {
                 Text(title, modifier = Modifier.semantics { heading() }.part("title"), style = VeloTheme.type.overlayTitle, color = c.text)
-                if (text != null) Text(text, Modifier.part("body"), style = VeloTheme.type.value.copy(lineHeight = 1.5.em), color = c.secondary)
+                if (text != null) Text(text, Modifier.part("body"), style = VeloTheme.type.value.paragraph(1.5.em), color = c.secondary)
                 if (content != null) content()
             }
             FlowRow(

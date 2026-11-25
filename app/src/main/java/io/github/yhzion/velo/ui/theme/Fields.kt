@@ -128,7 +128,7 @@ fun VeloTextField(
             note,
             Modifier.padding(horizontal = VeloTheme.medium(if (error != null) 6.dp else 4.dp)).part(if (error != null) "error" else "help")
                 .then(if (error != null) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier),
-            style = type.caption.copy(lineHeight = 1.45.em), color = if (error != null) c.dangerText else c.secondary,
+            style = type.caption.paragraph(1.45.em), color = if (error != null) c.dangerText else c.secondary,
         )
     }
 }

@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -371,6 +372,8 @@ enum class ButtonKind { Primary, Secondary, Destructive, Text }
 fun VeloButton(
     text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
     small: Boolean = false, icon: Painter? = null, iconAtEnd: Boolean = false,
+    /** The test tag of the drawn button, inside the least touch target. */
+    tag: String? = null,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
@@ -403,9 +406,12 @@ fun VeloButton(
         else -> VeloTheme.space.s20
     }
     // The caller's modifier goes inside the least touch target: a small button's box (its test tag, its semantics) is
-    // the button drawn, 40 high, while the row still gives it 48 to take a tap.
+    // the button drawn, 40 high, while the row still gives it 48 to take a tap. Words alone are as tall as the boards
+    // draw them, 44: Compose's hit testing still takes a touch 48 wide around them.
     Row(
-        Modifier.minimumInteractiveComponentSize().then(modifier).heightIn(min = height).then(frame)
+        (if (words) Modifier else Modifier.minimumInteractiveComponentSize()).then(modifier)
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .heightIn(min = height).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = padding, vertical = VeloTheme.space.s4),
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8, Alignment.CenterHorizontally),
