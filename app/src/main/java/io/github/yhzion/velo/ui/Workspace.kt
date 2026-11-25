@@ -811,7 +811,7 @@ internal fun Workspace(
             // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
             FocusedTabCaption(conn, focused, window?.row(state, state.session.orEmpty(), true), connected,
-                host = hostLabel, modifier = captionSlot(gap))
+                host = hostLabel, compact = compactStyle, modifier = captionSlot(gap))
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
                 KeyBar(s.keyBar, armed, keyBarSlot(gap),
                     enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
@@ -1091,8 +1091,8 @@ internal fun Workspace(
  * changes that size on each step, and then only the caption runs again, not the whole workspace (#335).
  */
 @Composable
-private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, host: String, modifier: Modifier) {
-    PaneCaption(row, connected, conn.activityReadState, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier)
+private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, host: String, compact: Boolean, modifier: Modifier) {
+    PaneCaption(row, connected, conn.activityReadState, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier, compact = compact)
 }
 
 // Where each part of the workspace goes in its row (WsBar*, WsClosed*, WsOpen* boards): the open sidebar, the pane
