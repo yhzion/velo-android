@@ -75,6 +75,18 @@ class OpenSourceLicensesTest {
         assertNull(findLicense("nothing"))
     }
 
+    @Test fun aGivenCatalogIsWhereALicenseAndItsParentAreFound() {
+        val part = LicenseComponent("own:part", "Part", "1", "MIT", LicenseGroup.Networking, null, emptyList())
+        val own = LicenseComponent("own", "Own", "", "", LicenseGroup.Networking, null, emptyList(), parts = listOf(part))
+        val notice = LicenseComponent("notice", "NOTICE", "", "Text", LicenseGroup.Velo, null, emptyList())
+        val catalog = listOf(own, notice)
+        assertEquals(notice, findLicense("notice", catalog))
+        assertEquals(part, findLicense("own:part", catalog))
+        assertEquals(own, licenseParent("own:part", catalog))
+        assertNull(findLicense("ghostty", catalog))
+        assertNull(licenseParent("go:golang.org/x/crypto", catalog))
+    }
+
     @Test fun goModulesListEveryModuleWithItsOwnTexts() {
         val modules = findLicense("go-modules")!!.parts
         assertTrue(modules.size >= 20)

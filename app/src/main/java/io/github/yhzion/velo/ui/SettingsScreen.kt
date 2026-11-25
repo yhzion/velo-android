@@ -170,7 +170,9 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
     var level by rememberSaveable { mutableStateOf(start.level) }
     // The open license page: a component's id, or a Go module's inside the Go modules page.
     var license by rememberSaveable { mutableStateOf(start.license) }
-    val licensed = license?.takeIf { level == SettingsLevel.License }?.let(::findLicense)
+    // The licenses the list shows: a page, its parent and Back's label are found among them.
+    val catalog = host.licenses
+    val licensed = license?.takeIf { level == SettingsLevel.License }?.let { findLicense(it, catalog) }
     val scrollStates = rememberSaveableStateHolder()
 
     val window = LocalConfiguration.current
@@ -180,7 +182,7 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
     val back: (() -> Unit)? = when {
         // A license page goes back to the page that listed it: the Go modules, or all licenses.
         level == SettingsLevel.License -> ({
-            val parent = license?.let(::licenseParent)
+            val parent = license?.let { licenseParent(it, catalog) }
             if (parent != null) license = parent.id else level = SettingsLevel.Licenses
         })
         level != null -> ({ level = null })
@@ -194,7 +196,7 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
     }
     // On the unfolded screen a page under a category names the page Back returns to.
     val above = when {
-        level == SettingsLevel.License -> licensed?.let { licenseParent(it.id)?.name } ?: SettingsLevel.Licenses.title
+        level == SettingsLevel.License -> licensed?.let { licenseParent(it.id, catalog)?.name } ?: SettingsLevel.Licenses.title
         level != null -> shown.title
         else -> null
     }

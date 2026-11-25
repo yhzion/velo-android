@@ -183,11 +183,11 @@ fun licenseGroups(components: List<LicenseComponent>): List<Pair<LicenseGroup, L
     LicenseGroup.entries.mapNotNull { group -> components.filter { it.group == group }.takeIf { it.isNotEmpty() }?.let { group to it } }
 
 /** The component or part with [id]. */
-fun findLicense(id: String): LicenseComponent? =
-    OpenSourceLicenses.all.firstNotNullOfOrNull { c -> if (c.id == id) c else c.parts.firstOrNull { it.id == id } }
+fun findLicense(id: String, catalog: List<LicenseComponent> = OpenSourceLicenses.all): LicenseComponent? =
+    catalog.firstNotNullOfOrNull { c -> if (c.id == id) c else c.parts.firstOrNull { it.id == id } }
 
 /** The component whose [LicenseComponent.parts] hold [id]; null for a top-level component. */
-fun licenseParent(id: String): LicenseComponent? = OpenSourceLicenses.all.firstOrNull { c -> c.parts.any { it.id == id } }
+fun licenseParent(id: String, catalog: List<LicenseComponent> = OpenSourceLicenses.all): LicenseComponent? = catalog.firstOrNull { c -> c.parts.any { it.id == id } }
 
 /** The line under a component's name: its version and its license, whichever it has. */
 fun licenseSubtitle(c: LicenseComponent): String = listOf(c.version, c.license).filter { it.isNotEmpty() }.joinToString(" · ")
