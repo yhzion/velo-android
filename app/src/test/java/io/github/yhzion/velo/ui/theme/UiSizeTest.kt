@@ -73,12 +73,16 @@ class UiSizeTest {
 
     /**
      * The boards set no line height on a line of text, so the browser gives it Roboto's own:
-     * ascent and descent, 2400 of 2048 units. A label of the app is as tall, so it lines up.
+     * its ascent (1900 of 2048 units) and descent (500), each rounded to a whole dp. A label of
+     * the app is as tall, so it lines up: 19 at 16, 15 at 13, 25 at 22.
      */
-    @Test fun aLineOfInterfaceTextIsAsTallAsRobotosOwnLine() {
+    @Test fun aLineOfInterfaceTextIsAsTallAsTheBrowsersLineOfRoboto() {
         val t = veloType(UiSize.Medium)
-        for (style in listOf(t.body, t.bodyStrong, t.header, t.title, t.caption, t.overlayTitle, t.screenTitle, t.pageTitle, t.control, t.value, t.eyebrow)) {
-            assertEquals("${style.fontSize}", style.fontSize.value * 2400f / 2048f, style.lineHeight.value, 0.01f)
+        val lines = mapOf(t.body to 19f, t.caption to 15f, t.pageTitle to 25f, t.screenTitle to 30f, t.title to 21f, t.value to 18f, t.eyebrow to 14f, t.overlayTitle to 24f)
+        for ((style, line) in lines) assertEquals("${style.fontSize}", line, style.lineHeight.value, 0.01f)
+        for (style in listOf(t.bodyStrong, t.header, t.control)) {
+            val size = style.fontSize.value
+            assertEquals("$size", Math.round(size * 1900f / 2048f) + Math.round(size * 500f / 2048f).toFloat(), style.lineHeight.value, 0.01f)
         }
     }
 

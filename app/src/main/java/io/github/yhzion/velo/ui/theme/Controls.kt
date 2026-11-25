@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -96,6 +97,39 @@ private val GroupStart = 16.dp
 /** The end padding of the group a row is in, which a divider reaches past to the group's border. */
 private val LocalGroupEnd = staticCompositionLocalOf { 0.dp }
 
+/** The start padding of the group a row is in, which a row reaches past to the group's border. */
+private val LocalGroupStart = staticCompositionLocalOf { 0.dp }
+
+/**
+ * A row of a [GroupCard] reaches the group's borders ([groupInset] puts its content back at the
+ * group's inset): its tap, its pill and its test bounds span the group, as the boards' rows do.
+ * Outside a group it changes nothing.
+ */
+@Composable
+fun Modifier.groupBleed(): Modifier {
+    val start = LocalGroupStart.current
+    val end = LocalGroupEnd.current
+    if (start == 0.dp && end == 0.dp) return this
+    return layout { measurable, constraints ->
+        if (!constraints.hasBoundedWidth) {
+            val placeable = measurable.measure(constraints)
+            return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+        }
+        val s = start.roundToPx()
+        val e = end.roundToPx()
+        val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + s + e, maxWidth = constraints.maxWidth + s + e))
+        layout(maxOf(constraints.minWidth, placeable.width - s - e), placeable.height) { placeable.placeRelative(-s, 0) }
+    }
+}
+
+/** The content of a row that [groupBleed]s: back at the group's inset. */
+@Composable
+fun Modifier.groupInset(): Modifier {
+    val start = LocalGroupStart.current
+    val end = LocalGroupEnd.current
+    return if (start == 0.dp && end == 0.dp) this else padding(start = start, end = end)
+}
+
 /**
  * The heading above a [GroupCard]: the caption's size at Medium weight, secondary (Controls
  * board, a settings group: 13, 500). [first] is the first heading of its page, which has less above it.
@@ -104,7 +138,7 @@ private val LocalGroupEnd = staticCompositionLocalOf { 0.dp }
 fun GroupHeader(text: String, modifier: Modifier = Modifier, first: Boolean = false) {
     Text(
         text,
-        modifier.padding(start = VeloTheme.medium(4.dp), end = VeloTheme.medium(4.dp), top = VeloTheme.medium(if (first) 12.dp else 20.dp), bottom = VeloTheme.space.s8)
+        modifier.fillMaxWidth().padding(start = VeloTheme.medium(4.dp), end = VeloTheme.medium(4.dp), top = VeloTheme.medium(if (first) 12.dp else 20.dp), bottom = VeloTheme.space.s8)
             .semantics { heading() },
         style = VeloTheme.type.caption, fontWeight = FontWeight.Medium, color = VeloTheme.surface.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
@@ -124,8 +158,10 @@ fun GroupCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
     else rounded(VeloTheme.radii.group).let { shape -> Modifier.clip(shape).border(s.edge, c.divider, shape) }
     val start = VeloTheme.medium(if (onOverlay) 14.dp else GroupStart)
     val end = VeloTheme.medium(if (onOverlay) 14.dp else GroupEnd)
-    CompositionLocalProvider(LocalGroupEnd provides end) {
-        Column(modifier.fillMaxWidth().then(frame).padding(start = start, end = end), content = content)
+    // On the sheet the rows sit inside the border, as the boards' do (their border adds to the group).
+    val rim = if (onOverlay) 0.dp else s.edge
+    CompositionLocalProvider(LocalGroupEnd provides end, LocalGroupStart provides start) {
+        Column(modifier.fillMaxWidth().then(frame).padding(rim).padding(start = start, end = end), content = content)
     }
 }
 
@@ -147,21 +183,25 @@ fun GroupDivider(modifier: Modifier = Modifier) {
     )
 }
 
+/** The test tag `<tag>-<part>` of a row's part, as the redesign's boards name them: `-row`, `-label`, `-switch`. */
+internal fun tagged(tag: String?, part: String): Modifier = if (tag != null) Modifier.testTag("$tag-$part") else Modifier
+
 /**
- * A row of a [GroupCard]: [label], and its control at the end. A control that does not fit
+ * A row of a [GroupCard]: [label], and its control at the end. [tag] names its parts for tests
+ * (`<tag>-row`, `<tag>-label`). A control that does not fit
  * beside the label (a long segmented control on the folded screen, or at large text) goes
  * under it, at the start.
  */
 @Composable
-fun SettingRow(label: String, modifier: Modifier = Modifier, control: @Composable () -> Unit) {
+fun SettingRow(label: String, modifier: Modifier = Modifier, tag: String? = null, control: @Composable () -> Unit) {
     val s = VeloTheme.sizes
     val gapDp = VeloTheme.medium(14.dp)
     Layout(
         content = {
-            Text(label, style = VeloTheme.type.body, color = VeloTheme.surface.text)
+            Text(label, tagged(tag, "label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
             Box { control() }
         },
-        modifier = modifier.fillMaxWidth().heightIn(min = s.row).padding(vertical = VeloTheme.medium(6.dp)),
+        modifier = modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = s.row).groupInset().padding(vertical = VeloTheme.medium(6.dp)),
     ) { measurables, constraints ->
         val gap = gapDp.roundToPx()
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
@@ -193,22 +233,27 @@ fun SettingRow(label: String, modifier: Modifier = Modifier, control: @Composabl
 fun SwitchRow(
     label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier,
     subtitle: String? = null, enabled: Boolean = true,
+    /** Names the parts for tests: `<tag>-row`, `-label`, `-caption` (the subtitle) and `-switch`. */
+    tag: String? = null,
 ) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
     Row(
-        modifier.fillMaxWidth().heightIn(min = if (subtitle != null) VeloTheme.medium(64.dp) else VeloTheme.sizes.row)
-            .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
+        modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = if (subtitle != null) VeloTheme.medium(64.dp) else VeloTheme.sizes.row)
+            .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange).groupInset()
             // A switch keeps 16 from the group's border, 4 more than the group's other rows.
             .padding(vertical = VeloTheme.medium(if (subtitle != null) 10.dp else 6.dp)).padding(end = VeloTheme.space.s4),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(3.dp))) {
-            Text(label, style = type.body, color = if (enabled) c.text else c.disabled)
-            if (subtitle != null) Text(subtitle, style = type.caption, color = if (enabled) c.secondary else c.disabled)
+        // The label and the subtitle are as wide as the wider of them, as the boards set them.
+        Box(Modifier.weight(1f)) {
+            Column(Modifier.width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(3.dp))) {
+                Text(label, Modifier.fillMaxWidth().then(tagged(tag, "label")), style = type.body, color = if (enabled) c.text else c.disabled)
+                if (subtitle != null) Text(subtitle, Modifier.fillMaxWidth().then(tagged(tag, "caption")), style = type.caption, color = if (enabled) c.secondary else c.disabled)
+            }
         }
-        VeloSwitch(checked, enabled = enabled)
+        VeloSwitch(checked, tagged(tag, "switch"), enabled = enabled)
     }
 }
 
@@ -219,33 +264,45 @@ fun SwitchRow(
 @Composable
 fun NavigationRow(
     title: String, onClick: () -> Unit, modifier: Modifier = Modifier, value: String? = null, subtitle: String? = null,
-    enabled: Boolean = true, trailing: (@Composable RowScope.() -> Unit)? = null,
+    enabled: Boolean = true,
+    /** Names the parts for tests: `<tag>-row`, `-label` and `-value`. */
+    tag: String? = null,
+    /** Between the parts: 12, or 10 where a row has more to show (About). */
+    spacing: Dp = VeloTheme.space.s12,
+    /** At the end: the chevron, or [Icons.AutoMirrored.Filled.OpenInNew] for a row that leaves the app. */
+    icon: ImageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
     Row(
-        modifier.fillMaxWidth().heightIn(min = VeloTheme.sizes.row).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(vertical = VeloTheme.medium(6.dp)),
+        modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = VeloTheme.sizes.row).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .groupInset().padding(vertical = VeloTheme.medium(6.dp)),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s12),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(3.dp))) {
-            Text(title, style = type.body, color = if (enabled) c.text else c.disabled, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, Modifier.fillMaxWidth().then(tagged(tag, "label")), style = type.body, color = if (enabled) c.text else c.disabled, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, style = type.caption, color = c.secondary)
         }
-        if (value != null) Text(value, style = type.value, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (value != null) Text(value, tagged(tag, "value"), style = type.value, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (trailing != null) trailing()
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(VeloTheme.space.s16), tint = c.secondary)
+        Icon(icon, null, Modifier.size(VeloTheme.space.s16), tint = c.secondary)
     }
 }
 
 /** A row that does something rather than open a page: an icon and words in the accent (Controls board, sample-row-action: Add Remote…). */
 @Composable
-fun ActionRow(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun ActionRow(
+    text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+    /** The row's test tag; it spans the group, as the row does. */
+    tag: String? = null,
+) {
     val c = VeloTheme.surface
     val color = if (enabled) c.accent else c.disabled
     Row(
-        modifier.fillMaxWidth().heightIn(min = VeloTheme.medium(56.dp).coerceAtLeast(MinTouch)).clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        modifier.groupBleed().then(if (tag != null) Modifier.testTag(tag) else Modifier).fillMaxWidth()
+            .heightIn(min = VeloTheme.medium(56.dp).coerceAtLeast(MinTouch)).clickable(enabled = enabled, role = Role.Button, onClick = onClick).groupInset(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
     ) {
@@ -467,10 +524,15 @@ private fun <T> SettingsChoices(options: List<T>, selected: T, label: (T) -> Str
  * [contentDescription] says what the choice is for, as "Sound, Attention".
  */
 @Composable
-fun MenuButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, contentDescription: String? = null) {
+fun MenuButton(
+    text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, contentDescription: String? = null,
+    /** The test tag of the drawn pill, inside the least touch target. */
+    tag: String? = null,
+) {
     val c = VeloTheme.surface
     Row(
-        modifier.minimumInteractiveComponentSize().heightIn(min = VeloTheme.medium(44.dp)).glassControl(Capsule)
+        modifier.minimumInteractiveComponentSize().then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .heightIn(min = VeloTheme.medium(44.dp)).glassControl(Capsule)
             .clickable(enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
             .padding(start = VeloTheme.space.s16, end = VeloTheme.space.s12),

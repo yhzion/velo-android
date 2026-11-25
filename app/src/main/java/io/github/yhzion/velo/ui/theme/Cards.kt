@@ -59,7 +59,7 @@ fun WarningNote(text: String, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(10.dp)),
     ) {
         Icon(Icons.Outlined.WarningAmber, null, Modifier.size(VeloTheme.medium(18.dp)), tint = c.warning)
-        Text(text, style = VeloTheme.type.body.copy(fontSize = size, lineHeight = 1.45.em), color = c.text)
+        Text(text, style = VeloTheme.type.body.copy(fontSize = size).paragraph(1.45.em), color = c.text)
     }
 }
 
