@@ -24,6 +24,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Remotes shows the Tailscale node's state and the SSH key's fingerprint on their rows, and Add Remote… is the last row of the saved remotes.
 - Add Remote starts on the address, scans a QR code from a button in the address field, and shows what an address looks like.
 - Menus open without dimming the screen behind them.
+- Tailscale shows the node's state on a chip, its name with Rename, and its addresses with a button that copies each.
 - On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
 
 ### Fixed
