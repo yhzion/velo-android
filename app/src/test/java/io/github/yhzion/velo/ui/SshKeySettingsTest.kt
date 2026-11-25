@@ -24,6 +24,13 @@ private val third = imported("SHA256:GhswSPCeaDn6GU/dJmDa7Okd2newSgy5cnnUIIlFP1k
 
 /** Key-page models of #284 (Screens): steady key names, and each failure under its own button. */
 class SshKeySettingsTest {
+    @Test fun theRemotesRowSaysAMissingKeyOnlyWhenTheKeysWereRead() {
+        assertEquals("", phoneKeyLine(KeyList.Loading))
+        assertEquals(PHONE_KEY_UNAVAILABLE, phoneKeyLine(KeyList.Unavailable))
+        assertEquals(PHONE_KEY_NOT_MADE, phoneKeyLine(KeyList.Ready(emptyList())))
+        assertEquals(keySummary(phone), phoneKeyLine(KeyList.Ready(listOf(phone))))
+    }
+
 
     @Test
     fun anImportedKeyIsNamedByItsCommentElseByItsFingerprint() {
