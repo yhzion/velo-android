@@ -111,7 +111,7 @@ internal fun AppUpdateSettings(host: SettingsHost) {
     key(channel) { ChannelRelease(host, channel, installed) {
         GroupHeader("This phone", Modifier.testTag("updates-this-phone-header"))
         GroupCard(Modifier.testTag("updates-this-phone-group")) {
-            SettingRow("Installed", tag = "updates-installed") {
+            SettingRow("Installed", tag = "updates-installed", labelFills = false) {
                 // A value alone keeps the 16 from the border a switch keeps, not a control's 12.
                 Text("${installed.versionName} (${installed.longVersionCode})", Modifier.padding(end = VeloTheme.space.s4).testTag("updates-installed-value"),
                     style = VeloTheme.type.value, color = c.secondary)
@@ -131,7 +131,7 @@ internal fun AppUpdateSettings(host: SettingsHost) {
             }, subtitle = "An Android notification, even when Velo is closed", tag = "updates-notify")
             GroupDivider()
             var choosing by remember { mutableStateOf(false) }
-            SettingRow("Channel", tag = "updates-channel") {
+            SettingRow("Channel", tag = "updates-channel", labelFills = false) {
                 Box {
                     MenuButton(channel.name, { choosing = true }, contentDescription = "Channel, ${channel.name}", tag = "updates-channel-menu")
                     SelectMenu(choosing, { choosing = false }, UpdateChannel.entries, channel, { it.name }, onPick = { next ->
