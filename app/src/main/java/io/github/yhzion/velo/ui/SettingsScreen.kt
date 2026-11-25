@@ -167,7 +167,18 @@ internal data class SettingsRoute(
     val category: SettingsCategory? = null,
     val level: SettingsLevel? = null,
     val license: String? = null,
+    /** What the page opens with besides its place. */
+    val open: SettingsOpen = SettingsOpen(),
 )
+
+/**
+ * What a page opens with besides its place: the key bar's order being edited, the Add Remote
+ * dialog, a saved remote's menu (its id). The app opens every page closed; a test draws them open.
+ */
+internal data class SettingsOpen(val editingOrder: Boolean = false, val addingRemote: Boolean = false, val remoteMenu: String? = null)
+
+/** What the open page starts with ([SettingsOpen]). */
+internal val LocalSettingsOpen = staticCompositionLocalOf { SettingsOpen() }
 
 /**
  * The settings, as a modal over the screen ([SettingsPanel]). Back goes up one level; the close
@@ -192,7 +203,6 @@ internal fun SettingsSheet(host: SettingsHost, onClose: () -> Unit) {
  */
 @Composable
 internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: SettingsRoute = SettingsRoute()) {
-    val sizes = VeloTheme.sizes
     var category by rememberSaveable { mutableStateOf(start.category) }
     var level by rememberSaveable { mutableStateOf(start.level) }
     // The open license page: a component's id, or a Go module's inside the Go modules page.
@@ -234,15 +244,28 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
         dot = status.unseen(installed), onSelect = { category = it; level = null },
     )
     BackHandler(enabled = back != null) { back?.invoke() }
-
-    @Composable
-    fun Page(top: @Composable () -> Unit, modifier: Modifier, scrolls: (@Composable (Modifier, @Composable () -> Unit) -> Unit)) {
+    CompositionLocalProvider(LocalSettingsOpen provides start.open) { SettingsLayout(host, onClose, nav, expanded, home, title, above, back, scrollStates) { top, modifier, scrolls ->
         // Each page keeps its own place; each license page keeps its own place in its text.
         scrollStates.SaveableStateProvider(licensed?.let { "License:${it.id}" } ?: level?.name ?: shown.name) {
             SettingsPageContent(host, shown, level, licensed, top, modifier, scrolls,
                 openLevel = { category = shown; level = it }, openLicense = { license = it; level = SettingsLevel.License })
         }
-    }
+    } }
+}
+
+/**
+ * The settings around the open page: on the unfolded screen the sheet with its header, the
+ * categories and the page beside them; on a folded screen the categories' screen or the page
+ * with its header. [page] draws the page given what goes over it, its modifier, and how a page
+ * that does not scroll itself scrolls.
+ */
+@Composable
+private fun SettingsLayout(
+    host: SettingsHost, onClose: () -> Unit, nav: NavState, expanded: Boolean, home: Boolean, title: String, above: String?,
+    back: (() -> Unit)?, scrollStates: androidx.compose.runtime.saveable.SaveableStateHolder,
+    page: @Composable (top: @Composable () -> Unit, modifier: Modifier, scrolls: @Composable (Modifier, @Composable () -> Unit) -> Unit) -> Unit,
+) {
+    val sizes = VeloTheme.sizes
 
     Box(Modifier.fillMaxSize().testTag("screen-settings")) {
         if (expanded) SettingsPanelSurface(
@@ -258,7 +281,7 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
                         ) { CategoryList(nav, chevrons = false, Modifier.width(sizes.sheetList).verticalScroll(rememberScrollState())) }
                     }
                     val top: @Composable () -> Unit = { PageTitle(title, above, back) }
-                    Page(top, Modifier.weight(1f).fillMaxHeight().testTag("settings-detail").padding(horizontal = VeloTheme.space.s24)) { modifier, content ->
+                    page(top, Modifier.weight(1f).fillMaxHeight().testTag("settings-detail").padding(horizontal = VeloTheme.space.s24)) { modifier, content ->
                         Column(modifier.verticalScroll(rememberScrollState())) { content() }
                     }
                 }
@@ -273,7 +296,7 @@ internal fun SettingsPanel(host: SettingsHost, onClose: () -> Unit, start: Setti
                                 CategoryList(nav, chevrons = true, Modifier.fillMaxWidth())
                             }
                         }
-                    } else Page({}, Modifier.testTag("settings-detail").padding(start = VeloTheme.space.s16, end = VeloTheme.space.s16, top = VeloTheme.space.s4)) { modifier, content ->
+                    } else page({}, Modifier.testTag("settings-detail").padding(start = VeloTheme.space.s16, end = VeloTheme.space.s16, top = VeloTheme.space.s4)) { modifier, content ->
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) { Column(modifier) { content() } }
                     }
                 }
@@ -449,7 +472,6 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     }
 }
 
-
 @Composable
 private fun ActivitySettings(host: SettingsHost) {
     val settings = host.settings
@@ -524,98 +546,6 @@ private fun alertIcon(kind: PaneAlertKind): Int = when (kind) {
     PaneAlertKind.Done -> R.drawable.ic_alert_done
     PaneAlertKind.Error -> R.drawable.ic_alert_error
     PaneAlertKind.Working -> R.drawable.ic_alert_working
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun KeyboardSettings(s: Settings) {
-    val sizes = VeloTheme.sizes
-    var editingOrder by rememberSaveable { mutableStateOf(false) }
-    val ordering = editingOrder && s.keyBar.size >= 2
-    GroupHeader("Key bar")
-    GroupCard {
-        if (s.keyBar.size >= 2) {
-            SettingRow("Order") { VeloButton(if (ordering) "Done" else "Edit order", { editingOrder = !editingOrder }) }
-            GroupDivider()
-        }
-        if (ordering) {
-            s.keyBar.forEachIndexed { index, name ->
-                key(name) {
-                    if (index > 0) GroupDivider()
-                    Row(Modifier.fillMaxWidth().heightIn(min = sizes.row), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f).semantics { contentDescription = name }) {
-                            KeyLegend(name, VeloTheme.surface.text)
-                        }
-                        if (index > 0) RowIconButton(Icons.Default.KeyboardArrowUp, "Move ${keyName(name)} earlier",
-                            { s.saveKeyBar(moveKey(s.keyBar, name, -1)) })
-                        else Spacer(Modifier.width(sizes.control))
-                        if (index < s.keyBar.lastIndex) RowIconButton(Icons.Default.KeyboardArrowDown, "Move ${keyName(name)} later",
-                            { s.saveKeyBar(moveKey(s.keyBar, name, 1)) })
-                        else Spacer(Modifier.width(sizes.control))
-                    }
-                }
-            }
-        } else {
-            // A saved key that is no longer offered must still be removable.
-            val offered = Settings.ALL_KEYS + s.keyBar.filter { it !in Settings.ALL_KEYS }.distinct()
-            Column(Modifier.padding(vertical = sizes.menuPadding), verticalArrangement = Arrangement.spacedBy(sizes.menuPadding)) {
-                for (group in KeyGroup.entries) {
-                    val keys = offered.filter { keyGroup(it) == group }
-                    if (keys.isEmpty()) continue
-                    Text(group.caption, Modifier.semantics { heading() }, style = VeloTheme.type.caption, color = VeloTheme.surface.secondary)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(sizes.menuPadding),
-                        verticalArrangement = Arrangement.spacedBy(sizes.menuPadding),
-                    ) {
-                        for (choice in keys) {
-                            KeyChoice(choice, choice in s.keyBar, { s.saveKeyBar(toggleKey(s.keyBar, choice)) })
-                        }
-                    }
-                }
-            }
-        }
-    }
-    GroupHeader("Typing")
-    GroupCard {
-        Toggle("Keep keyboard open", s.keepKeyboard, s::saveKeepKeyboard)
-        GroupDivider()
-        Toggle("Haptic feedback", s.haptics, s::saveHaptics)
-    }
-    TapGestureSettings(s)
-}
-
-/**
- * Tap gestures on a terminal: off until turned on. Each of the double and the triple tap sends a
- * key the user picks, kept on this phone apart from the key bar.
- */
-@Composable
-private fun TapGestureSettings(s: Settings) {
-    GroupHeader("Tap gestures")
-    GroupCard {
-        Toggle("Use tap gestures", s.tapGestures, s::saveTapGestures)
-        if (s.tapGestures) {
-            GroupDivider()
-            TapKeyRow("Double tap", s.doubleTapKey, s::saveDoubleTapKey)
-            GroupDivider()
-            TapKeyRow("Triple tap", s.tripleTapKey, s::saveTripleTapKey)
-        }
-    }
-}
-
-/** The key one tap gesture sends: its name and the chosen key, which a menu changes. */
-@Composable
-private fun TapKeyRow(label: String, key: TapKey, onPick: (TapKey) -> Unit) {
-    var choosing by remember { mutableStateOf(false) }
-    SettingRow(label) {
-        Box {
-            VeloButton(key.label, { choosing = true }, modifier = Modifier.semantics { contentDescription = "$label: ${key.label}" })
-            VeloMenu(choosing, onDismissRequest = { choosing = false }) {
-                for (choice in TapKey.entries) {
-                    MenuItem(choice.label, { choosing = false; onPick(choice) })
-                }
-            }
-        }
-    }
 }
 
 @Composable

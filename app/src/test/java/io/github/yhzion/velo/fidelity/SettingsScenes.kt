@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.fidelity
 
-import io.github.yhzion.velo.ui.OverviewLayout
+import io.github.yhzion.velo.ui.TapKey
+import io.github.yhzion.velo.ui.SettingsOpen
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -25,6 +26,7 @@ import io.github.yhzion.velo.TerminalFont
 import io.github.yhzion.velo.core.ForwardInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.readNotice
+import io.github.yhzion.velo.ui.OverviewLayout
 import io.github.yhzion.velo.ui.PaneText
 import io.github.yhzion.velo.ui.SettingsCategory
 import io.github.yhzion.velo.ui.SettingsHost
@@ -145,6 +147,9 @@ private fun FakeSettingsHost.boardSample(context: Context) {
     settings.saveTailnet(true)
     settings.saveTailnetName("velo-phone")
     settings.saveTapGestures(true)
+    settings.saveDoubleTapKey(TapKey.Tab)
+    settings.saveTripleTapKey(TapKey.Enter)
+    settings.saveKeyBar(listOf("/", "Ctrl", "Esc", "Tab", "Left", "Down", "Up", "Right", "Backspace"))
     settings.saveOverviewLayout(OverviewLayout.Grid)
     releases = listOf(SampleRelease)
     UpdateSettings.record(context, UpdateSettings.channel(context), System.currentTimeMillis(), SampleRelease)
@@ -169,7 +174,7 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-appearance" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance)) },
     "settings-font" to { SettingsScene(SettingsRoute(SettingsCategory.Appearance, SettingsLevel.Font)) { fonts = SampleFonts } },
     "settings-keyboard" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
-    "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
+    "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard, open = SettingsOpen(editingOrder = true))) },
     "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) },
     "settings-remotes" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
     "settings-add-remote" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
