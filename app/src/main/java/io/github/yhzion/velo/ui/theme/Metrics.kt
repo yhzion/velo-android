@@ -20,6 +20,13 @@ private fun medium(value: Float): Dp = (value / UiSize.Medium.factor).dp
 /** The Large text size that the Medium size draws [value] sp large. */
 private fun mediumSp(value: Float) = (value / UiSize.Medium.factor).sp
 
+/**
+ * The line of a style [size] sp at Medium: Roboto's ascent and descent, 2400 of its 2048 units.
+ * The boards set no line height on a line of text, so the browser gives it this one; a label
+ * of the app is then as tall as the board's, and a paragraph sets its own (1.45 em, 1.5 em).
+ */
+private fun robotoLine(size: Float) = mediumSp(size * 2400f / 2048f)
+
 /** [value], given at the Medium size, as [size] draws it: what a screen uses for a board's number that is no token. */
 fun mediumAt(size: UiSize, value: Dp): Dp = value * (size.factor / UiSize.Medium.factor)
 
@@ -174,22 +181,23 @@ class VeloSizes(
  * Text styles. The redesign's type scale (Tokens board) is given at Medium in Roboto, the
  * device's own family; the styles it does not name keep the sizes read from the images (cap
  * heights and x-heights over the share of the font size they are in the iOS system font).
- * Line heights are derived.
+ * A line of interface text is as tall as Roboto's own line ([robotoLine]), as the boards set it;
+ * the other line heights are derived.
  */
 @Immutable
 class VeloType(
     /** Row titles, buttons, menu items, a field's text (Tokens board "body"). */
-    val body: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = mediumSp(22f), fontWeight = FontWeight.Normal),
+    val body: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), fontWeight = FontWeight.Normal),
     /** The same, for a label that stands out: a remote's name, a selected row, a button. derived: body at the board's button weight. */
-    val bodyStrong: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = mediumSp(22f), fontWeight = FontWeight.Medium),
+    val bodyStrong: TextStyle = TextStyle(fontSize = mediumSp(16f), lineHeight = robotoLine(16f), fontWeight = FontWeight.Medium),
     /** Section headers of the sidebar's list (Sidebar board, session header: 15, 500). */
-    val header: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = mediumSp(20f), fontWeight = FontWeight.Medium),
+    val header: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Medium),
     /** The title of a header: a settings page's, a pane's (Tokens board "header-title"). */
-    val title: TextStyle = TextStyle(fontSize = mediumSp(18f), lineHeight = mediumSp(24f), fontWeight = FontWeight.SemiBold),
+    val title: TextStyle = TextStyle(fontSize = mediumSp(18f), lineHeight = robotoLine(18f), fontWeight = FontWeight.SemiBold),
     /** Second lines, notes and the heading of a settings group (Tokens board "caption"). */
-    val caption: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = mediumSp(18f), fontWeight = FontWeight.Normal),
+    val caption: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = robotoLine(13f), fontWeight = FontWeight.Normal),
     /** The title of a dialog or a card (Tokens board "dialog-title"). */
-    val overlayTitle: TextStyle = TextStyle(fontSize = mediumSp(20f), lineHeight = mediumSp(26f), fontWeight = FontWeight.SemiBold),
+    val overlayTitle: TextStyle = TextStyle(fontSize = mediumSp(20f), lineHeight = robotoLine(20f), fontWeight = FontWeight.SemiBold),
     /** Key labels (Controls and KeyBar boards: 13, 500, monospace). */
     val key: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = mediumSp(18f), fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace),
     /** The rail's clock (Rail board: 17, 600). */
@@ -197,17 +205,17 @@ class VeloType(
     /** The glyph inside a row's tile. derived: the tile's height less its padding. */
     val tileGlyph: TextStyle = TextStyle(fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
     /** The title of a full screen: Settings (Tokens board "screen-title"). */
-    val screenTitle: TextStyle = TextStyle(fontSize = mediumSp(26f), lineHeight = mediumSp(32f), fontWeight = FontWeight.SemiBold),
+    val screenTitle: TextStyle = TextStyle(fontSize = mediumSp(26f), lineHeight = robotoLine(26f), fontWeight = FontWeight.SemiBold),
     /** The title of a page beside the categories on the unfolded screen (Tokens board "page-title"). */
-    val pageTitle: TextStyle = TextStyle(fontSize = mediumSp(22f), lineHeight = mediumSp(28f), fontWeight = FontWeight.SemiBold),
+    val pageTitle: TextStyle = TextStyle(fontSize = mediumSp(22f), lineHeight = robotoLine(22f), fontWeight = FontWeight.SemiBold),
     /** The wordmark of the start screen (StartKit board: 38, 600; 44 on the unfolded screen). */
     val wordmark: TextStyle = TextStyle(fontSize = mediumSp(38f), lineHeight = mediumSp(44f), fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em),
     /** A cell of a segmented control; the selected cell is Medium (Controls board: 15). */
-    val control: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = mediumSp(20f), fontWeight = FontWeight.Normal),
+    val control: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Normal),
     /** A row's value and a menu button's choice (Tokens board "value"). */
-    val value: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = mediumSp(20f), fontWeight = FontWeight.Normal),
+    val value: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), fontWeight = FontWeight.Normal),
     /** A small heading in capitals, such as NEW VERSION (Tokens board "eyebrow"). */
-    val eyebrow: TextStyle = TextStyle(fontSize = mediumSp(12f), lineHeight = mediumSp(16f), fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
+    val eyebrow: TextStyle = TextStyle(fontSize = mediumSp(12f), lineHeight = robotoLine(12f), fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
     /** A program's glyph beside a tab's caption. derived: the app's size today. */
     val markGlyph: TextStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp),
     /** A program's glyph in a row's tile. derived: the app's size today. */
