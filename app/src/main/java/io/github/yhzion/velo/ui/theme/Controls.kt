@@ -172,16 +172,20 @@ fun GroupCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
 
 /** The hairline between two rows of a [GroupCard]: from the rows' start to the group's border (Controls board). */
 @Composable
-fun GroupDivider(modifier: Modifier = Modifier) {
+fun GroupDivider(
+    modifier: Modifier = Modifier,
+    /** From border to border, as the line under a saved remote (SetRemotes block). */
+    full: Boolean = false,
+) {
     val end = LocalGroupEnd.current
     Spacer(
-        modifier.layout { measurable, constraints ->
+        modifier.then(if (full) Modifier.groupBleed() else Modifier).layout { measurable, constraints ->
             // Reach past the group's end padding to its border; without a width there is no border to reach.
             if (!constraints.hasBoundedWidth) {
                 val placeable = measurable.measure(constraints)
                 return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
             }
-            val wide = constraints.maxWidth + end.roundToPx()
+            val wide = constraints.maxWidth + if (full) 0 else end.roundToPx()
             val placeable = measurable.measure(constraints.copy(minWidth = wide, maxWidth = wide))
             layout(constraints.maxWidth, placeable.height) { placeable.placeRelative(0, 0) }
         }.height(hairline()).background(VeloTheme.surface.divider),
@@ -607,7 +611,7 @@ fun KeyChoice(key: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
         val ink = if (selected) c.onGlass else c.secondary
         // A key named in words is set as the boards set it, 14 in JetBrains Mono; an arrow keeps its icon.
         if (key in IconKeys) KeyLegend(key, ink)
-        else Text(keyName(key), Modifier.clearAndSetSemantics {}, style = textAt(14f, FontWeight.Medium).copy(fontFamily = rememberMono()),
+        else Text(keyName(key), Modifier.clearAndSetSemantics {}, style = monoAt(14f, FontWeight.Medium),
             color = ink, maxLines = 1, softWrap = false)
     }
 }

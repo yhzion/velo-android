@@ -400,6 +400,18 @@ fun textAt(size: Float, weight: FontWeight = FontWeight.Normal): TextStyle {
 }
 
 /**
+ * A style of [size] sp at Medium in JetBrains Mono ([rememberMono]), on the browser's line of
+ * that face: its ascent (1020 of 1000 units) and descent (300), each rounded, 17 at 13 and 20 at 15.
+ */
+@Composable
+fun monoAt(size: Float, weight: FontWeight = FontWeight.Normal): TextStyle {
+    val scale = VeloTheme.medium(1.dp).value
+    val line = Math.round(size * 1.02f) + Math.round(size * 0.3f)
+    return TextStyle(fontFamily = rememberMono(), fontSize = (size * scale).sp, lineHeight = (line * scale).sp, fontWeight = weight, lineHeightStyle = BrowserLines)
+        .onPixels(LocalDensity.current)
+}
+
+/**
  * JetBrains Mono, which the boards set keys, addresses and license texts in: the terminal's
  * bundled face, read as the terminal reads it, not the device's monospace.
  */

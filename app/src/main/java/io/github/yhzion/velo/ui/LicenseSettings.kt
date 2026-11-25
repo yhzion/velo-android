@@ -2,11 +2,11 @@ package io.github.yhzion.velo.ui
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import io.github.yhzion.velo.ui.theme.monoAt
 import androidx.compose.runtime.mutableIntStateOf
 import kotlin.math.ceil
 import androidx.compose.ui.platform.LocalDensity
 import io.github.yhzion.velo.ui.theme.textAt
-import io.github.yhzion.velo.ui.theme.rememberMono
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -169,7 +169,7 @@ internal fun LicenseDetail(
         }
     }
     val density = LocalDensity.current
-    val mono = textAt(12f).copy(fontFamily = rememberMono()).paragraph(1.6.em)
+    val mono = monoAt(12f).paragraph(1.6.em)
     // The board's line of the text, 1.6 of its size: Android sets each line on whole pixels instead.
     val line = with(density) { (mono.fontSize * 1.6f).toPx() }
     // The inset on whole pixels, rounded up: rounded down, the text would be a fraction wider than

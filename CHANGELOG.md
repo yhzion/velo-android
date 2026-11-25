@@ -21,6 +21,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Terminal Font sorts fonts into built in, on this device and imported, shows the chosen font in a sample, and says which fonts draw Korean or were imported.
 - Keyboard shows the key bar as it looks above its keys, and Edit order lists the keys with arrows that move each one.
 - Notifications groups each kind of alert with its colour, its notification and its sound, and Background shows whether the battery lets Velo run.
+- Remotes shows the Tailscale node's state and the SSH key's fingerprint on their rows, and Add Remote… is the last row of the saved remotes.
+- Add Remote starts on the address, scans a QR code from a button in the address field, and shows what an address looks like.
+- Menus open without dimming the screen behind them.
 - On a phone and a folded Fold, Settings fills the screen and lists its categories with what each holds; on an unfolded Fold the categories stay beside the open page, and a page under a category has a row back to it.
 
 ### Fixed

@@ -2,9 +2,8 @@ package io.github.yhzion.velo.ui
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import io.github.yhzion.velo.ui.theme.monoAt
 import io.github.yhzion.velo.ui.theme.IconKeys
-import io.github.yhzion.velo.ui.theme.rememberMono
-import io.github.yhzion.velo.ui.theme.textAt
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -160,7 +159,7 @@ private fun OrderList(s: Settings) {
                     Box(Modifier.weight(1f).height(VeloTheme.medium(20.dp)).testTag("keyboard-order-key-$id").semantics(mergeDescendants = true) { contentDescription = name },
                         contentAlignment = Alignment.CenterStart) {
                         if (name in IconKeys) KeyLegend(name, c.text)
-                        else Text(keyName(name), style = textAt(15f, FontWeight.Medium).copy(fontFamily = rememberMono()), color = c.text, maxLines = 1, softWrap = false)
+                        else Text(keyName(name), style = monoAt(15f, FontWeight.Medium), color = c.text, maxLines = 1, softWrap = false)
                     }
                     OrderButton(Icons.Default.ArrowUpward, "Move ${keyName(name)} earlier", index > 0, "keyboard-order-earlier-$id") {
                         s.saveKeyBar(moveKey(s.keyBar, name, -1))

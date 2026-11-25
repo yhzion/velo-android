@@ -1,5 +1,7 @@
 package io.github.yhzion.velo.fidelity
 
+import io.github.yhzion.velo.ui.RemoteDraft
+import androidx.compose.ui.platform.LocalConfiguration
 import io.github.yhzion.velo.PaneAlertKind
 import org.robolectric.Shadows
 import android.os.PowerManager
@@ -145,7 +147,8 @@ private val SampleRelease = AppRelease(
 /** The boards' sample data: the remotes, the node, the switches as the boards draw them, and a release found but not yet seen. */
 private fun FakeSettingsHost.boardSample(context: Context) {
     saved = listOf(
-        Remote("studio-mac", "studio-mac", "https://studio-mac.example.ts.net"),
+        // ssh, so that its menu holds SSH details as the open board's does: the app offers them on ssh remotes only.
+        Remote("studio-mac", "studio-mac", "ssh://me@studio-mac.example.ts.net"),
         Remote("build-server", "build-server", "ssh://dev@build-server.example.ts.net"),
     )
     tailnetState = TailnetState.Running("velo-phone", listOf("100.101.12.7", "fd7a:115c:a1e0::4501:c07"))
@@ -181,8 +184,15 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-keyboard" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard)) },
     "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard, open = SettingsOpen(editingOrder = true))) },
     "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) { boardNotifications() } },
-    "settings-remotes" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
-    "settings-add-remote" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes)) },
+    "settings-remotes" to {
+        // Only the unfolded board draws studio-mac's menu open.
+        val wide = LocalConfiguration.current.screenWidthDp >= 600
+        SettingsScene(SettingsRoute(SettingsCategory.Remotes, open = SettingsOpen(remoteMenu = if (wide) "studio-mac" else null))) { sshSecrets.publicLine() }
+    },
+    "settings-add-remote" to {
+        val draft = RemoteDraft("Studio Mac", "ssh://dev@studio-mac.example.ts.net")
+        SettingsScene(SettingsRoute(SettingsCategory.Remotes, open = SettingsOpen(addingRemote = draft))) { sshSecrets.publicLine() }
+    },
     "settings-tailscale" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.Device)) },
     "settings-ssh" to { SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.SshKey)) },
     "settings-about" to { SettingsScene(SettingsRoute(SettingsCategory.About)) },

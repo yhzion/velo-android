@@ -1,11 +1,11 @@
 package io.github.yhzion.velo.ui.theme
 
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,8 +67,8 @@ fun labelNamesField(label: String?): Boolean = !label.isNullOrEmpty()
  * while it is empty. [trailing] sits at its end, inside the pill. While it has the keys its rim is
  * the chrome accent, twice as wide. [help] under it says what to type; an [error] takes its place
  * in the red and turns the rim red. [mono] sets the text in the monospace face, for an address or
- * a path. [tagPrefix] names the parts for tests: `<prefix>-field` (the whole), `-input` (where the text is
- * typed, beside the icon), `-help`, `-error`.
+ * a path. [tagPrefix] names the parts for tests: `<prefix>-field` (the whole), `-input` (the pill, or where the
+ * text is typed when an icon or a control shares the pill, as the boards' input), `-help`, `-error`.
  */
 @Composable
 fun VeloTextField(
@@ -98,7 +97,7 @@ fun VeloTextField(
         focused -> focusColor
         else -> null
     }
-    val textStyle = if (mono) type.value.copy(fontFamily = FontFamily.Monospace) else type.body
+    val textStyle = if (mono) monoAt(15f) else type.body
     fun Modifier.part(name: String) = if (tagPrefix != null) testTag("$tagPrefix-$name") else this
     Column(modifier.part("field"), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp))) {
         // The input says the label itself ([fieldDescription]): drawn text only, so it is not read twice.
@@ -109,25 +108,29 @@ fun VeloTextField(
             keyboardOptions = keyboardOptions, keyboardActions = keyboardActions, visualTransformation = visualTransformation,
             interactionSource = interaction,
         ) { field ->
-            Row(Modifier.heightIn(min = minHeight).glassControl(Capsule, ring = ring)
+            val bare = icon == null && trailing == null
+            Row(Modifier.then(if (bare) Modifier.part("input") else Modifier).heightIn(min = minHeight).glassControl(Capsule, ring = ring)
                 .padding(start = VeloTheme.medium(18.dp), end = if (trailing != null) VeloTheme.medium(6.dp) else VeloTheme.medium(18.dp)),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {
                     Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = c.secondary)
                     Spacer(Modifier.width(iconGap))
                 }
-                Box(Modifier.weight(1f).part("input").then(inputModifier), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.weight(1f).then(if (bare) Modifier else Modifier.part("input")).then(inputModifier), contentAlignment = Alignment.CenterStart) {
                     // Without a label the placeholder is the input's name, which the input already says.
                     if (value.isEmpty()) Text(placeholder, if (!labelNamesField(label)) Modifier.clearAndSetSemantics {} else Modifier, style = textStyle, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     field()
                 }
-                if (trailing != null) trailing()
+                if (trailing != null) {
+                    Spacer(Modifier.width(VeloTheme.space.s8))
+                    trailing()
+                }
             }
         }
         val note = error ?: help
         if (note != null) Text(
             note,
-            Modifier.padding(horizontal = VeloTheme.medium(if (error != null) 6.dp else 4.dp)).part(if (error != null) "error" else "help")
+            Modifier.fillMaxWidth().part(if (error != null) "error" else "help").padding(horizontal = VeloTheme.medium(if (error != null) 6.dp else 4.dp))
                 .then(if (error != null) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier),
             style = type.caption.paragraph(1.45.em), color = if (error != null) c.dangerText else c.secondary,
         )

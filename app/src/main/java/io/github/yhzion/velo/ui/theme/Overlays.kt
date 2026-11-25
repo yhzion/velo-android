@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui.theme
 
+import androidx.compose.ui.unit.Dp
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -39,7 +40,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -117,11 +117,13 @@ internal fun OverlayHost(
     onDismissRequest: () -> Unit, keepImeTarget: Boolean = false, closesOnBack: Boolean = true, closesOnTapOutside: Boolean = true,
     /** The test tag of the scrim, such as `dialog-scrim`. */
     scrimTag: String? = null,
+    /** Whether the page dims under it: a dialog's does, a menu's does not (Overlays and SetRemotes boards); a tap outside still closes either. */
+    dims: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val layer = LocalOverlayLayer.current
     if (layer != null) {
-        val body by rememberUpdatedState<@Composable () -> Unit> { OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, content) }
+        val body by rememberUpdatedState<@Composable () -> Unit> { OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, dims, content) }
         DisposableEffect(layer) {
             val entry: @Composable () -> Unit = { body() }
             layer.open += entry
@@ -147,18 +149,18 @@ internal fun OverlayHost(
                 hide(bars)
             }
         }
-        OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, content)
+        OverlayScrim(onDismissRequest, closesOnTapOutside, scrimTag, dims, content)
     }
 }
 
 /** The scrim of an overlay's window, with the overlay's [content] inside the safe area. */
 @Composable
-private fun OverlayScrim(onDismissRequest: () -> Unit, closesOnTapOutside: Boolean, scrimTag: String?, content: @Composable BoxScope.() -> Unit) {
+private fun OverlayScrim(onDismissRequest: () -> Unit, closesOnTapOutside: Boolean, scrimTag: String?, dims: Boolean, content: @Composable BoxScope.() -> Unit) {
     CompositionLocalProvider(LocalOverlayWindow provides true) {
         // This window has haptics of its own: the setting gates them here too.
         ProvideHaptics {
             Box(
-                Modifier.fillMaxSize().then(if (scrimTag != null) Modifier.testTag(scrimTag) else Modifier).background(VeloTheme.colors.scrim)
+                Modifier.fillMaxSize().then(if (scrimTag != null) Modifier.testTag(scrimTag) else Modifier).background(if (dims) VeloTheme.colors.scrim else Color.Transparent)
                     .pointerInput(onDismissRequest, closesOnTapOutside) { detectTapGestures { if (closesOnTapOutside) onDismissRequest() } }
                     .windowInsetsPadding(WindowInsets.screenSafeDrawing),
                 content = content,
@@ -241,7 +243,7 @@ fun VeloMenu(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val at = anchor ?: rememberAnchor()
-    if (expanded) OverlayHost(onDismissRequest, keepImeTarget) { Anchored(at()) { MenuSurface(modifier, content) } }
+    if (expanded) OverlayHost(onDismissRequest, keepImeTarget, dims = false) { Anchored(at()) { MenuSurface(modifier, content) } }
 }
 
 /**
@@ -380,10 +382,14 @@ fun VeloDialog(
     keyFocus: (() -> Boolean)? = null,
     /** The test tags of the dialog's parts ([DialogSurface]); the dialog's own is set on [modifier]. */
     tagPrefix: String? = null,
+    /** The test tag of the scrim under it, such as `dialog-scrim`. */
+    scrimTag: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
-    OverlayHost(onDismissRequest, closesOnBack = closesOnBack, closesOnTapOutside = closesOnTapOutside) {
-        DialogSurface(title, confirmText, onConfirm, onCancel = onDismissRequest, modifier.align(Alignment.Center).padding(VeloTheme.sizes.overlayMargin),
+    OverlayHost(onDismissRequest, closesOnBack = closesOnBack, closesOnTapOutside = closesOnTapOutside, scrimTag = scrimTag) {
+        // The margin is outside the caller's modifier, so that a tag on it names the surface alone;
+        // 8 at Medium, as the boards draw a dialog on the phone (DlgAddRemote).
+        DialogSurface(title, confirmText, onConfirm, onCancel = onDismissRequest, Modifier.align(Alignment.Center).padding(VeloTheme.space.s8).then(modifier),
             text, cancelText, destructive, confirmEnabled, cancelEnabled, fieldFocus, focusCancel, keyFocus, tagPrefix, content)
     }
 }
@@ -429,12 +435,12 @@ fun DialogSurface(
         ) {
             // The title scrolls with the content, so a long one cannot push the buttons out of the surface.
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(gap)) {
-                Text(title, modifier = Modifier.semantics { heading() }.part("title"), style = VeloTheme.type.overlayTitle, color = c.text)
+                Text(title, modifier = Modifier.fillMaxWidth().semantics { heading() }.part("title"), style = VeloTheme.type.overlayTitle, color = c.text)
                 if (text != null) Text(text, Modifier.part("body"), style = VeloTheme.type.value.paragraph(1.5.em), color = c.secondary)
                 if (content != null) content()
             }
             FlowRow(
-                Modifier.fillMaxWidth().padding(top = VeloTheme.medium(if (content != null) 4.dp else 6.dp)).part("actions"),
+                Modifier.fillMaxWidth().part("actions").padding(top = VeloTheme.medium(if (content != null) 4.dp else 6.dp)),
                 horizontalArrangement = Arrangement.spacedBy(space.s8, Alignment.End),
                 verticalArrangement = Arrangement.spacedBy(space.s8),
             ) {
@@ -443,10 +449,12 @@ fun DialogSurface(
                 val confirmFocus = if (!focusCancel && !destructive && fieldFocus == null) Modifier.focusRequester(fallback) else Modifier
                 DialogButton(cancelText, onCancel, gate.then(cancelFocus).part("cancel"), fill = null, label = c.text, enabled = cancelEnabled)
                 // The red of a destructive confirm is the sheet's, as the board fills it; the overlay's own red is lighter, for words.
+                // A dialog with fields gives its confirming button 28 at each side, a question 24 (DlgAddRemote and Overlays boards).
                 DialogButton(
                     confirmText, onConfirm, gate.then(confirmFocus).part("confirm"),
                     fill = if (destructive) VeloTheme.colors.sheet.danger else c.accent,
                     label = if (destructive) VeloTheme.colors.sheet.onDanger else c.onAccent, enabled = confirmEnabled,
+                    padding = if (content != null) VeloTheme.medium(28.dp) else VeloTheme.space.s24,
                 )
             }
         }
@@ -455,13 +463,13 @@ fun DialogSurface(
 
 /** A dialog's button: words alone ([fill] null, Cancel) or a filled pill (the confirming button). */
 @Composable
-private fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier, fill: Color?, label: Color, enabled: Boolean) {
+private fun DialogButton(text: String, onClick: () -> Unit, modifier: Modifier, fill: Color?, label: Color, enabled: Boolean, padding: Dp = VeloTheme.space.s24) {
     val c = VeloTheme.surface
     val frame = if (fill == null) Modifier.clip(Capsule) else Modifier.clip(Capsule).background(if (enabled) fill else c.glass)
     Box(
         modifier.minimumInteractiveComponentSize().heightIn(min = VeloTheme.sizes.control).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (fill == null) VeloTheme.space.s20 else VeloTheme.space.s24, vertical = VeloTheme.space.s4),
+            .padding(horizontal = if (fill == null) VeloTheme.space.s20 else padding, vertical = VeloTheme.space.s4),
         contentAlignment = Alignment.Center,
     ) {
         // Large text wraps to a second line instead of losing its end; the button grows to hold it.
