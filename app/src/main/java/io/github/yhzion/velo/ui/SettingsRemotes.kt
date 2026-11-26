@@ -136,7 +136,7 @@ internal fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshK
         GroupCard(Modifier.testTag("remotes-this-device-group")) {
             PageRow(
                 "remotes-tailscale", "Tailscale", tailnetStatusLine(state, host.tailnetPaused),
-                painterResource(if (state is TailnetState.Running) R.drawable.ic_tailscale_on else R.drawable.ic_tailscale_off), c.text, openDevice,
+                painterResource(R.drawable.ic_brand_tailscale), c.text, openDevice,
             ) {
                 tailnetDot(state, host.tailnetPaused)?.let { Box(Modifier.testTag("remotes-tailscale-dot").size(VeloTheme.space.s8).clip(Capsule).background(it)) }
             }

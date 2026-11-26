@@ -682,7 +682,7 @@ private fun TailscaleLogo() {
     val c = VeloTheme.surface
     Box(Modifier.testTag("login-tailscale-logo").size(VeloTheme.medium(40.dp)).clip(rounded(VeloTheme.medium(10.dp))).background(c.glass),
         contentAlignment = Alignment.Center) {
-        Icon(painterResource(R.drawable.ic_start_tailscale), null, Modifier.size(VeloTheme.medium(22.dp)), tint = c.text)
+        Icon(painterResource(R.drawable.ic_brand_tailscale), null, Modifier.size(VeloTheme.medium(22.dp)), tint = c.text)
     }
 }
 
