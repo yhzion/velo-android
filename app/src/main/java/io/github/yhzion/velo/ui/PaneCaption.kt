@@ -53,7 +53,10 @@ internal fun PaneCaption(
     TabCaption(
         tile, activity, listOf(host, row?.name.orEmpty()).filter(String::isNotEmpty).joinToString(" · "),
         VeloTheme.colors.textOnRaised, VeloTheme.type.caption.naturalLines(), tag = "pane-caption",
-        modifier.testTag("pane-caption").fillMaxWidth().heightIn(min = least).padding(horizontal = VeloTheme.medium(8.dp)),
+        modifier.testTag("pane-caption").fillMaxWidth().heightIn(min = least)
+            .padding(horizontal = VeloTheme.medium(8.dp)),
+        // The board's name for the caption's tile, which the fidelity tool pairs with the boards' elements.
+        tileTag = "caption-tab-tile",
     )
 }
 
@@ -64,13 +67,13 @@ internal fun PaneCaption(
  *
  * The tile, the gap after it and the marks are the board's beside its caption type, grown with [style]'s size, so
  * a larger name has larger ones. With [fill] the title takes what the row leaves and the marks sit at the row's
- * end; without it they follow the title. [tag] names its parts for tests: `-tile`, `-title`, `-working` and
- * `-attention` after it.
+ * end; without it they follow the title. [tag] names its parts for tests: `-title`, `-working` and `-attention`
+ * after it; the tile is tagged [tileTag].
  */
 @Composable
 internal fun TabCaption(
     tile: TabTileLook?, activity: TabActivity?, title: String, color: Color, style: TextStyle, tag: String,
-    modifier: Modifier = Modifier, fill: Boolean = true,
+    modifier: Modifier = Modifier, fill: Boolean = true, tileTag: String = "$tag-tile",
 ) {
     // One board unit beside this text: the caption type's, or more for a larger name.
     val scale = style.fontSize.value / VeloTheme.type.caption.fontSize.value
@@ -81,7 +84,7 @@ internal fun TabCaption(
     ) {
         if (tile != null) {
             TabTile(tile.brand, panes = tile.panes, size = unit * CaptionTile, dot = tile.dot,
-                ring = VeloTheme.surface.surface, tag = "$tag-tile", byFace = true,
+                ring = VeloTheme.surface.surface, tag = tileTag, byFace = true,
                 contentDescription = tabTileDescription(tile, activity?.icon),
                 stateDescription = activity?.badge?.let { "Unread, ${it.description}" })
         }

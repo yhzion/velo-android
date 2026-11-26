@@ -58,7 +58,7 @@ class PaneCaptionTest {
         for (s in UiSize.entries) {
             size = s
             compose.waitForIdle()
-            val face = bounds("pane-caption-tile-face")
+            val face = bounds("caption-tab-tile-face")
             val title = bounds("pane-caption-title")
             val faceCentre = (face.top + face.bottom) / 2
             val titleCentre = (title.top + title.bottom) / 2
@@ -73,8 +73,8 @@ class PaneCaptionTest {
             panes = n
             compose.waitForIdle()
             // The farthest part drawn right: the face alone, or the farthest layer behind it.
-            val right = if (tileLayers(n) == 1) bounds("pane-caption-tile-face").right
-            else maxOf(bounds("pane-caption-tile-face").right, bounds("pane-caption-tile-layer-${tileLayers(n)}").right)
+            val right = if (tileLayers(n) == 1) bounds("caption-tab-tile-face").right
+            else maxOf(bounds("caption-tab-tile-face").right, bounds("caption-tab-tile-layer-${tileLayers(n)}").right)
             val gap = bounds("pane-caption-title").left - right
             assertEquals("$s, $n panes", mediumAt(s, 8.dp).value, gap.value, 0.5f)
         }
@@ -94,10 +94,10 @@ class PaneCaptionTest {
             size = s
             compose.waitForIdle()
             val pane = bounds("pane-caption").top - veloSizes(s).gapCompact
-            val layer = bounds("pane-caption-tile-layer-4")
+            val layer = bounds("caption-tab-tile-layer-4")
             assertTrue("$s: layer top ${layer.top} more than 0.5 dp past the pane's bottom $pane", layer.top >= pane - 0.5.dp)
             // The face still sits on the title's line.
-            val face = bounds("pane-caption-tile-face")
+            val face = bounds("caption-tab-tile-face")
             val title = bounds("pane-caption-title")
             assertEquals("$s", ((title.top + title.bottom) / 2).value, ((face.top + face.bottom) / 2).value, 0.5f)
         }
