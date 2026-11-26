@@ -261,13 +261,39 @@ fn startLogPipe() c_int {
     return fds[1];
 }
 
+/// `line` with each URL (`http://` or `https://` up to the next blank) replaced by `<url>`,
+/// written to `out`, which must be as long as `line` (the result never is longer). The node
+/// writes the login URL to its log in three places (tsnet's login loop, which goes to stderr,
+/// and two lines of the control client), and whoever opens it first can log the node in to
+/// their own tailnet, while logcat is readable over adb and lands in shared bug reports. The
+/// app's debug builds show the URL themselves, from `velo.tailnet`, so no build needs it here.
+fn redactUrls(out: []u8, line: []const u8) []const u8 {
+    const marker = "<url>";
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < line.len) {
+        const rest = line[i..];
+        if (std.mem.startsWith(u8, rest, "http://") or std.mem.startsWith(u8, rest, "https://")) {
+            @memcpy(out[n..][0..marker.len], marker);
+            n += marker.len;
+            i += std.mem.findAny(u8, rest, " \t\r") orelse rest.len;
+        } else {
+            out[n] = line[i];
+            n += 1;
+            i += 1;
+        }
+    }
+    return out[0..n];
+}
+
 fn logMain(fd: c_int) void {
     @import("pane").Trace.nameThread("velo-tslog", "");
     var buf: [4096]u8 = undefined;
+    var shown: [4096]u8 = undefined;
     var len: usize = 0;
     while (true) {
         if (len == buf.len) {
-            jni.log(.debug, "tailscale: {s}", .{buf[0..len]});
+            jni.log(.debug, "tailscale: {s}", .{redactUrls(&shown, buf[0..len])});
             len = 0;
         }
         const n = std.c.read(fd, buf[len..].ptr, buf.len - len);
@@ -275,10 +301,41 @@ fn logMain(fd: c_int) void {
         len += @intCast(n);
         var start_at: usize = 0;
         while (std.mem.findScalarPos(u8, buf[0..len], start_at, '\n')) |nl| {
-            jni.log(.debug, "tailscale: {s}", .{buf[start_at..nl]});
+            jni.log(.debug, "tailscale: {s}", .{redactUrls(&shown, buf[start_at..nl])});
             start_at = nl + 1;
         }
         std.mem.copyForwards(u8, &buf, buf[start_at..len]);
         len -= start_at;
     }
+}
+
+test "redactUrls: the login URL of the node's own log lines does not reach logcat" {
+    var buf: [256]u8 = undefined;
+    // The lines tailscale.com v1.104.1 writes with the URL: tsnet's login loop (to stderr, so
+    // with a date), and control's "AuthURL is" and "control says to open URL".
+    try std.testing.expectEqualStrings(
+        "2026/11/26 10:00:00 To start this tsnet server, restart with TS_AUTHKEY set, or go to: <url>",
+        redactUrls(&buf, "2026/11/26 10:00:00 To start this tsnet server, restart with TS_AUTHKEY set, or go to: https://login.tailscale.com/a/1a2b3c4d5e6f"),
+    );
+    try std.testing.expectEqualStrings("control: AuthURL is <url>", redactUrls(&buf, "control: AuthURL is https://login.tailscale.com/a/1a2b3c4d5e6f"));
+    try std.testing.expectEqualStrings(
+        // A URL ends at a blank, so the ";" after it goes too: better that than a URL cut short.
+        "netmap: control says to open URL <url> no popBrowser func",
+        redactUrls(&buf, "netmap: control says to open URL https://login.tailscale.com/a/1a2b3c4d5e6f; no popBrowser func"),
+    );
+}
+
+test "redactUrls: a plain http URL and every URL on a line go; a line without one stays" {
+    var buf: [256]u8 = undefined;
+    try std.testing.expectEqualStrings("a <url> b <url>", redactUrls(&buf, "a http://login.example/x b https://login.example/y"));
+    try std.testing.expectEqualStrings("<url>", redactUrls(&buf, "https://x"));
+    try std.testing.expectEqualStrings("magicsock: 3 peers, derp home is 1", redactUrls(&buf, "magicsock: 3 peers, derp home is 1"));
+    try std.testing.expectEqualStrings("", redactUrls(&buf, ""));
+    // The scheme word alone is not a URL.
+    try std.testing.expectEqualStrings("https is a scheme", redactUrls(&buf, "https is a scheme"));
+}
+
+test "redactUrls: the result is never longer than the line, so a buffer of the line's size is enough" {
+    var buf: [7]u8 = undefined;
+    try std.testing.expectEqualStrings("<url>", redactUrls(&buf, "http://"));
 }
