@@ -10,6 +10,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ### Changed
 - Settings shows the Tailscale logo, as the start screen does.
 
+### Fixed
+- Korean, Chinese and Japanese characters and emoji under the block cursor show in full, not cut in half.
+
 ## 2.11.1 - 2026-11-26
 
 ### Fixed

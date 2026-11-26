@@ -707,6 +707,21 @@ fn appendPreedit(r: *R, colors: c.GhosttyRenderStateColors) !bool {
     return true;
 }
 
+/// Whether the cell at column `x` of viewport row `y` holds the first half of a wide
+/// character. The render state's cursor reports only the second half (`wide_tail`), so
+/// the head is read from the terminal's grid, which the render state was just taken from
+/// under the same lock.
+fn wideAt(term: c.GhosttyTerminal, x: u16, y: u16) bool {
+    const point: c.GhosttyPoint = .{ .tag = c.GHOSTTY_POINT_TAG_VIEWPORT, .value = .{ .coordinate = .{ .x = x, .y = y } } };
+    var ref: c.GhosttyGridRef = .{};
+    var cell: c.GhosttyCell = undefined;
+    var wide: c.GhosttyCellWide = c.GHOSTTY_CELL_WIDE_NARROW;
+    if (c.ghostty_terminal_grid_ref(term, point, &ref) != c.GHOSTTY_SUCCESS or
+        c.ghostty_grid_ref_cell(&ref, &cell) != c.GHOSTTY_SUCCESS or
+        c.ghostty_cell_get(cell, c.GHOSTTY_CELL_DATA_WIDE, &wide) != c.GHOSTTY_SUCCESS) return false;
+    return wide == c.GHOSTTY_CELL_WIDE_WIDE;
+}
+
 fn appendCursor(r: *R, colors: c.GhosttyRenderStateColors) !void {
     var cur: c.GhosttyRenderStateCursor = .{ .size = @sizeOf(c.GhosttyRenderStateCursor) };
     if (c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_CURSOR, &cur) != c.GHOSTTY_SUCCESS) return;
@@ -715,6 +730,9 @@ fn appendCursor(r: *R, colors: c.GhosttyRenderStateColors) !void {
     const ch: f32 = @floatFromInt(r.cell_h);
     var x = @as(f32, @floatFromInt(cur.viewport_x)) * cw;
     if (cur.wide_tail) x -= cw;
+    // Over a wide character the cursor covers both of its cells, as Ghostty draws it, so
+    // the glyph redrawn on the block lies on it whole. The bar stays at the first cell.
+    const w = if (cur.wide_tail or wideAt(r.pane.term, cur.viewport_x, cur.viewport_y)) 2 * cw else cw;
     const y = @as(f32, @floatFromInt(cur.viewport_y)) * ch;
     const col = if (colors.cursor_has_value) colors.cursor else colors.foreground;
     const t = @max(1, @round(ch / 14));
@@ -725,18 +743,18 @@ fn appendCursor(r: *R, colors: c.GhosttyRenderStateColors) !void {
     }.q;
     switch (cur.visual_style) {
         c.GHOSTTY_CURSOR_STYLE_BAR => try r.frame.append(r.gpa, solid(x, y, t, ch, rgba(col, 255))),
-        c.GHOSTTY_CURSOR_STYLE_UNDERLINE => try r.frame.append(r.gpa, solid(x, y + ch - t, cw, t, rgba(col, 255))),
+        c.GHOSTTY_CURSOR_STYLE_UNDERLINE => try r.frame.append(r.gpa, solid(x, y + ch - t, w, t, rgba(col, 255))),
         c.GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW => {
-            try r.frame.append(r.gpa, solid(x, y, cw, t, rgba(col, 255)));
-            try r.frame.append(r.gpa, solid(x, y + ch - t, cw, t, rgba(col, 255)));
+            try r.frame.append(r.gpa, solid(x, y, w, t, rgba(col, 255)));
+            try r.frame.append(r.gpa, solid(x, y + ch - t, w, t, rgba(col, 255)));
             try r.frame.append(r.gpa, solid(x, y, t, ch, rgba(col, 255)));
-            try r.frame.append(r.gpa, solid(x + cw - t, y, t, ch, rgba(col, 255)));
+            try r.frame.append(r.gpa, solid(x + w - t, y, t, ch, rgba(col, 255)));
         },
         // Block: opaque in the cursor colour, with the glyph under it redrawn in the
         // background colour so it stays readable (a translucent block blended into the
         // background and left a dark cursor on dark themes).
         else => {
-            try r.frame.append(r.gpa, solid(x, y, cw, ch, rgba(col, 255)));
+            try r.frame.append(r.gpa, solid(x, y, w, ch, rgba(col, 255)));
             if (rowAt(r, cur.viewport_y)) |row| for (row.fg.items) |g| {
                 if (g.rect[0] == x and g.mode == 1) {
                     var inv = g;
@@ -1238,6 +1256,102 @@ test "operator bitmap slices preserve cursor, style and selection cell boundarie
     const inverted = r.frame.items[r.frame.items.len - 1];
     try std.testing.expectEqual(cells[1].rect, inverted.rect);
     try std.testing.expectEqual(cells[1].uv, inverted.uv);
+}
+
+test "a cursor on a wide character covers both of its cells" {
+    const allocator = std.testing.allocator;
+    const Source = struct {
+        pixels: [6 * 12 * 2]u8 = @splat(255),
+
+        fn raster(ctx: *anyopaque, _: []const u8, _: bool, _: bool, w: u32, h: u32, columns: u32) ?PaneMod.GlyphBitmap {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            return .{ .w = w * columns, .h = h, .pixels = self.pixels[0 .. w * h * columns] };
+        }
+    };
+    var source: Source = .{};
+    const p = try Pane.create(allocator, .{ .ctx = &source, .rasterize = Source.raster });
+    defer p.destroy();
+    p.setFontSizePx(10); // cell 6x12
+    // "설" on columns 0-1, "a" on column 2, an ideographic space (wide, no ink) on 3-4.
+    p.write("설a\u{3000}b");
+    var r: R = .{ .gpa = allocator, .pane = p, .atlas = .init(allocator), .cell_w = 6, .cell_h = 12, .glyph_w = 6, .glyph_h = 12 };
+    defer r.atlas.deinit();
+    try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_new(null, &r.state));
+    defer c.ghostty_render_state_free(r.state);
+    try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_row_iterator_new(null, &r.rows_it));
+    defer c.ghostty_render_state_row_iterator_free(r.rows_it);
+    try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_row_cells_new(null, &r.cells));
+    defer c.ghostty_render_state_row_cells_free(r.cells);
+    try r.rows.append(allocator, .{});
+    defer r.rows.deinit(allocator);
+    const row = &r.rows.items[0];
+    defer row.deinit(allocator);
+    defer r.frame.deinit(allocator);
+
+    const Shape = struct { x: f32, w: f32 };
+    const Check = struct {
+        /// The cursor quads `appendCursor` draws with the cursor moved by `seq`: the first is
+        /// the block (or the bar, or the underline), any glyph redrawn on it follows.
+        fn cursorAt(rr: *R, pp: *Pane, rw: *Row, seq: []const u8) !c.GhosttyRenderStateColors {
+            pp.write(seq);
+            try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_update(rr.state, pp.term));
+            var colors: c.GhosttyRenderStateColors = .{ .size = @sizeOf(c.GhosttyRenderStateColors) };
+            _ = c.ghostty_render_state_get(rr.state, c.GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
+            _ = c.ghostty_render_state_get(rr.state, c.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, @ptrCast(&rr.rows_it));
+            try std.testing.expect(c.ghostty_render_state_row_iterator_next(rr.rows_it));
+            try buildRow(rr, rw, 0, 0, colors);
+            rr.frame.clearRetainingCapacity();
+            try appendCursor(rr, colors);
+            return colors;
+        }
+
+        /// The block's shape, and every redrawn glyph lies inside it.
+        fn block(rr: *R, colors: c.GhosttyRenderStateColors) !Shape {
+            const items = rr.frame.items;
+            try std.testing.expect(items.len >= 1);
+            const b = items[0];
+            try std.testing.expectEqual(@as(f32, 0), b.mode);
+            for (items[1..]) |g| {
+                try std.testing.expectEqual(rgba(colors.background, 255), g.color);
+                try std.testing.expect(g.rect[0] >= b.rect[0]);
+                try std.testing.expect(g.rect[0] + g.rect[2] <= b.rect[0] + b.rect[2]);
+            }
+            return .{ .x = b.rect[0], .w = b.rect[2] };
+        }
+    };
+
+    // On the head cell of "설": two cells wide, with the glyph redrawn on it.
+    var colors = try Check.cursorAt(&r, p, row, "\x1b[1;1H");
+    try std.testing.expectEqual(Shape{ .x = 0, .w = 12 }, try Check.block(&r, colors));
+    try std.testing.expectEqual(@as(usize, 2), r.frame.items.len);
+    try std.testing.expectEqual(@as(f32, 12), r.frame.items[1].rect[2]);
+    // On its tail cell: the same.
+    colors = try Check.cursorAt(&r, p, row, "\x1b[1;2H");
+    try std.testing.expectEqual(Shape{ .x = 0, .w = 12 }, try Check.block(&r, colors));
+    try std.testing.expectEqual(@as(usize, 2), r.frame.items.len);
+    // On "a": one cell.
+    colors = try Check.cursorAt(&r, p, row, "\x1b[1;3H");
+    try std.testing.expectEqual(Shape{ .x = 12, .w = 6 }, try Check.block(&r, colors));
+    try std.testing.expectEqual(@as(usize, 2), r.frame.items.len);
+    // On a wide character with no ink: still two cells.
+    colors = try Check.cursorAt(&r, p, row, "\x1b[1;4H");
+    try std.testing.expectEqual(Shape{ .x = 18, .w = 12 }, try Check.block(&r, colors));
+    // On an empty cell: one cell.
+    colors = try Check.cursorAt(&r, p, row, "\x1b[1;7H");
+    try std.testing.expectEqual(Shape{ .x = 36, .w = 6 }, try Check.block(&r, colors));
+    try std.testing.expectEqual(@as(usize, 1), r.frame.items.len);
+
+    // The underline spans both cells of "설"; the bar stays thin at its head.
+    _ = try Check.cursorAt(&r, p, row, "\x1b[4 q\x1b[1;2H");
+    try std.testing.expectEqual(@as(usize, 1), r.frame.items.len);
+    try std.testing.expectEqual(@as(f32, 0), r.frame.items[0].rect[0]);
+    try std.testing.expectEqual(@as(f32, 12), r.frame.items[0].rect[2]);
+    _ = try Check.cursorAt(&r, p, row, "\x1b[4 q\x1b[1;3H");
+    try std.testing.expectEqual(@as(f32, 6), r.frame.items[0].rect[2]);
+    _ = try Check.cursorAt(&r, p, row, "\x1b[6 q\x1b[1;2H");
+    try std.testing.expectEqual(@as(usize, 1), r.frame.items.len);
+    try std.testing.expectEqual(@as(f32, 0), r.frame.items[0].rect[0]);
+    try std.testing.expectEqual(@as(f32, 1), r.frame.items[0].rect[2]);
 }
 
 /// A glyph source that counts what it is asked to draw: every glyph is a full cell of ink.
