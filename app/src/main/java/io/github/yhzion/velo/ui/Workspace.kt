@@ -885,8 +885,11 @@ internal fun Workspace(
             strip = {
                 // The free strip (#304): a plain drag scrolls the focused pane as a finger on it would; a long press turns
                 // a wheel of the session's tabs over the overview's drum, and the tab in front when the finger lifts is selected.
+                // Each tab's tile has the brand its sidebar row's has: of the agent its report names, else of its program.
                 val wheelWindows = state.windows.map { w ->
-                    w.row(state, state.session.orEmpty(), w.id == state.window).let { WheelWindow(w.id, it.name, it.icon) }
+                    w.row(state, state.session.orEmpty(), w.id == state.window).let {
+                        WheelWindow(w.id, it.name, conn.activityReadState.activity(it, connected).icon)
+                    }
                 }
                 RailScrubber(wheelWindows, shown = window?.id,
                     scrolls = focused != null && !panesHidden && !overviewVisible,

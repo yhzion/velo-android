@@ -45,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -56,7 +57,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.yhzion.velo.ui.theme.TabTile
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import io.github.yhzion.velo.ui.theme.tileBrand
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,7 +70,10 @@ import kotlin.math.pow
 import kotlin.math.sign
 import kotlin.math.sin
 
-/** A window the rail's wheel turns past: its tab's [id], the [name] the sidebar shows, and its program's [icon]. */
+/**
+ * A window the rail's wheel turns past: its tab's [id], the [name] the sidebar shows, and the program its tile
+ * shows ([icon], [TabActivity.icon]).
+ */
 internal data class WheelWindow(val id: String, val name: String, val icon: String?)
 
 /** What a screen reader calls the strip. */
@@ -78,7 +84,9 @@ internal const val ScrollSampleKeepMs = 130L
 
 // The rail's drum of titles. derived: the mockup the owner chose (v2).
 /** One title's height on the drum. */
-private val TitleHeight = 50.dp
+internal val TitleHeight = 50.dp
+/** A title's tile, the caption's 18 at the drum's own fixed size: two lines of name fit under it in [TitleHeight]. */
+private val TitleTile = CaptionTile.dp
 /** The eye's distance from the drum's front title: titles turned away are drawn smaller. */
 private val TitleEye = 240.dp
 /** The lens behind the front title. */
@@ -443,9 +451,10 @@ internal fun RailScrubber(
                     verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                 ) {
                     val inFront = i == front
-                    TabProgramMark(window.icon, tile = false, color = if (inFront) colors.text else colors.secondary)
-                    Text(window.name, color = if (inFront) colors.text else colors.secondary, fontSize = 10.5.sp, lineHeight = 12.5.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    // The tab's tile, as the sidebar draws it, laid out by its face so the face is centred over the name.
+                    TabTile(tileBrand(window.icon), size = TitleTile, tag = "wheel-title-${window.id}-tile", byFace = true)
+                    Text(window.name, Modifier.testTag("wheel-title-${window.id}-name"), color = if (inFront) colors.text else colors.secondary,
+                        fontSize = 10.5.sp, lineHeight = 12.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 }
             }
         }

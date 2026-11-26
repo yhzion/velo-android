@@ -301,7 +301,6 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `rowInset` | 18 | The selected pill's distance from the list's edge (D12 18.1, L06 17.9). |
 | `rowPadding` | 20 | From the pill's edge to the row's tile (L06 19.7). |
 | `rowGap` | 14 | From the tile to the title (D12 15.5; L06 puts the title 69.3 from the pill's edge, which is padding, tile and this). |
-| `tile` | 36 | The program tile of a row (D12 36.9 wide). |
 | `mark` | 8 at Medium | A state dot (Controls board, sample-status-dot). |
 | `dot` | 9 at Medium | The update dot and a tab tile's state dot, each in a ring of the surface (Controls board). |
 | `tabTile` | 30 at Medium | A tab tile's face in a sidebar row (Controls board, sample-tab-row). |
@@ -334,7 +333,6 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `sheetWidth` | 820 at Medium | Maximum width of the settings sheet on wide windows. Derived from its proportion within a 1088dp reference window; the canvas fills the unfolded Fold8 (805). |
 | `sheetList` | 236 at Medium | The list of categories beside the details in the settings sheet (the redesign's settings boards). |
 | `statusIcon` | 16 | A tab's state icon, and the height of its working dots (1.5 times as wide). derived: the app's size today. |
-| `markIcon`, `markTile` | 14, 20 | A program's icon beside a tab's caption, and in a row's tile. derived: the app's size today. |
 | `gauge`, `gaugeStroke` | 46 at Medium, 4.3 | The rail's battery gauge (Rail board) and ring stroke; the stroke is based on the proportions of M01's status ring. |
 
 ### Text styles (`VeloTheme.type`), the same in both appearances
@@ -362,8 +360,6 @@ its board does). The line heights of `key`, `clock`, `wordmark` and the glyph st
 | `key` | 13 / 18 sp at Medium, Medium, monospace | Key labels (Controls and KeyBar boards). |
 | `clock` | 17 / 22 sp at Medium, SemiBold | The rail's clock (Rail board). |
 | `wordmark` | 38 / 44 sp at Medium, SemiBold, tracking -0.01 em | The wordmark of the start screen (StartKit board; 44 on the unfolded screen). |
-| `tileGlyph` | 12 / 14 sp, Bold, monospace | The glyph inside a row's `RowTile`. derived: the tile's height less its padding. |
-| `markGlyph`, `markGlyphTile` | 16 / 20 sp, 26 / 30 sp | A program's glyph beside a tab's caption, and in a row's tile. derived: the app's size today. |
 
 The Tokens board's terminal style, JetBrains Mono at 12.5, is not a text style here: the
 terminal keeps its own Font and Font size settings (default 13).
@@ -758,8 +754,6 @@ Each reads the colours of the surface it is on. Every icon-only control takes a
 | Round glass switch | `GlassIconSwitch(icon: ImageVector, contentDescription: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier)` | nothing before it: the sidebar's pin (sidebar-dock), an on/off switch read with its state; the icon shows the state, the glass stays as `GlassIconButton`'s |
 | Capsule of several icons | `GlassCapsule(modifier: Modifier = Modifier, vertical: Boolean = false, content: @Composable () -> Unit)` with `CapsuleIcon(icon, contentDescription: String, onClick, modifier = Modifier, enabled = true, selected = false, badge = false)` | the row of `ToolbarButton`s at the top of the sidebar (`ui/Sidebar.kt:163-167`); `selected` is the activity toggle's on state, `badge` the Duo's dot on the eye |
 | List row | `ListRow(title: String, onClick: () -> Unit, modifier = Modifier, subtitle: String? = null, selected = false, enabled = true, dimmed = false, strong = false, onClickLabel: String? = null, onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null, leading: (@Composable () -> Unit)? = null, trailing: (@Composable RowScope.() -> Unit)? = null)` | the pane and tab rows (`ui/Sidebar.kt:240,249`), `HostHeader` (`:308`, `strong`, `dimmed` and `subtitle` for its note), `DeviceHeader` (`:284`), `FoundServerRow` (`:273`), `SidebarRow` (`:384`), the session line (`:198`) |
-| Row's tile | `RowTile(glyph: String, modifier = Modifier, color: Color = VeloTheme.surface.ok)` | the `>_` chip (`ui/Sidebar.kt:251-252`) |
-| Row's icon | `RowIcon(icon, contentDescription: String?, modifier = Modifier, tint: Color = VeloTheme.surface.text)` | the `Icon(…, Modifier.size(20.dp))` at the start of `HostHeader`, `DeviceHeader`, `SidebarRow`; it takes a tile's width so titles line up |
 | Button inside a row | `RowIconButton(icon, contentDescription: String, onClick, modifier = Modifier, enabled = true)` | the 36 dp chevron and `…` boxes of `HostHeader` (`ui/Sidebar.kt:327,333`) |
 | Section header | `SectionHeader(text: String, modifier = Modifier, onClick: (() -> Unit)? = null, onClickLabel: String? = null, trailing: (@Composable RowScope.() -> Unit)? = null)` | the session label and "FOUND ON TAILNET" texts (`ui/Sidebar.kt:190,210`), `Section` (`ui/SettingsScreen.kt:94`) |
 | Status mark | `StatusMark(status: Status, contentDescription: String, modifier = Modifier, icon: ImageVector? = null)`, `enum class Status { Ok, Warning, Danger, Active, Off }` | `ConnectionDot` (`ui/Sidebar.kt:354`), the node's dot in `DeviceHeader` (`:286-288`), the activity dot (`:366-369`), `LinkGlyph` (`ui/Rail.kt:50`, with `icon`). A dot or a glyph; it takes no tap |

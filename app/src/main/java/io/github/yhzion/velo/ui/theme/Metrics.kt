@@ -121,8 +121,6 @@ class VeloSizes(
     val rowPadding: Dp = 20.dp,
     /** From the tile to the title (D12 15.5; L06 puts the title 69.3 from the pill's edge, which is padding, tile and this). */
     val rowGap: Dp = 14.dp,
-    /** The program tile of a row (D12 36.9 wide). */
-    val tile: Dp = 36.dp,
     /** A state dot (Controls board, sample-status-dot: 8). */
     val mark: Dp = medium(8f),
     /** The update dot and a tab tile's state dot, each in a ring of the surface (Controls board: 9). */
@@ -191,10 +189,6 @@ class VeloSizes(
     val sheetList: Dp = medium(236f),
     /** A tab's state icon, and the height of its working dots. derived: the app's size today. */
     val statusIcon: Dp = 16.dp,
-    /** A program's icon beside a tab's caption. derived: the app's size today. */
-    val markIcon: Dp = 14.dp,
-    /** A program's icon in a row's tile. derived: the app's size today. */
-    val markTile: Dp = 20.dp,
     /** The rail's battery gauge across its ring's line (Rail board: 46, a little inside the rail's round buttons). */
     val gauge: Dp = medium(46f),
     /** The line of that ring. derived: the mockup the owner chose (v4), 3.4 on a ring of 38, kept in proportion. */
@@ -226,8 +220,6 @@ class VeloType(
     val key: TextStyle = TextStyle(fontSize = mediumSp(13f), lineHeight = mediumSp(18f), fontWeight = FontWeight.Medium, fontFamily = FontFamily.Monospace),
     /** The rail's clock (Rail board: 17, 600). */
     val clock: TextStyle = TextStyle(fontSize = mediumSp(17f), lineHeight = mediumSp(22f), fontWeight = FontWeight.SemiBold),
-    /** The glyph inside a row's tile. derived: the tile's height less its padding. */
-    val tileGlyph: TextStyle = TextStyle(fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
     /** The title of a full screen: Settings (Tokens board "screen-title"). */
     val screenTitle: TextStyle = TextStyle(fontSize = mediumSp(26f), lineHeight = robotoLine(26f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.SemiBold),
     /** The title of a page beside the categories on the unfolded screen (Tokens board "page-title"). */
@@ -240,10 +232,6 @@ class VeloType(
     val value: TextStyle = TextStyle(fontSize = mediumSp(15f), lineHeight = robotoLine(15f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Normal),
     /** A small heading in capitals, such as NEW VERSION (Tokens board "eyebrow"). */
     val eyebrow: TextStyle = TextStyle(fontSize = mediumSp(12f), lineHeight = robotoLine(12f), lineHeightStyle = BrowserLines, fontWeight = FontWeight.Bold, letterSpacing = 0.06.em),
-    /** A program's glyph beside a tab's caption. derived: the app's size today. */
-    val markGlyph: TextStyle = TextStyle(fontSize = 16.sp, lineHeight = 20.sp),
-    /** A program's glyph in a row's tile. derived: the app's size today. */
-    val markGlyphTile: TextStyle = TextStyle(fontSize = 26.sp, lineHeight = 30.sp),
 )
 
 /**
@@ -300,7 +288,6 @@ fun veloSizes(size: UiSize): VeloSizes {
         rowInset = base.rowInset.s(),
         rowPadding = base.rowPadding.s(),
         rowGap = base.rowGap.s(),
-        tile = base.tile.s(),
         mark = base.mark.at(6.dp),
         dot = base.dot.at(6.dp),
         tabTile = base.tabTile.s(),
@@ -337,8 +324,6 @@ fun veloSizes(size: UiSize): VeloSizes {
         sheetWidth = base.sheetWidth.s(),
         sheetList = base.sheetList.s(),
         statusIcon = base.statusIcon.s(),
-        markIcon = base.markIcon.s(),
-        markTile = base.markTile.s(),
         gauge = base.gauge.s(),
         gaugeStroke = base.gaugeStroke.s(),
     )
@@ -449,10 +434,9 @@ fun rememberMono(): FontFamily {
 internal fun VeloType.onPixels(density: Density) = VeloType(
     body = body.onPixels(density), bodyStrong = bodyStrong.onPixels(density), header = header.onPixels(density),
     title = title.onPixels(density), caption = caption.onPixels(density), overlayTitle = overlayTitle.onPixels(density),
-    key = key.onPixels(density), clock = clock.onPixels(density), tileGlyph = tileGlyph.onPixels(density),
+    key = key.onPixels(density), clock = clock.onPixels(density),
     screenTitle = screenTitle.onPixels(density), pageTitle = pageTitle.onPixels(density), wordmark = wordmark.onPixels(density),
     control = control.onPixels(density), value = value.onPixels(density), eyebrow = eyebrow.onPixels(density),
-    markGlyph = markGlyph.onPixels(density), markGlyphTile = markGlyphTile.onPixels(density),
 )
 
 /** The text styles at [size]. */
@@ -468,15 +452,12 @@ fun veloType(size: UiSize): VeloType {
         overlayTitle = base.overlayTitle.scaled(f),
         key = base.key.scaled(f),
         clock = base.clock.scaled(f),
-        tileGlyph = base.tileGlyph.scaled(f),
         screenTitle = base.screenTitle.scaled(f),
         pageTitle = base.pageTitle.scaled(f),
         wordmark = base.wordmark.scaled(f),
         control = base.control.scaled(f),
         value = base.value.scaled(f),
         eyebrow = base.eyebrow.scaled(f),
-        markGlyph = base.markGlyph.scaled(f),
-        markGlyphTile = base.markGlyphTile.scaled(f),
     )
 }
 

@@ -219,27 +219,6 @@ fun ListRow(
     }
 }
 
-/** The tile at the start of a row that stands for what the row is: a pane's prompt glyph, a program's mark. */
-@Composable
-fun RowTile(glyph: String, modifier: Modifier = Modifier, color: Color = VeloTheme.surface.ok) {
-    val s = VeloTheme.sizes
-    Box(modifier.size(s.tile, s.tile * 3 / 4).clip(rounded(VeloTheme.radii.tile)).background(VeloTheme.surface.glass), contentAlignment = Alignment.Center) {
-        Text(glyph, style = VeloTheme.type.tileGlyph, color = color, maxLines = 1)
-    }
-}
-
-/**
- * An icon at the start of a row, in the row's own colours: a remote's computer, This Device's
- * phone. It takes the width of a [RowTile], so the titles of rows with an icon and of rows with
- * a tile start on one line, as on the Duo.
- */
-@Composable
-fun RowIcon(icon: ImageVector, contentDescription: String?, modifier: Modifier = Modifier, tint: Color = VeloTheme.surface.text) {
-    Box(modifier.width(VeloTheme.sizes.tile), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription, Modifier.size(VeloTheme.sizes.icon), tint = tint)
-    }
-}
-
 /** A small round button inside a row or a header: its "…", its chevron, its "+". The touch target is the control size. */
 @Composable
 fun RowIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {

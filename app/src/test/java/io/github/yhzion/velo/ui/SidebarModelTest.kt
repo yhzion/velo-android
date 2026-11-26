@@ -9,6 +9,8 @@ import io.github.yhzion.velo.core.TabInfo
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.theme.Feel
+import io.github.yhzion.velo.ui.theme.TileBrand
+import io.github.yhzion.velo.ui.theme.tileBrand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -104,13 +106,13 @@ class SidebarModelTest {
         )
 
         val (selected, followed) = groups(state)
-        val selectedIcons = selected.rows.map { iconGlyph(it.icon) }
+        val selectedTiles = selected.rows.map { tileBrand(it.icon) }
         val selectedNames = selected.rows.map { it.name }
-        assertEquals(listOf("⇄", "◆"), selectedIcons)
-        assertEquals(selectedIcons, state.windows.map { iconGlyph(it.icon) })
+        assertEquals(listOf(TileBrand.Terminal, TileBrand.Neovim), selectedTiles)
+        assertEquals(selectedTiles, state.windows.map { tileBrand(it.icon) })
         assertEquals(listOf("Remote shell", "nvim"), selectedNames)
         assertEquals(selectedNames, state.windows.map { tabTitle(state, it) })
-        assertEquals(listOf(TabAgent.Claude.glyph, "▸", ">_"), followed.rows.map { iconGlyph(it.icon) })
+        assertEquals(listOf(TileBrand.Claude, TileBrand.Terminal, TileBrand.Terminal), followed.rows.map { tileBrand(it.icon) })
         assertEquals(listOf("Assistant", "custom-tool", "Waiting"), followed.rows.map { it.name })
     }
 

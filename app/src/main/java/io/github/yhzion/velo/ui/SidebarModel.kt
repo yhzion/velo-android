@@ -57,9 +57,12 @@ private val AutoTabLabel = Regex("^Window [0-9a-f]{8}$")
 /** The label a user gave a tab; "" for none or the server's automatic one. */
 fun ownTabLabel(label: String): String = if (AutoTabLabel.matches(label)) "" else label
 
-/** Known marks use the Codicons already shipped in the terminal font, or the program's symbol. */
-enum class TabAgent(val label: String, val glyph: String) {
-    Claude("Claude Code", "\uEC82"), Codex("Codex", "\uEC81"), Omp("omp", "⌥"), Pi("pi", "π");
+/**
+ * The agents the app knows by their program's names: how a tab's title, its report and its notifications are read.
+ * [label] is what the app calls each one. Their tiles are [TileBrand][io.github.yhzion.velo.ui.theme.TileBrand]s.
+ */
+enum class TabAgent(val label: String) {
+    Claude("Claude Code"), Codex("Codex"), Omp("omp"), Pi("pi");
 
     fun matchesProgramName(title: String): Boolean = title.equals(label, ignoreCase = true) || from(title) == this
 
@@ -72,13 +75,6 @@ enum class TabAgent(val label: String, val glyph: String) {
             else -> null
         }
     }
-}
-
-internal fun iconGlyph(hint: String?): String = TabAgent.from(hint)?.glyph ?: when (hint?.trim()?.lowercase()) {
-    "vim", "nvim" -> "◆"
-    "ssh" -> "⇄"
-    null, "" -> ">_"
-    else -> "▸"
 }
 
 enum class TabIndicator(val description: String) {

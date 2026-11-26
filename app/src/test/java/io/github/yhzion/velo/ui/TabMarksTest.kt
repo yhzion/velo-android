@@ -3,6 +3,8 @@ package io.github.yhzion.velo.ui
 import io.github.yhzion.velo.core.SessionInfo
 import io.github.yhzion.velo.core.TabInfo
 import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.ui.theme.TileBrand
+import io.github.yhzion.velo.ui.theme.tileBrand
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -13,16 +15,16 @@ class TabMarksTest {
     }
 
     @Test
-    fun programMarksHaveDistinctGlyphsAndAccessibleNames() {
+    fun programMarksHaveDistinctTilesAndAccessibleNames() {
         val hints = listOf("claude-code", "codex", "omp", "pi")
         assertEquals(listOf("Claude Code", "Codex", "omp", "pi"), hints.map { TabAgent.from(it)?.label })
-        assertEquals(4, hints.map(::iconGlyph).distinct().size)
+        assertEquals(4, hints.map(::tileBrand).distinct().size)
         for (hint in listOf("2.1.329", "node", "bun", "my-codex-wrapper")) {
             assertNull(TabAgent.from(hint))
         }
         val tab = TabInfo("w", program = "2.1.329")
         assertEquals("Terminal", row(tab).name)
-        assertEquals(">_", iconGlyph(row(tab).icon))
+        assertEquals(TileBrand.Terminal, tileBrand(row(tab).icon))
         assertEquals("Claude Code", row(tab.copy(icon = "claude")).name)
         assertEquals("Claude Code", row(tab.copy(icon = "claude", title = "shell", titleIsLabel = true)).name)
         assertEquals("node", row(tab.copy(program = "node")).name)

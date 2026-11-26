@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -114,20 +116,20 @@ private fun SidebarSample(modifier: Modifier) {
                 }
             }
             ListRow("velo", {}, subtitle = "192.0.2.7 · Running", strong = true,
-                leading = { RowIcon(Icons.Outlined.Smartphone, "This Device") }, trailing = { StatusMark(Status.Ok, "Node Running") })
-            ListRow("workstation", {}, strong = true, leading = { RowIcon(Icons.Outlined.LaptopMac, "Remote") },
+                leading = { Icon(Icons.Outlined.Smartphone, "This Device", Modifier.size(s.icon), tint = VeloTheme.surface.text) }, trailing = { StatusMark(Status.Ok, "Node Running") })
+            ListRow("workstation", {}, strong = true, leading = { Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(s.icon), tint = VeloTheme.surface.text) },
                 trailing = { StatusMark(Status.Ok, "Connected"); RowIconButton(Icons.Default.MoreHoriz, "Remote menu", {}) })
             SectionHeader("ios-crash-report", trailing = {
                 RowIconButton(Icons.Default.AddCircleOutline, "New Tab", {})
                 RowIconButton(Icons.Default.ExpandMore, "Collapse", {})
             })
-            ListRow("Activity mode tab bar", {}, selected = true, leading = { RowTile(">_") }, trailing = { StatusMark(Status.Active, "Working") })
-            ListRow("zsh ~/src/velo-android", {}, leading = { RowTile(">_") })
+            ListRow("Activity mode tab bar", {}, selected = true, leading = { TabTile(TileBrand.Terminal) }, trailing = { StatusMark(Status.Active, "Working") })
+            ListRow("zsh ~/src/velo-android", {}, leading = { TabTile(TileBrand.Zsh) })
             SectionHeader("docs", trailing = { RowIconButton(Icons.Default.AddCircleOutline, "New Tab", {}, enabled = false) })
-            ListRow("nvim notes.md", {}, dimmed = true, leading = { RowTile("◆", color = VeloTheme.surface.accent) }, trailing = { StatusMark(Status.Warning, "Waiting") })
-            ListRow("laptop", {}, subtitle = "offline", dimmed = true, strong = true, leading = { RowIcon(Icons.Outlined.LaptopMac, "Remote", tint = VeloTheme.surface.secondary) },
+            ListRow("nvim notes.md", {}, dimmed = true, leading = { TabTile(TileBrand.Neovim) }, trailing = { StatusMark(Status.Warning, "Waiting") })
+            ListRow("laptop", {}, subtitle = "offline", dimmed = true, strong = true, leading = { Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(s.icon), tint = VeloTheme.surface.secondary) },
                 trailing = { StatusMark(Status.Danger, "Not connected") })
-            ListRow("New Session", {}, enabled = false, leading = { RowIcon(Icons.Default.Add, null, tint = VeloTheme.surface.disabled) })
+            ListRow("New Session", {}, enabled = false, leading = { Icon(Icons.Default.Add, null, Modifier.size(s.icon), tint = VeloTheme.surface.disabled) })
         }
         SearchField(query, { query = it }, Modifier.align(Alignment.BottomCenter).padding(horizontal = s.rowInset + s.gap).padding(bottom = s.rowInset))
     }
@@ -140,7 +142,7 @@ private fun PaneSample(pattern: SurfaceView, modifier: Modifier, open: GalleryOv
     Column(modifier.clip(rounded(VeloTheme.radii.pane)).background(VeloTheme.surface.surface)) {
         Row(Modifier.padding(s.overlayPadding), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(s.rowGap)) {
             GlassIconButton(Icons.Default.ArrowBackIosNew, "Back", {})
-            RowTile(">_")
+            TabTile(TileBrand.Terminal)
             Column(Modifier.weight(1f)) {
                 Text("Activity mode tab bar", style = VeloTheme.type.title, color = VeloTheme.surface.text, maxLines = 1)
                 Text("ios-crash-report", style = VeloTheme.type.caption, color = VeloTheme.surface.secondary, maxLines = 1)

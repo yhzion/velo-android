@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.size
@@ -98,6 +99,7 @@ import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import io.github.yhzion.velo.HostConnection
@@ -110,6 +112,8 @@ import io.github.yhzion.velo.ui.theme.VeloMenu
 import io.github.yhzion.velo.ui.theme.feel
 import io.github.yhzion.velo.ui.theme.VeloSizes
 import io.github.yhzion.velo.ui.theme.MenuItem as VeloMenuItem
+import io.github.yhzion.velo.ui.theme.VeloSurface
+import io.github.yhzion.velo.ui.theme.tileBox
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.glass
 import io.github.yhzion.velo.ui.theme.rounded
@@ -135,14 +139,14 @@ private val DrumMargin = 70.dp
 /** The eye's distance from the drum's front card: about the camera's of a turned layer, 8 inches. */
 private val DrumEye = 1300.dp
 /** The size of a drum card's name. */
-private val DrumLabelText = 17.sp
+internal val DrumLabelText = 17.sp
 private val LabelRoom = 44.dp
 
 /** The grid's measures (#281): at each side, between two columns and two rows, above its first row, and under a card for its name. */
 private val GridPad = 16.dp
 private val GridGap = 12.dp
 private val GridTop = 8.dp
-private val GridLabelRoom = 36.dp
+internal val GridLabelRoom = 36.dp
 
 /** How long a tapped card waits for the server to select its tab before the row goes back. */
 private const val SELECT_WAIT_MS = 2000L
@@ -1778,10 +1782,8 @@ internal fun TabStage(
                         contentAlignment = if (drum != null) Alignment.CenterEnd else Alignment.Center,
                     ) {
                         val bright = if (drum != null) slot == front else w.id == selected.id
-                        TabCaption(w.row(state, state.session.orEmpty(), w.id == state.window), state.status == "connected", conn.activityReadState,
-                            color = if (bright) backdrop.text else backdrop.secondary,
-                            // Beside a drum card the name is read at a glance, at a size near the body text's.
-                            terminalFontPx = if (drum != null) with(density) { DrumLabelText.toPx() } else null)
+                        CardName(w.row(state, state.session.orEmpty(), w.id == state.window), state.status == "connected", conn.activityReadState,
+                            bright = bright, room = if (drum != null) null else with(density) { stage.labelRoom.toDp() })
                     }
                 }
             }
@@ -1815,6 +1817,30 @@ internal fun TabStage(
     if (showing && !overview.wheel && showsStrip(stripRoom, overview.forMove)) SessionStrip(strip, overview, Modifier.align(Alignment.TopCenter), opaque = grid)
     }
 }
+
+/**
+ * A tab's name under its card, centred in the [room] under it, or beside a drum card (a null [room]): the tab's caption
+ * as under the panes ([TabCaption]), on the backdrop. The selected tab's name, or the drum's front card's, is
+ * [bright]; the others' text is dimmer and their tiles keep their colour, as a sidebar row's do. Beside a drum card
+ * the name is read at a glance, at a size near the body text's, and its tile and marks grow with it.
+ */
+@Composable
+internal fun CardName(row: TabRow, connected: Boolean, readState: ActivityReadState, bright: Boolean, room: Dp?) =
+    VeloSurface(VeloTheme.colors.backdrop) {
+        val activity = readState.activity(row, connected)
+        val colors = VeloTheme.surface
+        val caption = VeloTheme.type.caption
+        // The tile's layers step above its face, into the room its box has above it, and stay under the card. Where the
+        // room under the card is lower than the face with that room above and below it (the grid's at the larger
+        // sizes), the name drops so the face starts that far under the card.
+        val drop = room?.let { (VeloTheme.medium((2 * tileBox(CaptionTile) - CaptionTile).dp) - it).coerceAtLeast(0.dp) }
+        val tag = "card-name-${row.tab}"
+        TabCaption(
+            tabTile(row, activity), activity, row.name, if (bright) colors.text else colors.secondary,
+            if (room == null) caption.copy(fontSize = DrumLabelText, lineHeight = 1.2.em) else caption, tag,
+            Modifier.testTag(tag).padding(top = drop ?: 0.dp), fill = false,
+        )
+    }
 
 /**
  * Under the row: the close that waits for Undo, with its button (#228), else which tab was closed
