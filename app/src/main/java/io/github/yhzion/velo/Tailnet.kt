@@ -1,6 +1,7 @@
 package io.github.yhzion.velo
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Handler
@@ -85,9 +86,15 @@ object Tailnet {
     var paused by mutableStateOf(false)
         private set
     private var watching = false
+    /**
+     * The app is a debug build, whose logcat may show the login URL (see [tailnetLogText]). False until [watchNetwork]
+     * has read the app's flags, so a line logged before that leaves the URL out.
+     */
+    @Volatile private var debuggable = false
 
     /** Follow whether Android blocks the app's network ([paused]). Once per process. */
     fun watchNetwork(context: Context) {
+        debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         if (watching) return
         watching = true
         // Off the main thread: the app's controller asks for it before the first frame, and it is a call to
@@ -126,7 +133,7 @@ object Tailnet {
         val was = state
         if (next == was) return
         state = next
-        Log.i(TAG, "state: $next")
+        Log.i(TAG, "state: ${tailnetLogText(next, debuggable)}")
         stateListeners.toList().forEach { it(was, next) }
     }
 
@@ -175,7 +182,7 @@ object Tailnet {
                 // The node keeps its state: show why, then let the status poll show the real
                 // state again. No node at all (stopped meanwhile) is Off, not an error.
                 val after = logoutFailedState(failed, TailnetNative.statusJson())
-                Log.i(TAG, "logout failed ($failed): $after")
+                Log.i(TAG, "logout failed ($failed): ${tailnetLogText(after, debuggable)}")
                 main.post { if (generation.get() == gen) publish(after) }
                 if (after != TailnetState.Off) worker.schedule({ readStatus(gen, loggedInBefore = false) }, STARTING_POLL_MS, TimeUnit.MILLISECONDS)
                 return@execute
@@ -290,6 +297,14 @@ fun parseTailnetStatus(text: String, loggedInBefore: Boolean = false): TailnetSt
         else -> TailnetState.Starting
     }
 }
+
+/**
+ * What to write to logcat for [state]. Whoever opens a login URL first can log the node in to their own tailnet,
+ * and logcat is readable over adb and lands in shared bug reports. So only a [debuggable] build keeps the URL
+ * (the debug intents in MainActivity.debugIntent show it there); any other build names the state without it.
+ */
+fun tailnetLogText(state: TailnetState, debuggable: Boolean): String =
+    if (state is TailnetState.NeedsLogin && !debuggable) "NeedsLogin" else state.toString()
 
 /** [loggedInBefore] after a read that found [now]: Running, or a login at an address, shows the node was logged in. */
 fun loggedInSince(loggedInBefore: Boolean, now: TailnetState): Boolean =

@@ -10,5 +10,7 @@ test {
     _ = @import("rex/Download.zig");
     // Its pure part only: the rest needs the Android library.
     _ = @import("sys/ssh.zig");
+    // Its pure part only: the node needs the Android library.
+    _ = @import("sys/tailnet.zig");
     _ = @import("rex/Tunnel.zig");
 }
