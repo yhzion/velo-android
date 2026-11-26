@@ -82,6 +82,13 @@ internal const val NOT_KNOWN_YET = "Not known yet"
  */
 internal const val HOST_KEYS_DIFFER_TEXT = "This phone keeps two different keys for this host. Forget them, and the next login asks you to check the key."
 
+/**
+ * The Host key row's last line while it offers Forget (#29): a saved password belongs to the host
+ * whose key accepted it, so the Forget takes the passwords of every login to this `host:port`
+ * with the key ([SshSecrets.forgetHostKey]), and the row says so before the user taps it.
+ */
+internal const val HOST_KEY_FORGET_TEXT = "Forget also forgets the passwords saved for this host."
+
 /** The Password row's value while one is saved: sealed with the Keystore's key ([SshSecrets]). */
 internal const val PASSWORD_SAVED = "Saved on this phone, encrypted"
 
@@ -97,8 +104,11 @@ internal const val FORGET = "Forget"
  * No Forget asks first: each only makes the next login ask or probe again.
  */
 internal enum class SshDetail(val label: String, val forgetDescription: String, val notice: String) {
-    /** The key trusted for the remote's `host:port`. Forgotten, the next login asks the user to check it again. */
-    HostKey("Host key", "Forget host key", "Forgot the host key"),
+    /**
+     * The key trusted for the remote's `host:port`. Forgotten, the next login asks the user to check
+     * it again, and to type the password: the passwords saved for the host go with its key (#29).
+     */
+    HostKey("Host key", "Forget host key and the passwords saved for this host", "Forgot the host key and the passwords saved for this host"),
     /** The pool's server socket and a refusal of its forward. Forgotten, the next login probes again. */
     ServerSocket("Server socket", "Forget server socket", "Forgot the server socket"),
     /** The saved password. Forgotten, the next login that needs one asks for it. */
@@ -158,8 +168,9 @@ internal fun readSshKept(url: String, secrets: SshSecrets, poolRuns: Boolean = t
  * Forget the host key [secrets] trusts for the login [url], under the `host:port` the pool asks
  * about ([sshHostPort]): the next login shows the key's fingerprint and waits for the user's
  * Trust, as for a host the phone never met (OpenSSH after `ssh-keygen -R`). A key kept under
- * another case of the host's name goes with it. Other ports and hosts keep theirs. Prefs only:
- * any thread.
+ * another case of the host's name goes with it, and so do the passwords saved for every login to
+ * that `host:port` (#29): OpenSSH has the user type the password again for a host whose key it
+ * no longer knows. Other ports and hosts keep theirs. Prefs only: any thread.
  */
 internal fun forgetTrustedHostKey(secrets: SshSecrets, url: String) {
     sshHostPort(url)?.let(secrets::forgetHostKey)
@@ -274,7 +285,8 @@ internal fun refusalLine(until: String) = "Velo reaches it through rex … dial-
 /**
  * The panel's rows, in their order: Host key, Server socket, Password. The host key is shown
  * as its [hostPort], its type as the host key dialog names it ([keyTypeName]) and its
- * fingerprint, or as [HOST_KEYS_DIFFER_TEXT] while two keys are kept for it. The server socket is the pool's [remembered] socket, and while a refusal of the
+ * fingerprint, or as [HOST_KEYS_DIFFER_TEXT] while two keys are kept for it; either way its last
+ * line is [HOST_KEY_FORGET_TEXT], since its Forget forgets the host's passwords too (#29). The server socket is the pool's [remembered] socket, and while a refusal of the
  * forward holds at [now] (unix seconds) the time it ends, as [time] writes it. What is not kept
  * is [NOT_KNOWN_YET] (Review Focus 4) or [PASSWORD_NOT_SAVED], with no Forget. The server socket
  * has no Forget either unless it is [socketForgettable] (the pool runs): before that it is read
@@ -282,8 +294,9 @@ internal fun refusalLine(until: String) = "Velo reaches it through rex … dial-
  */
 internal fun sshDetailRows(hostPort: String?, hostKey: String?, remembered: String?, password: Boolean, now: Long, time: (Long) -> String, socketForgettable: Boolean = true): List<SshDetailRow> {
     val key = hostKey?.takeIf { hostPort != null }?.let { kept ->
-        if (kept == SshSecrets.HOST_KEYS_DIFFER) listOf(DetailLine("$hostPort"), DetailLine(HOST_KEYS_DIFFER_TEXT))
-        else listOf(DetailLine("$hostPort · ${keyTypeName(kept.substringBefore(' '))}"), DetailLine(kept.substringAfter(' '), code = true))
+        val lines = if (kept == SshSecrets.HOST_KEYS_DIFFER) listOf(DetailLine("$hostPort"), DetailLine(HOST_KEYS_DIFFER_TEXT))
+            else listOf(DetailLine("$hostPort · ${keyTypeName(kept.substringBefore(' '))}"), DetailLine(kept.substringAfter(' '), code = true))
+        lines + DetailLine(HOST_KEY_FORGET_TEXT)
     }
     val pool = parseRemembered(remembered)
     val socket = buildList {

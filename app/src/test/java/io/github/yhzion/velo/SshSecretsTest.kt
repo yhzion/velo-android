@@ -201,8 +201,8 @@ class SshSecretsTest {
         SshSecrets(prefs, FakeSealer(), keys).apply {
             importKey(keyFile(1), null).getOrThrow()
             importKey(keyFile(2), null).getOrThrow()
-            savePassword(login, "hunter2")
             trustHostKey(loginHostPort, trusted)
+            savePassword(login, "hunter2", trusted)
         }
         val gone = object : Sealer {
             override fun seal(plain: ByteArray) = FakeSealer().seal(plain)
@@ -290,10 +290,10 @@ class SshSecretsTest {
         val keys = FakeKeys()
         val (one, two, three, four) = SshSecrets(prefs, FakeSealer(), keys).run {
             val imported = (1..4).map { importKey(keyFile(it), null).getOrThrow() }
-            savePassword(login, "hunter2")
-            savePassword(otherLogin, "not now")
-            savePassword("ssh://alice@old-box", "malformed")
             trustHostKey(loginHostPort, trusted)
+            savePassword(login, "hunter2", trusted)
+            savePassword(otherLogin, "not now", trusted)
+            savePassword("ssh://alice@old-box", "malformed")
             imported
         }
         prefs.edit()

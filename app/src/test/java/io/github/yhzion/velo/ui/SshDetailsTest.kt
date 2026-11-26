@@ -138,7 +138,7 @@ class SshDetailsTest {
         val kept = readSshKept(url, secrets) { null }!!
         assertEquals(SshSecrets.HOST_KEYS_DIFFER, kept.hostKey)
         val row = kept.rows(now, ::at).getValue(SshDetail.HostKey)
-        assertEquals(listOf(DetailLine(hostPort), DetailLine(HOST_KEYS_DIFFER_TEXT)), row.lines)
+        assertEquals(listOf(DetailLine(hostPort), DetailLine(HOST_KEYS_DIFFER_TEXT), DetailLine(HOST_KEY_FORGET_TEXT)), row.lines)
         assertEquals("This phone keeps two different keys for this host. Forget them, and the next login asks you to check the key.", HOST_KEYS_DIFFER_TEXT)
         assertTrue(row.canForget)
 
@@ -180,7 +180,9 @@ class SshDetailsTest {
     @Test
     fun whatThePhoneRemembersIsShownWithAForgetForEach() {
         val rows = rows("ssh-ed25519 $fingerprint", """{"socket":"$socket","refused_until":0}""", password = true)
-        assertEquals(listOf(DetailLine("$hostPort · ED25519"), DetailLine(fingerprint, code = true)), rows.getValue(SshDetail.HostKey).lines)
+        // #29: the row says what else its Forget forgets.
+        assertEquals(listOf(DetailLine("$hostPort · ED25519"), DetailLine(fingerprint, code = true), DetailLine(HOST_KEY_FORGET_TEXT)), rows.getValue(SshDetail.HostKey).lines)
+        assertEquals("Forget also forgets the passwords saved for this host.", HOST_KEY_FORGET_TEXT)
         assertEquals(listOf(DetailLine(socket, code = true)), rows.getValue(SshDetail.ServerSocket).lines)
         assertEquals(listOf(DetailLine(PASSWORD_SAVED)), rows.getValue(SshDetail.Password).lines)
         assertEquals("Saved on this phone, encrypted", PASSWORD_SAVED)
@@ -215,9 +217,9 @@ class SshDetailsTest {
     fun eachForgetSaysWhatItForgot() {
         assertEquals("SSH details", SSH_DETAILS)
         assertEquals("Forget", FORGET)
-        assertEquals(listOf("Forgot the host key", "Forgot the server socket", "Forgot the password"), SshDetail.entries.map { it.notice })
+        assertEquals(listOf("Forgot the host key and the passwords saved for this host", "Forgot the server socket", "Forgot the password"), SshDetail.entries.map { it.notice })
         // The three Forget buttons read the same on screen; a screen reader tells them apart.
-        assertEquals(listOf("Forget host key", "Forget server socket", "Forget password"), SshDetail.entries.map { it.forgetDescription })
+        assertEquals(listOf("Forget host key and the passwords saved for this host", "Forget server socket", "Forget password"), SshDetail.entries.map { it.forgetDescription })
     }
 
     // A Forget the pool refused (forgetSocket's error) says so, with the code, not "Forgot …".
@@ -226,7 +228,8 @@ class SshDetailsTest {
         assertEquals("Forgot the server socket", forgetNotice(SshDetail.ServerSocket, 0))
         assertEquals("Velo couldn't forget the server socket (error 22).", forgetNotice(SshDetail.ServerSocket, 22))
         assertEquals("Velo couldn't forget the server socket (error -1).", forgetNotice(SshDetail.ServerSocket, -1))
-        assertEquals("Forgot the host key", forgetNotice(SshDetail.HostKey, 0))
+        assertEquals("Forgot the host key and the passwords saved for this host", forgetNotice(SshDetail.HostKey, 0))
+        assertEquals("Velo couldn't forget the host key.", forgetNotice(SshDetail.HostKey, null))
         assertEquals("Forgot the password", forgetNotice(SshDetail.Password, 0))
     }
 
@@ -305,7 +308,7 @@ class SshDetailsTest {
         forgetAndSay(SshDetail.ServerSocket, forget = { 22 }, say = { said += it }, idle = { idle++ })
         forgetAndSay(SshDetail.HostKey, forget = { 0 }, say = { said += it }, idle = { idle++ })
         assertEquals(listOf("Velo couldn't forget the server socket.", "Velo couldn't forget the password.",
-            "Velo couldn't forget the server socket (error 22).", "Forgot the host key"), said)
+            "Velo couldn't forget the server socket (error 22).", "Forgot the host key and the passwords saved for this host"), said)
         assertEquals(4, idle)
         // Whatever ends a Forget, the buttons come back: a step after it that fails, or the panel closing.
         assertThrows(IllegalStateException::class.java) {
@@ -322,7 +325,7 @@ class SshDetailsTest {
     fun thePanelReadsTheRemotesOwnHostKeyAndPassword() {
         val secrets = SshSecrets(FakePrefs(), FakeSealer(), FakeKeys())
         secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
-        secrets.savePassword(url, "hunter2")
+        secrets.savePassword(url, "hunter2", "ssh-ed25519 $fingerprint")
         val asked = mutableListOf<String>()
         val kept = readSshKept(url, secrets) { asked += it; """{"socket":"$socket","refused_until":0}""" }!!
         assertEquals(SshKept(hostPort, "ssh-ed25519 $fingerprint", """{"socket":"$socket","refused_until":0}""", password = true), kept)
@@ -334,6 +337,35 @@ class SshDetailsTest {
         assertEquals(listOf(DetailLine(PASSWORD_NOT_SAVED)), readSshKept(url, secrets) { null }!!.rows(now, ::at).getValue(SshDetail.Password).lines)
         // Not an ssh login: no panel.
         assertNull(readSshKept("https://studio.example", secrets) { error("not asked") })
+    }
+
+    // #29: Host key → Forget forgets the passwords saved for the host, and the panel, read again
+    // after the Forget, shows none: for this login and for another user of the same host:port.
+    @Test
+    fun afterForgetHostKeyThePasswordRowSaysNoneIsSaved() {
+        val secrets = SshSecrets(FakePrefs(), FakeSealer(), FakeKeys())
+        val other = "ssh://root@studio.example:2222"
+        val elsewhere = "ssh://alice@studio.example"
+        secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
+        secrets.trustHostKey("studio.example:22", "ssh-ed25519 $fingerprint")
+        for (login in listOf(url, other, elsewhere)) secrets.savePassword(login, "hunter2", "ssh-ed25519 $fingerprint")
+        val before = readSshKept(url, secrets) { null }!!.rows(now, ::at)
+        assertEquals(DetailLine(HOST_KEY_FORGET_TEXT), before.getValue(SshDetail.HostKey).lines.last())
+        assertEquals(listOf(DetailLine(PASSWORD_SAVED)), before.getValue(SshDetail.Password).lines)
+
+        forgetTrustedHostKey(secrets, url)
+
+        for (login in listOf(url, other)) {
+            val after = readSshKept(login, secrets) { null }!!.rows(now, ::at)
+            // Nothing is left to forget in either row, so neither says what a Forget would do.
+            assertEquals(login, listOf(DetailLine(NOT_KNOWN_YET)), after.getValue(SshDetail.HostKey).lines)
+            assertEquals(login, listOf(DetailLine(PASSWORD_NOT_SAVED)), after.getValue(SshDetail.Password).lines)
+            assertTrue(login, !after.getValue(SshDetail.HostKey).canForget && !after.getValue(SshDetail.Password).canForget)
+        }
+        // The same host on another port keeps its key and its password.
+        val kept = readSshKept(elsewhere, secrets) { null }!!.rows(now, ::at)
+        assertEquals(listOf(DetailLine(PASSWORD_SAVED)), kept.getValue(SshDetail.Password).lines)
+        assertTrue(kept.getValue(SshDetail.HostKey).canForget)
     }
 
     // Final fix H4: a first read that threw leaves one line, not a title with only Done.

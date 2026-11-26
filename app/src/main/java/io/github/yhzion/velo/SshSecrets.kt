@@ -3,6 +3,7 @@ package io.github.yhzion.velo
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import io.github.yhzion.velo.core.sshHostPort
 import java.nio.ByteBuffer
 import java.security.GeneralSecurityException
 import java.security.KeyStore
@@ -151,6 +152,12 @@ data class SshKey(val id: String, val phone: Boolean, val publicLine: String, va
  * The saved passwords have a lock of their own ([passwordLock]), which never waits on the
  * Keystore: the main thread saves and forgets them, and an import may hold this object's lock
  * for seconds. A forget wins over a save of the same login under way ([savePassword]).
+ *
+ * A saved password belongs to the host that accepted it (#29): the host key trusted then is kept
+ * beside it ([passwordHostKey]; public, so not sealed, and the sealed value stays the password
+ * alone), and [SshQuestions] answers with the password only while that key is the one trusted
+ * for the login's `host:port`. Forgetting a host's key forgets the passwords of every login to
+ * it ([forgetHostKey]).
  */
 class SshSecrets(
     private val prefs: SharedPreferences,
@@ -338,16 +345,37 @@ class SshSecrets(
         return if (kept.size > 1) HOST_KEYS_DIFFER else kept.singleOrNull()
     }
 
+    /**
+     * Trust the key [typeAndFingerprint] for [hostPort]. A password kept without a host key for
+     * a login to [hostPort] while no key is trusted for it goes first (#29): a version before
+     * that fix left it behind when the host's key was forgotten, so the host that accepted it
+     * is not known to be the one trusted now, and the next password question is the user's.
+     */
     fun trustHostKey(hostPort: String, typeAndFingerprint: String) {
+        if (hostKey(hostPort) == null) {
+            for (login in passwordLogins(hostPort)) if (passwordHostKey(login) == null) forgetPassword(login)
+        }
         prefs.edit().putString(HOST_KEY + hostPort, typeAndFingerprint).apply()
     }
 
-    /** Forget the key trusted for [hostPort], under every case of its name ([hostKey]). */
+    /**
+     * Forget the key trusted for [hostPort], under every case of its name ([hostKey]), and with
+     * it the passwords saved for every login to [hostPort], whatever its user and the case of its
+     * host's name (#29): the host that accepted them is no longer one the phone knows, so the
+     * host trusted next is sent nothing the user did not type for it. The passwords go first:
+     * a stop in between leaves the key without them, never them without the key.
+     */
     fun forgetHostKey(hostPort: String) {
+        for (login in passwordLogins(hostPort)) forgetPassword(login)
         val edit = prefs.edit()
         for (name in hostKeyNames(hostPort)) edit.remove(name)
         edit.apply()
     }
+
+    /** The logins a password is saved for whose host key is kept under [hostPort] ([sshHostPort]), in whatever case its name was written. */
+    private fun passwordLogins(hostPort: String): List<String> =
+        prefs.all.keys.filter { it.startsWith(PASSWORD) }.map { it.removePrefix(PASSWORD) }
+            .filter { sshHostPort(it).equals(hostPort, ignoreCase = true) }
 
     /** The prefs names that keep a host key for [hostPort], in whatever case its name was written. */
     private fun hostKeyNames(hostPort: String): List<String> =
@@ -367,19 +395,44 @@ class SshSecrets(
     }
 
     /**
-     * Save [password] for the login [target], sealed. False when it was not saved: the user
+     * The host key (`TYPE SHA256:…`) of the host that accepted the password saved for [target];
+     * null when no password is saved, or when a version before #29 saved it, which kept no key
+     * ([bindPassword]). Plain prefs: nothing is opened.
+     */
+    fun passwordHostKey(target: String): String? = prefs.getString(PASSWORD_HOST_KEY + target, null)
+
+    /** The password saved for [target] with its host key ([password], [passwordHostKey]); null when [password] is. */
+    fun savedPassword(target: String): SavedPassword? = password(target)?.let { SavedPassword(it, passwordHostKey(target)) }
+
+    /**
+     * Keep [hostKey] as the key of the host that accepted the password saved for [target], which
+     * a version before #29 saved without one. False, and nothing changes, when no password is
+     * saved or it has a key already.
+     */
+    fun bindPassword(target: String, hostKey: String): Boolean = synchronized(passwordLock) {
+        if (!prefs.contains(PASSWORD + target) || prefs.contains(PASSWORD_HOST_KEY + target)) return false
+        prefs.edit().putString(PASSWORD_HOST_KEY + target, hostKey).apply()
+        true
+    }
+
+    /**
+     * Save [password] for the login [target], sealed, with [hostKey]: the key (`TYPE SHA256:…`)
+     * of the host that accepted it (#29). Without one (null) it is kept as a version before #29
+     * kept it, and answers nothing until it is bound ([bindPassword]). False when it was not saved: the user
      * forgot [target]'s password while it was sealed ([forgetPassword]), and the forget wins
      * (the next login asks again, as after a lost key). Throws when the Keystore cannot seal.
      * The sealing holds none of this object's locks, so a forget never waits for the Keystore;
      * the main thread waits on [passwordLock] only for a prefs write in memory.
      */
-    fun savePassword(target: String, password: String): Boolean {
+    fun savePassword(target: String, password: String, hostKey: String? = null): Boolean {
         val began = synchronized(passwordLock) { forgets[target] ?: 0 }
         val plain = password.toByteArray(Charsets.UTF_8)
         val sealed = try { seal.seal(plain) } finally { plain.fill(0) }
         synchronized(passwordLock) {
             if ((forgets[target] ?: 0) != began) return false
-            prefs.edit().putString(PASSWORD + target, Base64.getEncoder().encodeToString(sealed)).apply()
+            val edit = prefs.edit().putString(PASSWORD + target, Base64.getEncoder().encodeToString(sealed))
+            if (hostKey != null) edit.putString(PASSWORD_HOST_KEY + target, hostKey) else edit.remove(PASSWORD_HOST_KEY + target)
+            edit.apply()
         }
         return true
     }
@@ -387,11 +440,11 @@ class SshSecrets(
     /** Whether a password is saved for [target]; nothing is opened (no Keystore work). */
     fun hasPassword(target: String): Boolean = prefs.contains(PASSWORD + target)
 
-    /** Forget the password saved for [target], and drop a save of it under way ([savePassword]). */
+    /** Forget the password saved for [target] and its host key, and drop a save of it under way ([savePassword]). */
     fun forgetPassword(target: String) {
         synchronized(passwordLock) {
             forgets[target] = (forgets[target] ?: 0) + 1
-            prefs.edit().remove(PASSWORD + target).apply()
+            prefs.edit().remove(PASSWORD + target).remove(PASSWORD_HOST_KEY + target).apply()
         }
     }
 
@@ -401,7 +454,7 @@ class SshSecrets(
      */
     private fun forgetLost(target: String, stored: String) {
         synchronized(passwordLock) {
-            if (prefs.getString(PASSWORD + target, null) == stored) prefs.edit().remove(PASSWORD + target).apply()
+            if (prefs.getString(PASSWORD + target, null) == stored) prefs.edit().remove(PASSWORD + target).remove(PASSWORD_HOST_KEY + target).apply()
         }
     }
 
@@ -540,6 +593,12 @@ class SshSecrets(
         /** The phone key's [SshKey.id]: no imported key's id (a fingerprint) can be it. */
         const val PHONE_ID = "phone"
         private const val PASSWORD = "ssh:password:"
+        /**
+         * The host key (`TYPE SHA256:…`) of the host that accepted a login's saved password, by
+         * the login (#29). Plain, as the trusted host keys are: it is public, and the sealed value
+         * stays what versions before #29 wrote. No login's [PASSWORD] name starts like it.
+         */
+        private const val PASSWORD_HOST_KEY = "ssh:password-hostkey:"
         private const val HOST_KEY = "ssh:hostkey:"
         /**
          * [hostKey]'s answer while two different keys are kept for one `host:port` in different
