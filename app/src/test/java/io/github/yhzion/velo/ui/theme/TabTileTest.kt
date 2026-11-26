@@ -1,7 +1,9 @@
 package io.github.yhzion.velo.ui.theme
 
+import io.github.yhzion.velo.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -153,10 +155,17 @@ class TabTileTest {
         assertEquals(setOf(TileBrand.Claude, TileBrand.Codex, TileBrand.Omp, TileBrand.Pi), TileBrand.entries.filter { it.filled }.toSet())
         // The tools draw a Simple Icons logo; the letter tiles and the default draw text.
         val logos = TileBrand.entries.filter { it.logo != null }.toSet()
-        assertEquals(setOf(TileBrand.Claude, TileBrand.Omp, TileBrand.Gemini, TileBrand.Neovim, TileBrand.Docker,
+        assertEquals(setOf(TileBrand.Claude, TileBrand.Omp, TileBrand.Pi, TileBrand.Gemini, TileBrand.Neovim, TileBrand.Docker,
             TileBrand.Zsh, TileBrand.Htop, TileBrand.Python, TileBrand.Git), logos)
         // Codex is a black C in Roboto Bold, as the Tile board sets it (owner decision 5).
         assertEquals("C", TileBrand.Codex.letter)
         for (brand in TileBrand.entries) assertTrue("$brand", (brand.logo != null) != (brand.letter != null))
+    }
+
+    @Test fun ompAndPiDrawTheirProgramMarks() {
+        assertEquals(R.drawable.ic_agent_omp, TileBrand.Omp.logo)
+        assertNull(TileBrand.Omp.letter)
+        assertEquals(R.drawable.ic_mark_pi, TileBrand.Pi.logo)
+        assertNull(TileBrand.Pi.letter)
     }
 }

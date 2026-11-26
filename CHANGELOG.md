@@ -8,6 +8,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - In the caption under the panes, the tab's tile sits on the title's line, with the usual small gap before the title.
 - The tab's name under the panes now follows the UI size you choose in Settings. Pinching a pane no longer makes it larger or smaller.
 - The overview's cards and the rail's tab wheel show each program with the same tile as the sidebar, and a tab that waits for you shows its orange dot in the overview too.
+- omp and pi tabs show their programs' own marks on their tiles instead of letters.
 
 ## 2.12.2 - 2026-11-26
 

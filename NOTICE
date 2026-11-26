@@ -77,4 +77,6 @@ name the Tailscale network that Velo's own node logs in to.
 The logos are trademarks of their owners. Velo uses them only to identify the
 program running in a tab and the Tailscale network that Velo's own node logs
 in to. Their use implies no endorsement of Velo by, and no affiliation with,
-those owners. The Codex tile is Velo's own letter C.
+those owners. The Codex tile is Velo's own letter C. The omp and pi tiles
+(ic_agent_omp.xml and ic_mark_pi.xml) are Velo's own drawings after oh-my-pi's
+and pi-coding-agent's marks.

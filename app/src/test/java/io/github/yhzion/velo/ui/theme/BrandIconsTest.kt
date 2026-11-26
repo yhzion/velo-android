@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.ui.theme
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -39,6 +40,23 @@ class BrandIconsTest {
     @Test fun theNoticeSaysWhereTheTailscaleLogoIsShown() {
         val section = notice().substringAfter("Program logos").substringBefore("\n\n\n")
         for (said in listOf("Tailscale", "login card", "Settings")) assertTrue(said, said in section)
+    }
+
+    @Test fun ompAndPiMarksAreFilledVectorsOnATwentyFourGrid() {
+        for (name in listOf("ic_agent_omp", "ic_mark_pi")) {
+            val file = drawable(name)
+            assertTrue("$file", file.isFile)
+            val xml = file.readText()
+            assertTrue(name, xml.contains("android:viewportWidth=\"24\"") && xml.contains("android:viewportHeight=\"24\""))
+            assertTrue(name, xml.contains("android:fillColor=\"#FFFFFFFF\""))
+            assertFalse(name, xml.contains("android:strokeColor"))
+            assertTrue(name, Regex("android:pathData=\"[Mm][^\"]{20,}\"").containsMatchIn(xml))
+        }
+    }
+
+    @Test fun theNoticeNamesOmpAndPiDrawings() {
+        val section = notice().substringAfter("Program logos").substringBefore("\n\n\n")
+        for (said in listOf("omp", "pi", "Velo's own")) assertTrue(said, said in section)
     }
 
     private fun notice() = File("../NOTICE").readText()

@@ -75,9 +75,9 @@ enum class TileBrand(
     Claude("Claude Code", logo = R.drawable.ic_brand_claude, ink = Color.White, filled = true),
     // A black C in Roboto Bold, as the Tile board sets it (owner decision 5).
     Codex("Codex", letter = "C", ink = Color.Black, filled = true),
-    // Not on the Tile board: the agents the app marked before the redesign keep their own tile.
-    Omp("omp", logo = R.drawable.ic_agent_omp, ink = Color.White, filled = true, glyphShare = 0.62f),
-    Pi("pi", letter = "π", ink = Color.White, filled = true),
+    // Not on the Tile board: omp and pi keep their own tile fills with Velo's drawings of their marks (NOTICE).
+    Omp("omp", logo = R.drawable.ic_agent_omp, ink = Color.White, filled = true),
+    Pi("pi", logo = R.drawable.ic_mark_pi, ink = Color.White, filled = true),
     Gemini("Gemini", logo = R.drawable.ic_brand_googlegemini, ink = Color(0xFF8E75B2)),
     Neovim("Neovim", logo = R.drawable.ic_brand_neovim, ink = Color(0xFF57A143)),
     Docker("Docker", logo = R.drawable.ic_brand_docker, ink = Color(0xFF2496ED)),
