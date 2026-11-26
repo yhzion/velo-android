@@ -229,7 +229,8 @@ a tab farther away is a plain card until it comes near. The pane area takes ever
 two or more fingers before a pane sees it, and every finger while the overview is open.
 
 The left sidebar (`ui/Sidebar.kt`) follows Rex for Mac: a toolbar (hide sidebar, Activity,
-command palette, Settings), New Session, the host as `account@host`, then the session's
+command palette, Settings, and where the window can dock it, the unfolded Fold upright, a pin
+that docks it beside the panes or undocks it, as the palette's Dock and Undock commands do), New Session, the host as `account@host`, then the session's
 tabs with a row per pane showing its program and directory. Activity keeps only panes whose
 program reported a state other than idle. The palette filters as you type and Enter runs
 the first match.

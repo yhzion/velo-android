@@ -90,4 +90,23 @@ class SidebarDockTest {
             assertEquals("$size", SidebarPlace.Beside, place(open, docked = true, size))
         }
     }
+
+    @Test fun thePinShowsOnlyWhereTheWindowCanDockAndSaysWhetherItIsDocked() {
+        assertEquals(null, dockSwitch(dockable = false, docked = false))
+        assertEquals(null, dockSwitch(dockable = false, docked = true))
+        assertEquals(false, dockSwitch(dockable = true, docked = false))
+        assertEquals(true, dockSwitch(dockable = true, docked = true))
+    }
+
+    @Test fun dockingSavesTheChoiceAndShowsTheSidebar() {
+        val saved = mutableListOf<Boolean>()
+        assertTrue(toggleSidebarDock(docked = false) { saved += it })
+        assertEquals(listOf(true), saved)
+    }
+
+    @Test fun undockingSavesTheChoiceAndClosesTheSidebar() {
+        val saved = mutableListOf<Boolean>()
+        assertFalse(toggleSidebarDock(docked = true) { saved += it })
+        assertEquals(listOf(false), saved)
+    }
 }
