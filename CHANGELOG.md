@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.12.2 - 2026-11-26
+
 ### Security
 - A notification you can answer marks its text as the program's report and shows the last lines on the pane's screen. An answer is not sent once another program is in front in the pane.
 
