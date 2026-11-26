@@ -17,7 +17,9 @@ import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.mediumAt
 import io.github.yhzion.velo.ui.theme.tileLayers
+import io.github.yhzion.velo.ui.theme.veloSizes
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -37,6 +39,7 @@ class PaneCaptionTest {
 
     private var size by mutableStateOf(UiSize.Medium)
     private var panes by mutableStateOf(1)
+    private var compact by mutableStateOf(false)
 
     private fun row(panes: Int): TabRow {
         val tab = TabInfo("w", label = "build", program = "zsh", panes = panes)
@@ -45,7 +48,7 @@ class PaneCaptionTest {
     }
 
     private fun show() = compose.setContent {
-        VeloTheme(size = size) { PaneCaption(row(panes), connected = true, ActivityReadState(), host = "studio") }
+        VeloTheme(size = size) { PaneCaption(row(panes), connected = true, ActivityReadState(), host = "studio", compact = compact) }
     }
 
     private fun bounds(tag: String): DpRect = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
@@ -74,6 +77,24 @@ class PaneCaptionTest {
             else maxOf(bounds("caption-tab-tile-face").right, bounds("caption-tab-tile-layer-${tileLayers(n)}").right)
             val gap = bounds("pane-caption-title").left - right
             assertEquals("$s, $n panes", mediumAt(s, 8.dp).value, gap.value, 0.5f)
+        }
+    }
+
+    @Test fun inTheCompactStyleNoLayerReachesThePaneAbove() {
+        // The compact caption lies only gapCompact below the pane; its row keeps the tile's box high.
+        compact = true
+        panes = 4
+        show()
+        for (s in UiSize.entries) {
+            size = s
+            compose.waitForIdle()
+            val pane = bounds("pane-caption").top - veloSizes(s).gapCompact
+            val layer = bounds("caption-tab-tile-layer-4")
+            assertTrue("$s: layer top ${layer.top} above the pane's bottom $pane", layer.top >= pane - 0.01.dp)
+            // The face still sits on the title's line.
+            val face = bounds("caption-tab-tile-face")
+            val title = bounds("pane-caption-title")
+            assertEquals("$s", ((title.top + title.bottom) / 2).value, ((face.top + face.bottom) / 2).value, 0.5f)
         }
     }
 }

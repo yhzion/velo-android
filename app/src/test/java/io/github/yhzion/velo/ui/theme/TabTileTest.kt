@@ -47,6 +47,17 @@ class TabTileTest {
         }
     }
 
+    @Test fun aRowThatCentresTheFaceHoldsEveryLayer() {
+        // The caption's 18: the box's 8 above the face, and 8 below it too.
+        assertEquals(34f, tileCentredBox(18f), 0f)
+        for (size in listOf(16f, 18f, 30f, 44f)) {
+            val farthest = tileLayerRect(tileBackLayers(4, size).first(), size)
+            // The face centred, the farthest layer's top stays inside.
+            val faceTop = (tileCentredBox(size) - size) / 2
+            assertTrue("$size", faceTop - (tileBox(size) - size - farthest.top) >= -0.001f)
+        }
+    }
+
     @Test fun layersBehindStepUpRightSmallerAndDarker() {
         assertEquals(emptyList<TileLayer>(), tileBackLayers(1, 30f))
         val layers = tileBackLayers(6, 30f)

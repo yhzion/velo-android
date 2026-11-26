@@ -23,6 +23,10 @@ import io.github.yhzion.velo.ui.theme.TabTile
 import io.github.yhzion.velo.ui.theme.VeloSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.naturalLines
+import io.github.yhzion.velo.ui.theme.tileCentredBox
+
+/** The caption's tile, the board's 18. */
+private const val CaptionTile = 18f
 
 /**
  * The caption under the panes (WsBar*, WsClosed*, WsOpen* boards, pane-caption): the shown tab's
@@ -40,14 +44,22 @@ internal fun PaneCaption(
     val density = LocalDensity.current
     val caption = VeloTheme.type.caption.naturalLines()
     val style = if (terminalFontPx == null) caption else caption.copy(fontSize = with(density) { terminalFontPx.toSp() })
+    val shown = row != null && activity != null
+    // Laid out by its face, the tile's layers step above the face: the compact row is high enough to hold
+    // them with the face centred, so they stay off the pane above, which is only the compact gap away.
+    val least = when {
+        !compact -> VeloTheme.medium(40.dp)
+        shown -> VeloTheme.medium(tileCentredBox(CaptionTile).dp)
+        else -> 0.dp
+    }
     Row(
-        modifier.testTag("pane-caption").fillMaxWidth().heightIn(min = if (compact) 0.dp else VeloTheme.medium(40.dp))
+        modifier.testTag("pane-caption").fillMaxWidth().heightIn(min = least)
             .padding(horizontal = VeloTheme.medium(8.dp)),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(8.dp)),
     ) {
         if (row != null && activity != null) {
             val tile = tabTile(row, activity)
-            TabTile(tile.brand, panes = tile.panes, size = VeloTheme.medium(18.dp), dot = tile.dot, ring = VeloTheme.surface.surface, tag = "caption-tab-tile", byFace = true,
+            TabTile(tile.brand, panes = tile.panes, size = VeloTheme.medium(CaptionTile.dp), dot = tile.dot, ring = VeloTheme.surface.surface, tag = "caption-tab-tile", byFace = true,
                 contentDescription = tabTileDescription(tile, activity.icon ?: row.icon),
                 stateDescription = activity.badge?.let { "Unread, ${it.description}" })
         }

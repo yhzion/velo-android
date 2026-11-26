@@ -137,6 +137,12 @@ fun tileFaceBounds(panes: Int, size: Float): Rect {
     return Rect(0f, top, size + (tileLayers(panes) - 1) * tileStep(size), top + size)
 }
 
+/**
+ * How high a row must be to centre the face and still hold every layer: the room [tileBox] keeps
+ * above the face, kept below it too.
+ */
+fun tileCentredBox(size: Float): Float = size + 2 * (tileBox(size) - size)
+
 /** A layer behind the face. [number] is the board's name for it: 2 is just behind the face, 4 the farthest. */
 data class TileLayer(val number: Int, val dx: Float, val dy: Float, val scale: Float, val alpha: Float, val brightness: Float)
 
