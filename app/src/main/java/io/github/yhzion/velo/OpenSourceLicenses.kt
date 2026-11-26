@@ -172,9 +172,9 @@ object OpenSourceLicenses {
         LicenseComponent("powerline", "Powerline symbols", "1.000", "MIT", LicenseGroup.Fonts, "https://github.com/powerline/powerline",
             listOf(third("fonts/Powerline-MIT.txt"))),
 
-        // The tab tiles' logos: their licenses and the trademark note are the NOTICE's section on them.
-        LicenseComponent("simple-icons", "Program logos (Simple Icons)", "16.38.1", "CC0-1.0, CC-BY-3.0, CC-BY-SA-3.0", LicenseGroup.Artwork,
-            "https://simpleicons.org", listOf(LicenseText("Program logos", "notices/NOTICE", section = "Program logos"))),
+        // The tab tiles' logos and the Tailscale logo: their licenses and the trademark note are the NOTICE's section on them.
+        LicenseComponent("simple-icons", "Program and Tailscale logos (Simple Icons)", "16.38.1", "CC0-1.0, CC-BY-3.0, CC-BY-SA-3.0", LicenseGroup.Artwork,
+            "https://simpleicons.org", listOf(LicenseText("Program and Tailscale logos", "notices/NOTICE", section = "Program logos"))),
     )
 }
 

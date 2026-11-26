@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- Settings shows the Tailscale logo, as the start screen does.
+
 ## 2.11.1 - 2026-11-26
 
 ### Fixed

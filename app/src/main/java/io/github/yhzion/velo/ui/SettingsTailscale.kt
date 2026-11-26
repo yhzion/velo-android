@@ -108,7 +108,7 @@ internal fun DeviceSettings(host: SettingsHost) {
         RaisedCard(Modifier.testTag("tailscale-status-card"), padding = VeloTheme.medium(18.dp) + VeloTheme.sizes.edge) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.s12)) {
                 Box(Modifier.testTag("tailscale-logo").size(VeloTheme.medium(44.dp)).clip(rounded(space.s12)).background(c.glass), contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_tailscale_on), null, Modifier.size(VeloTheme.medium(24.dp)), tint = c.text)
+                    Icon(painterResource(R.drawable.ic_brand_tailscale), null, Modifier.size(VeloTheme.medium(24.dp)), tint = c.text)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp))) {
                     Text("Tailscale", Modifier.fillMaxWidth().testTag("tailscale-title"), style = textAt(20f, FontWeight.SemiBold), color = c.text)

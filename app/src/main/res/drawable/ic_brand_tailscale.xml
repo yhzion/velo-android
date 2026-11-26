@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Tailscale logo on the start screen's login card (StartKit board, login-tailscale-logo). -->
+<!-- Tailscale: Simple Icons 16.38.1 (tailscale.svg), CC0 path data; the logo is a trademark of its owner (NOTICE). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
