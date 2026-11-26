@@ -86,6 +86,7 @@ fun commonFront(a: CharSequence, b: CharSequence): Int {
  *   transcript that grows) waits for the commit, which may still change it.
  * - Nothing in it composes in place ([composesInPlace]): a Hangul syllable changes as it is typed.
  * - No control character: a composition with a line break ends as a paste ([keyboardTextIsPaste]).
+ * - No half of a character: a keyboard that deletes one UTF-16 unit of an emoji leaves a surrogate alone.
  * - [latinFinal]: the keyboard does not turn Latin letters into other characters
  *   ([keyboardLatinIsFinal]). Asked last, and only then: the keyboard is asked across processes.
  */
@@ -96,7 +97,8 @@ fun streamsTerminalComposition(preedit: String, sent: String, latinFinal: () -> 
     var index = 0
     while (index < preedit.length) {
         val point = preedit.codePointAt(index)
-        if (Character.isISOControl(point) || composesInPlace(point)) return false
+        if (Character.isISOControl(point) || point in Char.MIN_SURROGATE.code..Char.MAX_SURROGATE.code ||
+            composesInPlace(point)) return false
         index += Character.charCount(point)
     }
     return latinFinal()

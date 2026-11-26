@@ -129,6 +129,12 @@ class TerminalCompositionTest {
         assertFalse(streamsTerminalComposition("\t", "", { true }))
     }
 
+    /** Half an emoji, left by a keyboard that deleted one UTF-16 unit of it, is held: the remote gets no lone surrogate. */
+    @Test fun aLoneSurrogateIsHeld() {
+        assertFalse(streamsTerminalComposition("\uD83D", "", { true }))
+        assertFalse(streamsTerminalComposition("a\uDE42", "a", { true }))
+    }
+
     @Test fun aKeyboardThatComposesLatinIntoOtherCharactersHoldsIt() {
         assertFalse(streamsTerminalComposition("k", "", { false }))
         // The keyboard is asked only for a composition that would stream otherwise.
