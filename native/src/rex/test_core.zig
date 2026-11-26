@@ -7025,10 +7025,10 @@ test "Core: the app reads the link under a finger as JSON and can underline it" 
 
     const url = (try core.paneLink(testing.allocator, term_block, Tap.x(origin.x, cs.w, 6), row0)) orelse return error.NoLink;
     defer testing.allocator.free(url);
-    try testing.expectEqualStrings("{\"kind\":\"url\",\"target\":\"https://example.com/a\",\"line\":0,\"col\":0}", url);
+    try testing.expectEqualStrings("{\"kind\":\"url\",\"target\":\"https://example.com/a\",\"line\":0,\"col\":0,\"set\":false,\"shown\":true}", url);
     const path = (try core.paneLink(testing.allocator, term_block, Tap.x(origin.x, cs.w, 28), row0)) orelse return error.NoLink;
     defer testing.allocator.free(path);
-    try testing.expectEqualStrings("{\"kind\":\"file\",\"target\":\"src/b.kt\",\"line\":7,\"col\":0}", path);
+    try testing.expectEqualStrings("{\"kind\":\"file\",\"target\":\"src/b.kt\",\"line\":7,\"col\":0,\"set\":false,\"shown\":true}", path);
     try testing.expect((try core.paneLink(testing.allocator, term_block, Tap.x(origin.x, cs.w, 1), row0)) == null);
     try testing.expect((try core.paneLink(testing.allocator, "block:none", Tap.x(origin.x, cs.w, 6), row0)) == null);
 
@@ -7039,6 +7039,14 @@ test "Core: the app reads the link under a finger as JSON and can underline it" 
     try testing.expect(!core.paneMarkLink(term_block, Tap.x(origin.x, cs.w, 1), row0));
     try testing.expect(!core.paneMarkLink("block:none", 0, 0));
     core.paneUnmarkLink("block:none");
+
+    // A hyperlink a program set under other text says so.
+    core.lock.lock();
+    term.write("\x1b[2J\x1b[H\x1b]8;;https://evil.example/\x1b\\click\x1b]8;;\x1b\\");
+    core.lock.unlock();
+    const set = (try core.paneLink(testing.allocator, term_block, Tap.x(origin.x, cs.w, 2), row0)) orelse return error.NoLink;
+    defer testing.allocator.free(set);
+    try testing.expectEqualStrings("{\"kind\":\"url\",\"target\":\"https://evil.example/\",\"line\":0,\"col\":0,\"set\":true,\"shown\":false}", set);
 }
 
 test "Core: a tap on a pane whose program takes the mouse is a left click at the tapped cell" {

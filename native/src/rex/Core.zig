@@ -1482,8 +1482,10 @@ pub const Core = struct {
     }
 
     /// The link under the surface point (x, y) of the pane, as the app reads it:
-    /// `{"kind":"url"|"localhost"|"file","target":"…","line":0,"col":0}`. Null when there is
-    /// no link there or no such pane. Caller frees.
+    /// `{"kind":"url"|"localhost"|"file","target":"…","line":0,"col":0,"set":false,"shown":true}`.
+    /// `set` says a program set the link (OSC 8), and `shown` that the text on its cells is its
+    /// target: the app asks before it opens a link the person could not read. Null when there
+    /// is no link there or no such pane. Caller frees.
     pub fn paneLink(self: *Core, gpa: Allocator, block: []const u8, x: f32, y: f32) !?[]u8 {
         self.lock.lock();
         defer self.lock.unlock();
@@ -1495,6 +1497,8 @@ pub const Core = struct {
             .target = link.target,
             .line = link.line,
             .col = link.col,
+            .set = link.set,
+            .shown = link.shown,
         }, .{});
     }
 

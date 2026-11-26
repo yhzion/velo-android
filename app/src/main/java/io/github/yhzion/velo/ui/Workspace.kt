@@ -102,7 +102,8 @@ internal fun Workspace(
     var renaming by remember { mutableStateOf<Renaming?>(null) }
     // A paste from the keyboard that waits for its question ([TerminalInputView.onPasteQuestion]).
     var keyboardPaste by remember(conn) { mutableStateOf<KeyboardPaste?>(null) }
-    // A link a pane printed that launches another app, waiting for its question ([LinkTap.Ask]).
+    // A link a pane printed that launches another app ([LinkTap.Ask]), or one a program set under
+    // other text ([LinkTap.Hidden]), waiting for its question.
     var linkQuestion by remember(conn) { mutableStateOf<LinkQuestion?>(null) }
     val fileContext = LocalContext.current
     val files = remember { RemoteFileOpener.of(fileContext) }
@@ -729,17 +730,33 @@ internal fun Workspace(
                         val linkContext = LocalContext.current
                         // One handler for the panes' whole life: a new one would redraw every pane.
                         val linkTaps = remember(linkContext, files) {
-                            LinkTaps { c, block, tap, notAFile ->
-                                when (tap) {
-                                    is LinkTap.Open -> openTerminalLink(linkContext, c, tap.uri)
-                                    is LinkTap.Ask -> linkQuestion = LinkQuestion(c, tap)
-                                    is LinkTap.File -> files.open(c, block, tap.target, notAFile)
-                                    // The remote's loopback: forwarded to the phone first, then opened there.
-                                    is LinkTap.Forward -> c.openForward(block, tap.link) { answer ->
-                                        val failure = forwardFailure(answer, tap.link)
-                                        if (failure != null) c.error = failure else openTerminalLink(linkContext, c, tap.link.onPhone(answer.port))
+                            LinkTaps { c, block, tapped, notAFile ->
+                                fun open(tap: LinkTap) {
+                                    when (tap) {
+                                        is LinkTap.Open -> openTerminalLink(linkContext, c, tap.uri)
+                                        is LinkTap.Ask -> linkQuestion = LinkQuestion(c, linkQuestionTitle(tap), linkQuestionText(tap)) {
+                                            openTerminalLink(linkContext, c, tap.uri)
+                                        }
+                                        is LinkTap.File -> files.open(c, block, tap.target, notAFile)
+                                        // The remote's loopback: forwarded to the phone first, then opened there.
+                                        is LinkTap.Forward -> c.openForward(block, tap.link) { answer ->
+                                            val failure = forwardFailure(answer, tap.link)
+                                            if (failure != null) c.error = failure else openTerminalLink(linkContext, c, tap.link.onPhone(answer.port))
+                                        }
+                                        // The terminal did not show where it goes: the question does, and Open goes on as for a shown link.
+                                        is LinkTap.Hidden -> when (val then = tap.then) {
+                                            is LinkTap.Open -> linkQuestion = LinkQuestion(c, hiddenLinkTitle(then), hiddenLinkText(then)) { open(then) }
+                                            is LinkTap.File -> {
+                                                // A link to another machine's file is no file here, as for a shown one.
+                                                val path = remoteFilePath(then.target, remoteNames(c.url)) ?: return notAFile()
+                                                val remote = app.activeRemote?.label?.ifEmpty { null } ?: "the remote"
+                                                linkQuestion = LinkQuestion(c, HIDDEN_FILE_TITLE, hiddenFileText(path, remote)) { open(then) }
+                                            }
+                                            else -> open(then)
+                                        }
                                     }
                                 }
+                                open(tapped)
                             }
                         }
                         CompositionLocalProvider(LocalLinkTaps provides linkTaps) {
@@ -1023,11 +1040,10 @@ internal fun Workspace(
             onConfirm = { files.answer(q) })
     }
     linkQuestion?.let { q ->
-        val linkContext = LocalContext.current
-        VeloDialog(linkQuestionTitle(q.ask), { linkQuestion = null }, confirmText = "Open", focusCancel = true,
-            text = linkQuestionText(q.ask), onConfirm = {
+        VeloDialog(q.title, { linkQuestion = null }, confirmText = "Open", focusCancel = true,
+            text = q.text, onConfirm = {
                 linkQuestion = null
-                openTerminalLink(linkContext, q.conn, q.ask.uri)
+                q.open()
             })
     }
     keyboardPaste?.let { asked ->

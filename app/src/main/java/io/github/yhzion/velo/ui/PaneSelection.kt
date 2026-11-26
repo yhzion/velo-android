@@ -154,7 +154,7 @@ internal class PaneSelection(private val view: PaneSurfaceView, private val conn
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
             val target = link
             val open = target?.let(::linkTap)
-            if (open != null) menu.add(Menu.NONE, R.id.open_terminal_link, 0, if (open is LinkTap.File) "Open file" else "Open link")
+            if (open != null) menu.add(Menu.NONE, R.id.open_terminal_link, 0, if (open.file != null) "Open file" else "Open link")
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             if (bounds != null) menu.add(Menu.NONE, android.R.id.copy, 0, android.R.string.copy)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
@@ -180,7 +180,7 @@ internal class PaneSelection(private val view: PaneSurfaceView, private val conn
                 android.R.id.paste -> if (canPaste()) view.onPasteSelection()
                 R.id.open_terminal_link -> link?.let(::linkTap)?.let { tap ->
                     // Chosen from the menu, a path that is no file there gets a word, not a tap.
-                    view.onLink(tap) { if (tap is LinkTap.File && conn.error == null) conn.error = "The remote has no file at ${tap.target}." }
+                    view.onLink(tap) { tap.file?.let { if (conn.error == null) conn.error = "The remote has no file at ${it.target}." } }
                 }
                 R.id.copy_terminal_link -> link?.let { clipboard?.setPrimaryClip(ClipData.newPlainText("Velo", it.target)) }
                 else -> return false
