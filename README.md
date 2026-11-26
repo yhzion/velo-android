@@ -59,7 +59,7 @@ You need a 64-bit ARM device running Android 11 or later and a computer running 
 Velo runs its own Tailscale node, so the phone needs no Tailscale app or VPN.
 
 1. On the computer running Rex, run `rex server tailscale on`. The server then serves its API on your tailnet. The first time, it asks you to log in: the login link appears in the server log and in `rex server status`. The setting lasts until the server restarts; start the server with `--tailscale` to keep it.
-2. In **Velo**, tap **Log in to Tailscale** and log in once, in the browser, to the same tailnet.
+2. In **Velo**, tap **Log in to Tailscale** and log in once, in the browser, with the Tailscale account that owns the server's node. Other members of the tailnet get in only when the server's node allows them (`rex server tailscale on --allow-tailnet-members`).
 3. Velo lists the Rex servers it finds on that tailnet. Tap one to save it.
 
 Instead of step 3, you can scan the server's QR code. On the computer, run `rex server tailscale pair`. In Velo, choose **Add by QR code or address**, then **Scan QR code**. The code holds only the server's tailnet address, so the phone must be on the tailnet first (step 2).
