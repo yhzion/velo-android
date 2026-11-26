@@ -54,6 +54,10 @@ pub const methods = struct {
     pub const terminalTitle = "com.superlogical.terminal.title";
     pub const terminalProcess = "com.superlogical.terminal.process";
     pub const terminalProgramStatus = "com.superlogical.terminal.program_status";
+    /// Takes `terminalFormat`.
+    pub const terminalFormat = "com.superlogical.terminal.format";
+    /// Takes `terminalBlobRead`.
+    pub const terminalBlobRead = "com.superlogical.terminal.blob_read";
     /// Takes `blockCall`. Whether the terminal echoes typed input; not_found on Windows.
     pub const terminalInputMode = "com.superlogical.terminal.input_mode";
     pub const terminalResize = "com.superlogical.terminal.resize";
@@ -340,6 +344,10 @@ pub const PaneExpect = struct { id: []const u8, kind: ?[]const u8, updated_at: ?
 /// Intent `paneWrite`: an answer to a pane's prompt, from a notification. `tag` names the
 /// result the core reports back (`Core.paneWrite`).
 pub const PaneWrite = struct { tag: []const u8, session: Id, block: Id, text: []const u8, expect: PaneExpect };
+
+/// Intent `paneScreen`: the last lines of a pane's text, for the notification of its prompt.
+/// `tag` names the answer the core reports back (`Core.paneScreen`).
+pub const PaneScreen = struct { tag: []const u8, session: Id, block: Id };
 
 pub fn resizePane(gpa: Allocator, session: Id, resize: SplitResize) Allocator.Error![]u8 {
     var b: Builder = .init(gpa);
@@ -721,6 +729,42 @@ pub fn blockCall(gpa: Allocator, session: Id, block: Id) Allocator.Error![]u8 {
     return b.finish();
 }
 
+/// `com.superlogical.terminal.format` of the terminal's text (screen and scrollback), spaces
+/// at the ends of lines removed. With more than `max_bytes` of it the answer holds its start
+/// and names the rest (`id`, `total`) for `terminalBlobRead`.
+pub fn terminalFormat(gpa: Allocator, session: Id, block: Id, max_bytes: u32) Allocator.Error![]u8 {
+    var b: Builder = .init(gpa);
+    defer b.deinit();
+    b.begin();
+    b.field("session_id", session);
+    b.field("block_id", block);
+    b.key("args");
+    b.begin();
+    b.fieldValue("trim", true);
+    b.fieldValue("max_bytes", max_bytes);
+    b.end();
+    b.end();
+    return b.finish();
+}
+
+/// `com.superlogical.terminal.blob_read`: up to `max_bytes` of the result `id` (of a
+/// `terminalFormat`), from byte `offset` of it.
+pub fn terminalBlobRead(gpa: Allocator, session: Id, block: Id, id: i64, offset: i64, max_bytes: u32) Allocator.Error![]u8 {
+    var b: Builder = .init(gpa);
+    defer b.deinit();
+    b.begin();
+    b.field("session_id", session);
+    b.field("block_id", block);
+    b.key("args");
+    b.begin();
+    b.fieldValue("id", id);
+    b.fieldValue("offset", offset);
+    b.fieldValue("max_bytes", max_bytes);
+    b.end();
+    b.end();
+    return b.finish();
+}
+
 /// `hosts.put` of a new entry with one endpoint. The app never rewrites an existing entry,
 /// so it never has to carry fields it does not know.
 pub fn hostsPut(gpa: Allocator, id: []const u8, label: []const u8, url: []const u8) Allocator.Error![]u8 {
@@ -933,6 +977,9 @@ pub const Intent = union(enum) {
     /// Write `text` to the terminal `block` of `session`, whichever session is selected or
     /// none (parked), once the server says its program status still holds `expect`.
     pane_write: PaneWrite,
+    /// Read the last lines of the text of the terminal `block` of `session`, whichever
+    /// session is selected or none (parked).
+    pane_screen: PaneScreen,
     /// The clipboard's text for a terminal; `confirmed` when the user was asked and said yes.
     paste: struct { block: Id, text: []const u8, confirmed: bool },
     /// The pinch on this pane ended: its terminal fits the pane again.
@@ -975,7 +1022,7 @@ pub const UndoMove = union(enum) {
 /// closeLastPane{session,window,block},
 /// renameSession{session,label}, renameWindow{session,window,label},
 /// sendText{block,text}, paste{block,text,confirmed?}, setting{key,value},
-/// paneWrite{tag,session,block,text,expect:{id,kind?,updatedAt?}},
+/// paneWrite{tag,session,block,text,expect:{id,kind?,updatedAt?}}, paneScreen{tag,session,block},
 /// hostsPut{id,label,url}, hostsRemove{id}, detach, resumeSession{session?}, fence{prefix?}.
 /// An unknown op, or one missing a field, is `.unknown`, and so is an undoMove beside with a
 /// ratio outside (0, 1); a paste without `confirmed` is not confirmed. Everything returned
@@ -987,7 +1034,7 @@ pub fn parseIntent(arena: Allocator, text: []const u8) !Intent {
     const session = model.str(model.get(root, "session"));
     const window = model.str(model.get(root, "window"));
 
-    const Op = enum { resizePane, paneWatches, restorePane, minimizePane, minimizeFloating, split, float, dock, movePane, swapPanes, moveToNewTab, restoreInNewTab, undoMove, zoom, unzoom, close, closeLastPane, focus, fit, touch, newWindow, newSession, selectWindow, closeWindow, moveWindow, closeSession, renameSession, renameWindow, sendText, paneWrite, paste, setting, hostsPut, hostsRemove, detach, resumeSession, fence };
+    const Op = enum { resizePane, paneWatches, restorePane, minimizePane, minimizeFloating, split, float, dock, movePane, swapPanes, moveToNewTab, restoreInNewTab, undoMove, zoom, unzoom, close, closeLastPane, focus, fit, touch, newWindow, newSession, selectWindow, closeWindow, moveWindow, closeSession, renameSession, renameWindow, sendText, paneWrite, paneScreen, paste, setting, hostsPut, hostsRemove, detach, resumeSession, fence };
     switch (std.meta.stringToEnum(Op, op) orelse return .unknown) {
         .resizePane => {
             const direction = model.str(model.get(root, "direction")) orelse return .unknown;
@@ -1107,6 +1154,11 @@ pub fn parseIntent(arena: Allocator, text: []const u8) !Intent {
                 },
             } };
         },
+        .paneScreen => return .{ .pane_screen = .{
+            .tag = model.str(model.get(root, "tag")) orelse return .unknown,
+            .session = session orelse return .unknown,
+            .block = block orelse return .unknown,
+        } },
         .paste => return .{ .paste = .{
             .block = block orelse return .unknown,
             .text = model.str(model.get(root, "text")) orelse return .unknown,

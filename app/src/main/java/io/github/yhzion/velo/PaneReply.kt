@@ -22,7 +22,7 @@ import java.time.Instant
 internal enum class PaneWriteResult(val wire: String) {
     /** The server wrote all of it. */
     Sent("sent"),
-    /** The prompt was answered or changed: nothing was written. */
+    /** The prompt was answered or changed, or another program is in front in the pane (#32): nothing was written. */
     Changed("changed"),
     /** Nothing was written: not connected, no such pane, or the check failed. */
     NotSent("not_sent"),

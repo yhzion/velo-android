@@ -391,9 +391,15 @@ const Recorder = struct {
     tokens: usize = 0,
     reports: std.ArrayList([]u8) = .empty,
     writes: std.ArrayList(struct { tag: []u8, result: Core.PaneWriteResult, has_message: bool }) = .empty,
+    screens: std.ArrayList(struct { tag: []u8, text: []u8 }) = .empty,
 
     fn deinit(self: *Recorder) void {
         const gpa = testing.allocator;
+        for (self.screens.items) |s| {
+            gpa.free(s.tag);
+            gpa.free(s.text);
+        }
+        self.screens.deinit(gpa);
         for (self.states.items) |s| gpa.free(s);
         for (self.errors.items) |s| gpa.free(s);
         for (self.messages.items) |s| gpa.free(s);
@@ -409,7 +415,27 @@ const Recorder = struct {
     }
 
     fn host(self: *Recorder) core_mod.Host {
-        return .{ .ctx = self, .onState = onState, .onPaneReport = onPaneReport, .onPaneWrite = onPaneWrite, .onReconnectToken = onToken, .onError = onError, .glyphs = no_glyphs };
+        return .{ .ctx = self, .onState = onState, .onPaneReport = onPaneReport, .onPaneWrite = onPaneWrite, .onPaneScreen = onPaneScreen, .onReconnectToken = onToken, .onError = onError, .glyphs = no_glyphs };
+    }
+
+    fn onPaneScreen(ctx: *anyopaque, tag: []const u8, text: []const u8) void {
+        const self: *Recorder = @ptrCast(@alignCast(ctx));
+        self.lock.lock();
+        defer self.lock.unlock();
+        const gpa = testing.allocator;
+        const tag_copy = gpa.dupe(u8, tag) catch @panic("out of memory");
+        const text_copy = gpa.dupe(u8, text) catch @panic("out of memory");
+        self.screens.append(gpa, .{ .tag = tag_copy, .text = text_copy }) catch @panic("out of memory");
+    }
+
+    /// Consume the one answer for this `paneScreen`.
+    fn expectPaneScreen(self: *Recorder, tag: []const u8, text: []const u8) !void {
+        try testing.expectEqual(1, self.screens.items.len);
+        const s = self.screens.pop().?;
+        defer testing.allocator.free(s.tag);
+        defer testing.allocator.free(s.text);
+        try testing.expectEqualStrings(tag, s.tag);
+        try testing.expectEqualStrings(text, s.text);
     }
 
     fn onState(ctx: *anyopaque, gen: u64, snapshot: []const u8, patch: ?[]const u8) void {
@@ -6895,6 +6921,304 @@ test "paneWrite reports a write the server did not confirm" {
     try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_question);
     try answerError(core, (try pendingId(core, .pane_write)).?, "internal");
     try recorder.expectPaneWrite("u", .unconfirmed);
+}
+
+/// A blocked permission record as a server that names the reporting pane's owner sends it.
+const blocked_owned =
+    \\{"records":[{"id":"","state":"blocked","kind":"permission","updated_at":"2026-11-21T09:00:00Z",
+    \\"app":"claude-code","effective_app":"claude-code","owner":{"pid":4242,"name":"2.1.332"}}]}
+;
+const owned_request =
+    \\{"op":"paneWrite","tag":"o","session":"session:b","block":"block:b2","text":"1",
+    \\"expect":{"id":"","kind":"permission","updatedAt":"2026-11-21T09:00:00Z"}}
+;
+
+test "paneWrite writes only while the record's owner is still the pane's foreground process (#32)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try following(&recorder, a);
+    defer core.destroy();
+    const process = protocol.methods.terminalProcess;
+    const before = queuedFor(core, process, "block:b2");
+
+    // The owner is in front: the pane's processes are asked for, then the answer is written.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_owned);
+    try testing.expectEqual(0, queued(core, protocol.methods.terminalWrite));
+    try testing.expectEqual(before + 1, queuedFor(core, process, "block:b2"));
+    try expectRequest(core, process,
+        \\{"session_id":"session:b","block_id":"block:b2"}
+    );
+    try answer(core, try requestId(core, process, "block:b2"),
+        \\{"child":{"pid":4000,"name":"zsh"},"foreground":{"pid":4242,"name":"2.1.332"}}
+    );
+    try expectRequest(core, protocol.methods.terminalWrite,
+        \\{"session_id":"session:b","block_id":"block:b2","args":{"data":"1"}}
+    );
+    try answer(core, (try pendingId(core, .pane_write)).?, "{\"bytes_written\":1}");
+    try recorder.expectPaneWrite("o", .sent);
+
+    // Another program is in front now (the shell again, or one started later): nothing is written.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_owned);
+    try answer(core, try requestId(core, process, "block:b2"),
+        \\{"child":{"pid":4000,"name":"zsh"},"foreground":{"pid":4000,"name":"zsh"}}
+    );
+    try recorder.expectPaneWrite("o", .changed);
+
+    // The processes could not be read: nothing is written, and the answer can be given again.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_owned);
+    try answerError(core, try requestId(core, process, "block:b2"), "internal");
+    try recorder.expectPaneWrite("o", .not_sent);
+
+    // The link drops while the processes are asked for: nothing was written.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_owned);
+    core.lock.lock();
+    core.linkEnded();
+    core.lock.unlock();
+    core.command("{\"op\":\"fit\",\"block\":\"none\"}");
+    try recorder.expectPaneWrite("o", .not_sent);
+    try testing.expectEqual(0, sent(core));
+}
+
+test "paneWrite keeps the check of the record alone when the server names no owner or no foreground process (#32)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try following(&recorder, a);
+    defer core.destroy();
+    const process = protocol.methods.terminalProcess;
+    const before = queuedFor(core, process, "block:b2");
+
+    // No owner in the record (an older server): written without asking for the processes.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?,
+        \\{"records":[{"id":"","state":"blocked","kind":"permission","updated_at":"2026-11-21T09:00:00Z"}]}
+    );
+    try testing.expectEqual(before, queuedFor(core, process, "block:b2"));
+    try answer(core, (try pendingId(core, .pane_write)).?, "{\"bytes_written\":1}");
+    try recorder.expectPaneWrite("o", .sent);
+
+    // An owner, and a server that cannot tell which process is in front: written.
+    core.command(owned_request);
+    try answer(core, (try pendingId(core, .pane_write_check)).?, blocked_owned);
+    try answer(core, try requestId(core, process, "block:b2"),
+        \\{"child":{"pid":4000,"name":"zsh"},"last_exit":null}
+    );
+    try answer(core, (try pendingId(core, .pane_write)).?, "{\"bytes_written\":1}");
+    try recorder.expectPaneWrite("o", .sent);
+}
+
+test "ownerPid and ownerInFront: the record's owner against the pane's foreground process (#32)" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const status = try std.json.parseFromSliceLeaky(std.json.Value, a,
+        \\{"records":[{"id":"build","state":"working","owner":{"pid":7,"name":"make"}},
+        \\{"id":"","state":"blocked","owner":{"pid":4242,"name":"2.1.332"}},
+        \\{"id":"old","state":"blocked"},{"id":"odd","state":"blocked","owner":{"pid":"4242"}}]}
+    , .{});
+    try testing.expectEqual(@as(?i64, 4242), core_mod.ownerPid("", status));
+    try testing.expectEqual(@as(?i64, 7), core_mod.ownerPid("build", status));
+    try testing.expectEqual(@as(?i64, null), core_mod.ownerPid("old", status));
+    try testing.expectEqual(@as(?i64, null), core_mod.ownerPid("odd", status));
+    try testing.expectEqual(@as(?i64, null), core_mod.ownerPid("none", status));
+
+    const front = try std.json.parseFromSliceLeaky(std.json.Value, a,
+        \\{"child":{"pid":4000},"foreground":{"pid":4242}}
+    , .{});
+    try testing.expect(core_mod.ownerInFront(4242, front));
+    try testing.expect(!core_mod.ownerInFront(4000, front));
+    // No foreground process in the answer: nothing to compare with.
+    try testing.expect(core_mod.ownerInFront(4242, try std.json.parseFromSliceLeaky(std.json.Value, a, "{\"child\":{\"pid\":4242}}", .{})));
+    try testing.expect(core_mod.ownerInFront(4242, .null));
+}
+
+// ------------------------------------------------------------- paneScreen
+
+const screen_request =
+    \\{"op":"paneScreen","tag":"s","session":"session:b","block":"block:b2"}
+;
+
+test "paneScreen reads the last lines of a pane no view shows, in a session that is not selected (#32)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try following(&recorder, a);
+    defer core.destroy();
+    try testing.expectEqualStrings("session:a", try recorder.lastString(a, "session"));
+
+    // All of the text fits in the answer: its last lines, without the blank ones.
+    core.command(screen_request);
+    try expectRequest(core, protocol.methods.terminalFormat,
+        \\{"session_id":"session:b","block_id":"block:b2","args":{"trim":true,"max_bytes":8192}}
+    );
+    try answer(core, (try pendingId(core, .pane_screen)).?,
+        \\{"content":"$ make\n\nDo you want to proceed?\n  1. Yes\n  2. No\n\n\n","total":50,"eof":true}
+    );
+    try recorder.expectPaneScreen("s", "$ make\nDo you want to proceed?\n1. Yes\n2. No");
+
+    // More text than fits: the answer names it, and its end is read from where the last
+    // bytes start. The line the read starts inside of is left out.
+    core.command(screen_request);
+    try answer(core, (try pendingId(core, .pane_screen)).?,
+        \\{"content":"1\n2\n3","id":7,"total":20000}
+    );
+    try expectRequest(core, protocol.methods.terminalBlobRead,
+        \\{"session_id":"session:b","block_id":"block:b2","args":{"id":7,"offset":11808,"max_bytes":49152}}
+    );
+    try answer(core, (try pendingId(core, .pane_screen_tail)).?,
+        \\{"id":7,"data":"f a cut line\nDo you want to proceed?\n  1. Yes\n","total":20000,"eof":true}
+    );
+    try recorder.expectPaneScreen("s", "Do you want to proceed?\n1. Yes");
+    try testing.expectEqual(0, recorder.errors.items.len);
+}
+
+test "paneScreen answers with no lines when the text cannot be read (#32)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try following(&recorder, a);
+    defer core.destroy();
+
+    core.command(screen_request);
+    try answerError(core, (try pendingId(core, .pane_screen)).?, "not_found");
+    try recorder.expectPaneScreen("s", "");
+
+    // More text remains and the server does not say how long it is (an older server).
+    core.command(screen_request);
+    try answer(core, (try pendingId(core, .pane_screen)).?, "{\"content\":\"1\\n2\",\"id\":7}");
+    try recorder.expectPaneScreen("s", "");
+
+    // The read of the end fails, or does not reach the end.
+    core.command(screen_request);
+    try answer(core, (try pendingId(core, .pane_screen)).?, "{\"content\":\"1\",\"id\":7,\"total\":20000}");
+    try answerError(core, (try pendingId(core, .pane_screen_tail)).?, "not_found");
+    try recorder.expectPaneScreen("s", "");
+    core.command(screen_request);
+    try answer(core, (try pendingId(core, .pane_screen)).?, "{\"content\":\"1\",\"id\":7,\"total\":20000}");
+    try answer(core, (try pendingId(core, .pane_screen_tail)).?, "{\"id\":7,\"data\":\"x\\ny\\n\",\"total\":20000,\"eof\":false}");
+    try recorder.expectPaneScreen("s", "");
+
+    // The link drops while the text is asked for, and nothing waits for the next link.
+    core.command(screen_request);
+    core.lock.lock();
+    core.linkEnded();
+    core.lock.unlock();
+    core.command("{\"op\":\"fit\",\"block\":\"none\"}");
+    try recorder.expectPaneScreen("s", "");
+    core.command(screen_request);
+    try recorder.expectPaneScreen("s", "");
+    try testing.expectEqual(0, sent(core));
+    try testing.expectEqual(0, recorder.errors.items.len);
+}
+
+test "live: paneScreen reads the last lines of a terminal the core has no pane of (#32)" {
+    const url = try liveUrl();
+    const gpa = testing.allocator;
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var desk: Live = undefined;
+    try desk.open(url);
+    defer desk.close();
+    desk.prefix = core_prefix;
+
+    const near = try desk.createLabelled(core_prefix ++ "screen-near");
+    defer desk.remove(near.session);
+    const far = try desk.createLabelled(core_prefix ++ "screen-far");
+    defer desk.remove(far.session);
+
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var gate: Gate = .{};
+    const core = try Core.create(gpa, recorder.host(), gate.net(), 1);
+    defer core.destroy();
+    defer gate.set(false);
+    fenceOthers(core);
+    core.connect(url, null);
+    core.selectSession(near.session);
+    pin(core);
+    try expectCoreOn(core, &desk, near.session);
+    gate.set(true);
+    _ = try expectLive(&recorder, a, .{ .session = far.session, .tabs = 1, .selected = false, .program = true });
+
+    // More text than one answer holds, so that the end is read apart; then the lines to find.
+    _ = try desk.callOn(far.session, protocol.methods.terminalWrite, protocol.terminalWrite(gpa, far.session, far.block, "seq 1 3000; printf 'velo %s\\n  1. Yes\\n' screen-check\n"));
+    for (0..100) |_| {
+        try std.Io.sleep(testing.io, .fromMilliseconds(100), .awake);
+        try liveCommand(core, &desk, far.session, "{{\"op\":\"paneScreen\",\"tag\":\"live\",\"session\":\"{s}\",\"block\":\"{s}\"}}", .{ far.session, far.block });
+        const text = for (0..50) |_| {
+            core.command("{\"op\":\"fit\",\"block\":\"none\"}");
+            recorder.lock.lock();
+            const got = recorder.screens.pop();
+            recorder.lock.unlock();
+            if (got) |s| {
+                gpa.free(s.tag);
+                break s.text;
+            }
+            try std.Io.sleep(testing.io, .fromMilliseconds(20), .awake);
+        } else return error.NoScreenAnswer;
+        defer gpa.free(text);
+        // The shell's prompt may follow; the printed lines are among the last ones, in order.
+        if (std.mem.find(u8, text, "velo screen-check\n1. Yes")) |_| return;
+    }
+    return error.TestExpectedEqual;
+}
+
+test "screenTail: the last lines with text, without frames, each of a bounded length (#32)" {
+    const expectLines = struct {
+        fn call(want: []const u8, text: []const u8, whole: bool) !void {
+            const got = try core_mod.screenTail(testing.allocator, text, whole);
+            defer testing.allocator.free(got);
+            try testing.expectEqualStrings(want, got);
+        }
+    }.call;
+    try expectLines("", "", true);
+    try expectLines("", "\n \n\t\n", true);
+    try expectLines("one", "one", true);
+    // A read that starts inside a line leaves that line out.
+    try expectLines("", "one", false);
+    try expectLines("two", "one\r\ntwo\r\n", false);
+    // At most `screen_lines` lines, the last ones, in the order of the screen.
+    try testing.expectEqual(8, core_mod.screen_lines);
+    try expectLines("3\n4\n5\n6\n7\n8\n9\n10", "1\n2\n3\n\n4\n5\n6\n7\n8\n9\n10\n\n", true);
+    // A frame's rules are no lines, and its sides are no part of one.
+    try expectLines("Bash command\nrm -rf build\nDo you want to proceed?\n❯ 1. Yes",
+        \\╭──────────────────────────╮
+        \\│ Bash command             │
+        \\│   rm -rf build           │
+        \\│ Do you want to proceed?  │
+        \\│ ❯ 1. Yes                 │
+        \\╰──────────────────────────╯
+    , true);
+    // A long line is cut at a character, and says so.
+    try testing.expectEqual(120, core_mod.screen_line_bytes);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // `n` times "가", which is three bytes.
+    const ga = struct {
+        fn call(arena_gpa: std.mem.Allocator, n: usize) ![]const u8 {
+            const out = try arena_gpa.alloc(u8, n * 3);
+            for (0..n) |i| @memcpy(out[i * 3 ..][0..3], "가");
+            return out;
+        }
+    }.call;
+    try expectLines(try std.mem.concat(a, u8, &.{ "x\n", try ga(a, 40), "…" }), try std.mem.concat(a, u8, &.{ "x\n", try ga(a, 50) }), true);
+    try expectLines(try ga(a, 40), try ga(a, 40), true);
+    try expectLines(try std.mem.concat(a, u8, &.{ "a", try ga(a, 39), "…" }), try std.mem.concat(a, u8, &.{ "a", try ga(a, 40) }), true);
 }
 
 const PromptCheck = struct {

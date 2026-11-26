@@ -59,6 +59,7 @@ const Handle = struct {
     delivered_gen: u64 = 0,
     on_pane_report: c.jmethodID,
     on_pane_write: c.jmethodID,
+    on_pane_screen: c.jmethodID,
     on_reconnect_token: c.jmethodID,
     on_error: c.jmethodID,
     glyphs: glyphs.Glyphs,
@@ -81,6 +82,7 @@ const Handle = struct {
             .listener = global,
             .on_pane_report = try jni.methodId(env, global, "onPaneReport", "(Ljava/lang/String;)V"),
             .on_pane_write = try jni.methodId(env, global, "onPaneWrite", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+            .on_pane_screen = try jni.methodId(env, global, "onPaneScreen", "(Ljava/lang/String;Ljava/lang/String;)V"),
             .on_state = try jni.methodId(env, global, "onState", "(JZLjava/lang/String;)V"),
             .on_reconnect_token = try jni.methodId(env, global, "onReconnectToken", "(Ljava/lang/String;)V"),
             .on_error = try jni.methodId(env, global, "onError", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
@@ -94,6 +96,7 @@ const Handle = struct {
             .ctx = self,
             .onPaneReport = onPaneReport,
             .onPaneWrite = onPaneWrite,
+            .onPaneScreen = onPaneScreen,
             .onState = onState,
             .onReconnectToken = onReconnectToken,
             .onError = onError,
@@ -133,6 +136,11 @@ fn onPaneReport(ctx: *anyopaque, json: []const u8) void {
 fn onPaneWrite(ctx: *anyopaque, tag: []const u8, result: Core.PaneWriteResult, message: []const u8) void {
     const self: *Handle = @ptrCast(@alignCast(ctx));
     self.notify(self.on_pane_write, &.{ tag, @tagName(result), message });
+}
+
+fn onPaneScreen(ctx: *anyopaque, tag: []const u8, text: []const u8) void {
+    const self: *Handle = @ptrCast(@alignCast(ctx));
+    self.notify(self.on_pane_screen, &.{ tag, text });
 }
 
 fn onState(ctx: *anyopaque, gen: u64, snapshot: []const u8, patch: ?[]const u8) void {

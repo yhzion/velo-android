@@ -170,6 +170,66 @@ class PaneAlertsTest {
         assertNull(bare.program)
     }
 
+    @Test fun aNotificationThatCanBeAnsweredSaysWhoseWordsItShows() {
+        val sub = PaneSubscription("t", "hostA", target, "rex · deploy · Build")
+        val at = "2026-11-21T09:00:00Z"
+        val permission = PaneAlert(sub, PaneAlertKind.Blocked, "permission", "Bash", "rm -rf build", "claude-code", updatedAt = at)
+        val note = paneNoteText(permission)
+        // The message is the program's own report: any program in the pane can have written it (#32).
+        assertEquals("Approval requested: Bash", note.title)
+        assertEquals("Program reported: rm -rf build", note.text)
+        assertEquals("Program reported: rm -rf build\n\nrex · deploy · Build", note.expanded)
+        val question = paneNoteText(permission.copy(reason = "question", message = "answer: Ship it? (Yes · No)"))
+        assertEquals("Program reported: answer: Ship it? (Yes · No)", question.text)
+        // Without a message there is nothing to label.
+        assertEquals("rex · deploy · Build", paneNoteText(permission.copy(message = null)).expanded)
+        // A notification without buttons keeps its text: nothing can be answered from it.
+        assertEquals("rm -rf build", paneNoteText(permission.copy(updatedAt = null)).text)
+        assertEquals("rm -rf build", paneNoteText(permission.copy(agent = "omp")).text)
+        assertEquals("Tests passed", paneNoteText(permission.copy(kind = PaneAlertKind.Done, reason = null, message = "Tests passed")).text)
+    }
+
+    @Test fun aNotificationThatCanBeAnsweredShowsThePanesLastLinesUnderItsMessage() {
+        val sub = PaneSubscription("t", "hostA", target, "rex · deploy · Build")
+        val permission = PaneAlert(sub, PaneAlertKind.Blocked, "permission", "Bash", "rm -rf build", "claude-code",
+            updatedAt = "2026-11-21T09:00:00Z")
+        val screen = "Bash command\nrm -rf /\nDo you want to proceed?\n❯ 1. Yes"
+        val note = paneNoteText(permission, screen)
+        assertEquals("Program reported: rm -rf build", note.text)
+        assertEquals("Program reported: rm -rf build\n\nOn screen:\n$screen\n\nrex · deploy · Build", note.expanded)
+        assertEquals("On screen:\n$screen\n\nrex · deploy · Build", paneNoteText(permission.copy(message = " "), screen).expanded)
+        // No lines (the read failed or took too long): the notification is as without them.
+        for (none in listOf(null, "", " \n\n")) assertEquals(paneNoteText(permission), paneNoteText(permission, none))
+        // Control characters and separators in a line cannot break it or hide text.
+        assertEquals(listOf("a b", "c d", "e"), screenLines("a\u0008b\r\n\n \u0007 \nc d\ne\u0000"))
+        assertEquals(emptyList<String>(), screenLines(null))
+        // Lines are for the prompt a person answers: no other notification asks for or shows them.
+        val done = permission.copy(kind = PaneAlertKind.Done, reason = null)
+        assertTrue(asksScreen(permission))
+        assertFalse(asksScreen(done))
+        assertFalse(asksScreen(permission.copy(agent = "omp")))
+        assertEquals(paneNoteText(done), paneNoteText(done, screen))
+    }
+
+    @Test fun onlyTheNewestNotificationOfAPaneIsPostedAfterItsWait() {
+        val waits = NoteWaits()
+        val first = waits.hold("t", 0)
+        // Once, for the wait that is still the newest.
+        assertTrue(waits.take("t", 0, first))
+        assertFalse(waits.take("t", 0, first))
+        // A newer notification of the same pane and kind takes the place of one that waits.
+        val older = waits.hold("t", 0)
+        val newer = waits.hold("t", 0)
+        val other = waits.hold("t", 1)
+        assertFalse(waits.take("t", 0, older))
+        assertTrue(waits.take("t", 0, newer))
+        assertTrue(waits.take("t", 1, other))
+        // A notification posted or cancelled meanwhile ends the wait.
+        val dropped = waits.hold("u", 0)
+        waits.drop("u", 0)
+        assertFalse(waits.take("u", 0, dropped))
+    }
+
     @Test fun backgroundServiceRunsOnlyOffScreenWithRemotesWhileTheUserAllowsIt() {
         assertTrue(BackgroundConnection.wanted(enabled = true, foreground = false, remotes = 1))
         assertFalse(BackgroundConnection.wanted(enabled = true, foreground = true, remotes = 1))

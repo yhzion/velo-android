@@ -54,6 +54,9 @@ pub const Host = struct { // implemented by jni.zig (and by probe.zig / tests)
     onState: *const fn (ctx: *anyopaque, gen: u64, snapshot: []const u8, patch: ?[]const u8) void,
     onPaneReport: ?*const fn (ctx: *anyopaque, json: []const u8) void = null,
     onPaneWrite: ?*const fn (ctx: *anyopaque, tag: []const u8, result: Core.PaneWriteResult, message: []const u8) void = null,
+    /// The answer to the `paneScreen` intent `tag`: the last lines of the pane's text
+    /// (`screenTail`), "" when they could not be read.
+    onPaneScreen: ?*const fn (ctx: *anyopaque, tag: []const u8, text: []const u8) void = null,
     onReconnectToken: *const fn (ctx: *anyopaque, token: []const u8) void,
     /// `fix`: a one-line command that fixes the failure, for the user to copy (from the
     /// SSH pool); "" when there is none.
@@ -524,9 +527,16 @@ const Pending = union(enum) {
     ask: *Ask,
     /// A `paneWrite` reading the pane's program status before it writes.
     pane_write_check: *PaneWriteOp,
+    /// A `paneWrite` whose record held, reading the pane's processes: the record's owner
+    /// (`PaneWriteOp.owner`) must still be in front (`ownerInFront`).
+    pane_write_owner: *PaneWriteOp,
     /// The `terminal.write` of a `paneWrite` that passed its check: its tag (owned) and
     /// the byte count the server must confirm.
     pane_write: struct { tag: []u8, bytes: usize },
+    /// The `terminal.format` of a `paneScreen`: the text, or its start and where the rest is.
+    pane_screen: PaneScreenOp,
+    /// The `terminal.blob_read` of a `paneScreen` whose text did not fit in one answer.
+    pane_screen_tail: PaneScreenOp,
     /// Nothing to do with the answer.
     silent,
 };
@@ -535,9 +545,13 @@ const Pending = union(enum) {
 const PaneWriteOp = struct {
     arena: std.heap.ArenaAllocator,
     write: protocol.PaneWrite,
+    /// The pid the server named as the owner of the record the write answers; 0 before the
+    /// status check answered.
+    owner: i64 = 0,
 
     fn create(gpa: Allocator, w: protocol.PaneWrite) Allocator.Error!*PaneWriteOp {
         const op = try gpa.create(PaneWriteOp);
+        op.owner = 0;
         op.arena = .init(gpa);
         errdefer {
             op.arena.deinit();
@@ -584,6 +598,116 @@ pub fn statusHolds(expect: protocol.PaneExpect, result: json.Value) bool {
         return if (a != null and b != null) a.? == b.? else std.mem.eql(u8, at, wanted);
     }
     return false;
+}
+
+/// The pid of the process the server names as the owner of record `id` in a
+/// `com.superlogical.terminal.program_status` result: the pane's foreground process when
+/// the record was reported. The server adds it itself; a report cannot set it. Null when
+/// the record has none, as from a server that does not name owners.
+pub fn ownerPid(id: []const u8, result: json.Value) ?i64 {
+    for (model.items(model.get(result, "records"))) |record| {
+        if (!std.mem.eql(u8, model.str(model.get(record, "id")) orelse "", id)) continue;
+        const pid = model.get(model.get(record, "owner") orelse return null, "pid") orelse return null;
+        return if (pid == .integer) pid.integer else null;
+    }
+    return null;
+}
+
+/// Whether a `com.superlogical.terminal.process` result still has the process `owner` in
+/// front. A result that names no foreground process has nothing to compare with and counts
+/// as in front, which is what the write did before the owner was checked (#32).
+pub fn ownerInFront(owner: i64, result: json.Value) bool {
+    const pid = model.get(model.get(result, "foreground") orelse return true, "pid") orelse return true;
+    return pid != .integer or pid.integer == owner;
+}
+
+/// A `paneScreen` intent in flight. Owned by its pending entry.
+const PaneScreenOp = struct {
+    tag: []u8,
+    session: []u8,
+    block: []u8,
+    /// The read starts after the start of the text, so its first line may be part of one.
+    cut: bool = false,
+
+    fn create(gpa: Allocator, tag: []const u8, session: []const u8, block: []const u8) Allocator.Error!PaneScreenOp {
+        const t = try gpa.dupe(u8, tag);
+        errdefer gpa.free(t);
+        const s = try gpa.dupe(u8, session);
+        errdefer gpa.free(s);
+        return .{ .tag = t, .session = s, .block = try gpa.dupe(u8, block) };
+    }
+
+    fn free(op: PaneScreenOp, gpa: Allocator) void {
+        gpa.free(op.tag);
+        gpa.free(op.session);
+        gpa.free(op.block);
+    }
+};
+
+/// The most lines of a pane's text a notification shows (#32): enough for a prompt's
+/// question and its choices, few enough to read on a watch.
+pub const screen_lines = 8;
+/// The most bytes of one such line: 120 columns of Latin text, 40 of Hangul. A longer line
+/// is cut and ends with "…".
+pub const screen_line_bytes = 120;
+/// How much of the end of a pane's text is read for those lines.
+pub const screen_tail_bytes = 8192;
+
+/// The length of the box-drawing character (U+2500 to U+257F) `s` starts with, or 0.
+fn boxLen(s: []const u8) usize {
+    return if (s.len >= 3 and s[0] == 0xE2 and (s[1] == 0x94 or s[1] == 0x95) and s[2] & 0xC0 == 0x80) 3 else 0;
+}
+
+/// `line` without the blanks and the box-drawing characters at its ends: the text a program
+/// drew inside a frame, and nothing for a rule of a frame.
+fn screenLine(line: []const u8) []const u8 {
+    var s = line;
+    while (s.len > 0) {
+        const n: usize = if (s[0] == ' ' or s[0] == '\t' or s[0] == '\r') 1 else boxLen(s);
+        if (n == 0) break;
+        s = s[n..];
+    }
+    while (s.len > 0) {
+        const last = s[s.len - 1];
+        const n: usize = if (last == ' ' or last == '\t' or last == '\r') 1 else if (s.len >= 3) boxLen(s[s.len - 3 ..]) else 0;
+        if (n == 0) break;
+        s = s[0 .. s.len - n];
+    }
+    return s;
+}
+
+/// The last `screen_lines` lines of `text` that hold text, joined by "\n" in their order:
+/// what a pane shows at its end, for the notification of the prompt that is up there (#32).
+/// Blank lines and the rules of frames are left out, and a line longer than
+/// `screen_line_bytes` is cut at a character. `whole` is false for text read from the
+/// middle of the pane's text: the first line may then be part of one and is left out.
+/// Caller frees.
+pub fn screenTail(gpa: Allocator, text: []const u8, whole: bool) Allocator.Error![]u8 {
+    const body = if (whole) text else text[if (std.mem.findScalar(u8, text, '\n')) |i| i + 1 else text.len..];
+    var lines: [screen_lines][]const u8 = undefined;
+    var n: usize = 0;
+    var it = std.mem.splitBackwardsScalar(u8, body, '\n');
+    while (it.next()) |raw| {
+        const line = screenLine(raw);
+        if (line.len == 0) continue;
+        n += 1;
+        lines[screen_lines - n] = line;
+        if (n == screen_lines) break;
+    }
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(gpa);
+    for (lines[screen_lines - n ..], 0..) |line, i| {
+        if (i > 0) try out.append(gpa, '\n');
+        if (line.len <= screen_line_bytes) {
+            try out.appendSlice(gpa, line);
+            continue;
+        }
+        var end: usize = screen_line_bytes;
+        while (end > 0 and line[end] & 0xC0 == 0x80) end -= 1;
+        try out.appendSlice(gpa, line[0..end]);
+        try out.appendSlice(gpa, "…");
+    }
+    return out.toOwnedSlice(gpa);
 }
 
 // Lives on the sending thread's stack. Access only with Core.lock; no pointer to
@@ -783,6 +907,8 @@ fn forwardRefusal(gpa: Allocator, code: []const u8, message: []const u8) Allocat
 const Note = union(enum) {
     pane_report: []u8,
     pane_write: struct { text: []u8, tag_len: usize, result: Core.PaneWriteResult },
+    /// The tag, then the lines.
+    pane_screen: struct { text: []u8, tag_len: usize },
     token: []u8,
     err: struct { code: []u8, message: []u8, fix: []u8 },
 };
@@ -1135,6 +1261,7 @@ pub const Core = struct {
                 self.writeText(t.block, t.text);
             },
             .pane_write => |w| self.paneWrite(w),
+            .pane_screen => |s| self.paneScreen(s),
             .paste => |p| {
                 if (self.sessionForCommand() == null) return;
                 // The mode is read here, not taken from the app: it may have changed since
@@ -1300,7 +1427,8 @@ pub const Core = struct {
     };
 
     /// Intent `paneWrite`: read the pane's program status, and write the text only while it
-    /// still holds `expect` (`statusHolds`). Unlike `sendText` it names its session, so it
+    /// still holds `expect` (`statusHolds`) and the process the server named as the record's
+    /// owner is still the pane's foreground process (`ownerInFront`). Unlike `sendText` it names its session, so it
     /// works for a session that is not selected and for a parked core, whose control
     /// connection stays. Nothing is queued while the link is down. One answer for `tag`
     /// follows through the dedicated onPaneWrite callback.
@@ -1325,6 +1453,36 @@ pub const Core = struct {
         const w = op.write;
         if (err) |e| return self.notePaneWrite(w.tag, .not_sent, e.message);
         if (!statusHolds(w.expect, payload orelse .null)) return self.notePaneWrite(w.tag, .changed, "the prompt was answered or changed");
+        // Any program that writes to the pane can report a status, so a record that still
+        // holds says nothing of which program would read the answer. The server names the
+        // process that was in front when the record was reported: the answer goes out only
+        // while that process is still in front, not to a program started since (#32). A
+        // server that names no owner gives nothing to compare, and the record alone decides,
+        // as it did before.
+        const owner = ownerPid(w.expect.id, payload orelse .null) orelse return self.paneWriteSend(w);
+        const gpa = self.gpa;
+        const next = PaneWriteOp.create(gpa, w) catch return self.notePaneWrite(w.tag, .not_sent, "out of memory");
+        next.owner = owner;
+        const call = protocol.blockCall(gpa, w.session, w.block) catch {
+            next.destroy(gpa);
+            return self.notePaneWrite(w.tag, .not_sent, "out of memory");
+        };
+        if (!self.sendRequest(protocol.methods.terminalProcess, call, .{ .pane_write_owner = next })) {
+            self.notePaneWrite(w.tag, .not_sent, "the process check could not be sent");
+            next.destroy(gpa);
+        }
+    }
+
+    /// The answer to a `paneWrite` process check: write while the record's owner is in front.
+    fn paneWriteOwned(self: *Core, op: *PaneWriteOp, payload: ?json.Value, err: ?protocol.ResponseError) void {
+        const w = op.write;
+        if (err) |e| return self.notePaneWrite(w.tag, .not_sent, e.message);
+        if (!ownerInFront(op.owner, payload orelse .null)) return self.notePaneWrite(w.tag, .changed, "another program is in front of the one that asked");
+        self.paneWriteSend(w);
+    }
+
+    /// The write of a `paneWrite` that passed its checks.
+    fn paneWriteSend(self: *Core, w: protocol.PaneWrite) void {
         const gpa = self.gpa;
         const tag = gpa.dupe(u8, w.tag) catch return self.notePaneWrite(w.tag, .not_sent, "out of memory");
         const write = protocol.terminalWrite(gpa, w.session, w.block, w.text) catch {
@@ -1341,6 +1499,73 @@ pub const Core = struct {
         if (self.host.onPaneWrite == null) return;
         const text = std.mem.concat(self.gpa, u8, &.{ tag, message }) catch return;
         self.notes.append(self.gpa, .{ .pane_write = .{ .text = text, .tag_len = tag.len, .result = result } }) catch self.gpa.free(text);
+    }
+
+    /// Intent `paneScreen`: read the last lines of the pane's text from the server
+    /// (`screenTail`), for the notification of a prompt (#32). The server keeps a terminal's
+    /// text whether or not a client shows it, so this works for a pane that has no view, in
+    /// a session that is not selected, and for a parked core; the core's own copy of a pane
+    /// exists only for the selected session's. Nothing is queued while the link is down. One
+    /// answer for `tag` follows through onPaneScreen, with no lines when they could not be read.
+    fn paneScreen(self: *Core, s: protocol.PaneScreen) void {
+        if (!self.ready or !self.exists(s.session)) return self.notePaneScreen(s.tag, "");
+        const gpa = self.gpa;
+        const op = PaneScreenOp.create(gpa, s.tag, s.session, s.block) catch return self.notePaneScreen(s.tag, "");
+        const payload = protocol.terminalFormat(gpa, s.session, s.block, screen_tail_bytes) catch {
+            op.free(gpa);
+            return self.notePaneScreen(s.tag, "");
+        };
+        if (!self.sendRequest(protocol.methods.terminalFormat, payload, .{ .pane_screen = op })) {
+            self.notePaneScreen(s.tag, "");
+            op.free(gpa);
+        }
+    }
+
+    /// The answer to a `paneScreen` format: all of the text, or its start. The text is the
+    /// scrollback and then the screen, so only its end is wanted: when more remains, the
+    /// last `screen_tail_bytes` of it are read.
+    fn paneScreenFormatted(self: *Core, op: PaneScreenOp, payload: ?json.Value, err: ?protocol.ResponseError) void {
+        const result = payload orelse .null;
+        const content = model.str(model.get(result, "content"));
+        if (err != null or content == null) return self.notePaneScreen(op.tag, "");
+        const id = model.get(result, "id") orelse return self.notePaneLines(op.tag, content.?, true);
+        // A server that does not say how long the text is gives no way to its end.
+        const total = model.int(model.get(result, "total")) orelse return self.notePaneScreen(op.tag, "");
+        if (id != .integer or total < 0) return self.notePaneScreen(op.tag, "");
+        const offset = @max(0, total - screen_tail_bytes);
+        const gpa = self.gpa;
+        var next = PaneScreenOp.create(gpa, op.tag, op.session, op.block) catch return self.notePaneScreen(op.tag, "");
+        next.cut = offset > 0;
+        // A read counts its bytes as JSON text, where one byte takes up to six.
+        const read = protocol.terminalBlobRead(gpa, op.session, op.block, id.integer, offset, screen_tail_bytes * 6) catch {
+            next.free(gpa);
+            return self.notePaneScreen(op.tag, "");
+        };
+        if (!self.sendRequest(protocol.methods.terminalBlobRead, read, .{ .pane_screen_tail = next })) {
+            self.notePaneScreen(op.tag, "");
+            next.free(gpa);
+        }
+    }
+
+    /// The answer to a `paneScreen` read of the end of the text. A read that stops before
+    /// the end would show lines that are not the last ones, so it counts as no answer.
+    fn paneScreenRead(self: *Core, op: PaneScreenOp, payload: ?json.Value, err: ?protocol.ResponseError) void {
+        const result = payload orelse .null;
+        const data = model.str(model.get(result, "data"));
+        if (err != null or data == null or model.boolean(model.get(result, "eof")) != true) return self.notePaneScreen(op.tag, "");
+        self.notePaneLines(op.tag, data.?, !op.cut);
+    }
+
+    fn notePaneLines(self: *Core, tag: []const u8, text: []const u8, whole: bool) void {
+        const lines = screenTail(self.gpa, text, whole) catch return self.notePaneScreen(tag, "");
+        defer self.gpa.free(lines);
+        self.notePaneScreen(tag, lines);
+    }
+
+    fn notePaneScreen(self: *Core, tag: []const u8, lines: []const u8) void {
+        if (self.host.onPaneScreen == null) return;
+        const text = std.mem.concat(self.gpa, u8, &.{ tag, lines }) catch return;
+        self.notes.append(self.gpa, .{ .pane_screen = .{ .text = text, .tag_len = tag.len } }) catch self.gpa.free(text);
     }
 
     /// An Android key event for a terminal block (action: 0 down, 1 up, 2 multiple).
@@ -2204,6 +2429,7 @@ pub const Core = struct {
         for (notes.items) |note| switch (note) {
             .pane_report => |r| if (host.onPaneReport) |callback| callback(host.ctx, r),
             .pane_write => |w| if (host.onPaneWrite) |callback| callback(host.ctx, w.text[0..w.tag_len], w.result, w.text[w.tag_len..]),
+            .pane_screen => |s| if (host.onPaneScreen) |callback| callback(host.ctx, s.text[0..s.tag_len], s.text[s.tag_len..]),
             .token => |t| host.onReconnectToken(host.ctx, t),
             .err => |e| host.onError(host.ctx, e.code, e.message, e.fix),
         };
@@ -2280,6 +2506,7 @@ pub const Core = struct {
         for (notes.items) |note| switch (note) {
             .pane_report => |r| gpa.free(r),
             .pane_write => |w| gpa.free(w.text),
+            .pane_screen => |s| gpa.free(s.text),
             .token => |t| gpa.free(t),
             .err => |e| {
                 gpa.free(e.code);
@@ -2753,10 +2980,11 @@ pub const Core = struct {
         var it = self.pending.valueIterator();
         while (it.next()) |p| {
             switch (p.*) {
-                // Nothing was written: the status check never answered.
-                .pane_write_check => |op| self.notePaneWrite(op.write.tag, .not_sent, "the connection to the server dropped"),
+                // Nothing was written: the status check or the process check never answered.
+                .pane_write_check, .pane_write_owner => |op| self.notePaneWrite(op.write.tag, .not_sent, "the connection to the server dropped"),
                 // The server may or may not have run the write.
                 .pane_write => |w| self.notePaneWrite(w.tag, .unconfirmed, "the connection to the server dropped"),
+                .pane_screen, .pane_screen_tail => |op| self.notePaneScreen(op.tag, ""),
                 else => {},
             }
             freePending(gpa, p.*);
@@ -2800,8 +3028,9 @@ pub const Core = struct {
         switch (p) {
             .attach => |a| gpa.free(a.session),
             .follow_view, .window_moved, .stash_floated => |session| gpa.free(session),
-            .pane_write_check => |op| op.destroy(gpa),
+            .pane_write_check, .pane_write_owner => |op| op.destroy(gpa),
             .pane_write => |w| gpa.free(w.tag),
+            .pane_screen, .pane_screen_tail => |op| op.free(gpa),
             .pane_moved => |m| {
                 gpa.free(m.session);
                 gpa.free(m.block);
@@ -3066,6 +3295,9 @@ pub const Core = struct {
         defer freePending(gpa, pending);
         switch (pending) {
             .pane_write_check => |op| self.paneWriteChecked(op, payload, err),
+            .pane_write_owner => |op| self.paneWriteOwned(op, payload, err),
+            .pane_screen => |op| self.paneScreenFormatted(op, payload, err),
+            .pane_screen_tail => |op| self.paneScreenRead(op, payload, err),
             .pane_write => |w| {
                 if (err) |e| return self.notePaneWrite(w.tag, .unconfirmed, e.message);
                 const written = model.get(payload orelse .null, "bytes_written") orelse .null;

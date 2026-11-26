@@ -64,6 +64,8 @@ interface CoreListener {
     fun onState(gen: Long, full: Boolean, json: String)
     fun onPaneReport(json: String)
     fun onPaneWrite(tag: String, result: String, message: String)
+    /** The last lines of a pane's text for the `paneScreen` intent [tag]; "" when they could not be read. */
+    fun onPaneScreen(tag: String, text: String)
     fun onReconnectToken(token: String)
     /** [fix]: a one-line command that fixes the failure, for "Copy command" (from the SSH pool); "" when none. */
     fun onError(code: String, message: String, fix: String)

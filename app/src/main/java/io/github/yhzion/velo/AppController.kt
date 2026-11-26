@@ -329,7 +329,7 @@ class AppController(context: Context) {
                 if (report != null) {
                     val alerts = paneAlerts.receive(remote.id, report, labels[report.target])
                     conn.activityReadState.update(report.target, paneAlerts.records(remote.id, report.target))
-                    deliver(alerts.map { it.copy(location = labels[it.subscription.target] ?: it.subscription.label) }, conn.visibleActivityPanes)
+                    deliver(alerts.map { it.copy(location = labels[it.subscription.target] ?: it.subscription.label) }, conn)
                 }
             },
             updateActivityTargets = update@{ conn, state ->
@@ -351,13 +351,17 @@ class AppController(context: Context) {
         ).also { it.watchPanes(paneAlerts.forRemote(remote.id).map { sub -> sub.target }.toSet()) }
     }
 
-    private fun deliver(alerts: List<PaneAlert>, visible: Set<PaneAddress>) {
+    private fun deliver(alerts: List<PaneAlert>, conn: HostConnection) {
+        val visible = conn.visibleActivityPanes
         val foreground = resumedActivities > 0
         for (alert in alerts) {
             val sub = alert.subscription
             val enabled = paneAlerts.find(sub.remote, sub.target)?.enabled(alert.kind) ?: settings.posts(alert.kind)
             if (!foreground && settings.activityNotices && enabled) {
-                if (notifications.post(alert)) paneAlerts.rememberRoute(alert.subscription, notifications.activeTokens())
+                // A notification that can be answered shows what the pane's screen ends with (#32).
+                notifications.post(alert, screen = { lines -> conn.paneScreen(sub.target.session, sub.target.block, lines) }) {
+                    paneAlerts.rememberRoute(alert.subscription, notifications.activeTokens())
+                }
             }
         }
         if (!settings.activitySounds) return

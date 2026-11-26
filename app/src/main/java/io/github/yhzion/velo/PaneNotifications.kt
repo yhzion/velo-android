@@ -39,12 +39,34 @@ private val NoteBreak = Regex("""[\p{Cc}\p{Zl}\p{Zp}]+""")
 
 private fun String?.oneLine() = this?.replace(NoteBreak, " ")?.trim()?.takeIf { it.isNotEmpty() }
 
+/** Before the program's own message on a notification that can be answered (#32). */
+internal const val REPORTED_LABEL = "Program reported:"
+/** Before the pane's last lines on a notification that can be answered (#32). */
+internal const val SCREEN_LABEL = "On screen:"
+
+/** Whether [alert]'s notification has buttons that answer the pane's prompt ([replyPlan]). */
+internal fun asksScreen(alert: PaneAlert) =
+    replyPlan(alert.kind, alert.reason, alert.agent, claudeChoices(alert.message), alert.record, alert.updatedAt) != null
+
+/** The lines of [text] (`Core.screenTail`) that hold text, each without control characters. */
+internal fun screenLines(text: String?): List<String> = text.orEmpty().split('\n').mapNotNull { it.oneLine() }
+
 /**
  * The notification for [alert]: the state and the work the program names in the title, its
  * message in the text, and the message with the place it runs (remote · session · tab) when
  * expanded. Without a reported title the state is the title; without a message, the place.
+ *
+ * A notification that can be answered ([asksScreen]) says more, because any program that
+ * writes to the pane can report a status in its own words, and the answer goes to whatever
+ * prompt is up (#32): its message is marked as the program's report ([REPORTED_LABEL]), and
+ * when expanded it shows [screen], the pane's last lines as the server has them, under
+ * [SCREEN_LABEL]. Without [screen] (not read in time) it shows the rest all the same.
  */
-internal fun paneNoteText(alert: PaneAlert): PaneNoteText {
+internal fun paneNoteText(alert: PaneAlert, screen: String? = null): PaneNoteText {
+    val answered = asksScreen(alert)
+    fun reported(text: String?) = if (answered) text?.let { "$REPORTED_LABEL $it" } else text
+    val lines = if (answered) screenLines(screen) else emptyList()
+    val onScreen = lines.takeIf { it.isNotEmpty() }?.joinToString("\n", prefix = "$SCREEN_LABEL\n")
     val state = if (alert.kind != PaneAlertKind.Blocked) alert.kind.label else when (alert.reason) {
         "question" -> "Question needs an answer"
         "permission" -> "Approval requested"
@@ -57,14 +79,36 @@ internal fun paneNoteText(alert: PaneAlert): PaneNoteText {
     val program = alert.agent.oneLine()?.let { TabAgent.from(it)?.label ?: it }
     return PaneNoteText(
         title = if (work == null) state else "$state: $work",
-        text = message.oneLine() ?: place.orEmpty(),
-        expanded = listOfNotNull(message, place).joinToString("\n\n"),
+        text = reported(message.oneLine()) ?: place.orEmpty(),
+        expanded = listOfNotNull(reported(message), onScreen, place).joinToString("\n\n"),
         program = program,
     )
 }
 
+/**
+ * The notifications that wait for their pane's last lines before they are posted. Only the
+ * newest wait of a notification (its tag and id) may post it: a wait that a newer report, a
+ * post or a cancel overtook must not put older words back.
+ */
+internal class NoteWaits {
+    private val newest = mutableMapOf<Pair<String, Int>, Long>()
+    private var serial = 0L
+
+    /** A notification starts to wait; the result names the wait for [take]. */
+    fun hold(tag: String, id: Int): Long = (++serial).also { newest[tag to id] = it }
+
+    /** True once, when [hold] is still the notification's newest wait: it may be posted. */
+    fun take(tag: String, id: Int, hold: Long): Boolean = (newest[tag to id] == hold).also { if (it) newest.remove(tag to id) }
+
+    /** The notification was posted or cancelled otherwise: a wait for it posts nothing. */
+    fun drop(tag: String, id: Int) {
+        newest.remove(tag to id)
+    }
+}
+
 internal class PaneNotifications(private val context: Context) {
     private val manager = requireNotNull(context.getSystemService(NotificationManager::class.java))
+    private val waits = NoteWaits()
 
     fun activeTokens() = manager.activeNotifications.mapNotNull { it.tag }.toSet()
 
@@ -89,11 +133,30 @@ internal class PaneNotifications(private val context: Context) {
         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
     }
 
-    fun post(alert: PaneAlert): Boolean {
+    /**
+     * Post [alert]'s notification, and run [posted] when it is up. One that can be answered
+     * ([asksScreen]) is posted with the pane's last lines: [screen] reads them and gives them
+     * to its callback once, null when it could not or did not in time, and the notification
+     * waits for that. Main thread, as the callback of [screen] must be.
+     */
+    fun post(alert: PaneAlert, screen: (lines: (String?) -> Unit) -> Unit, posted: () -> Unit) {
         createChannels()
+        val tag = alert.subscription.token
+        val id = alert.kind.ordinal
+        waits.drop(tag, id)
+        if (access(alert.kind) != NotificationAccess.Allowed) return
+        if (!asksScreen(alert)) {
+            if (show(alert, null)) posted()
+            return
+        }
+        val hold = waits.hold(tag, id)
+        screen { lines -> if (waits.take(tag, id, hold) && show(alert, lines)) posted() }
+    }
+
+    private fun show(alert: PaneAlert, screen: String?): Boolean {
         if (access(alert.kind) != NotificationAccess.Allowed) return false
         val sub = alert.subscription
-        val text = paneNoteText(alert)
+        val text = paneNoteText(alert, screen)
         val target = ReplyTarget.of(alert, text.title)
         val plan = replyPlan(alert.kind, alert.reason, alert.agent, target.choices, alert.record, alert.updatedAt)
         val note = builder(alert.kind, sub.token, text.title, text.text, text.expanded, text.program)
@@ -240,7 +303,10 @@ internal class PaneNotifications(private val context: Context) {
         player = null
     }
 
-    fun cancel(token: String, kind: PaneAlertKind) = manager.cancel(token, kind.ordinal)
+    fun cancel(token: String, kind: PaneAlertKind) {
+        waits.drop(token, kind.ordinal)
+        manager.cancel(token, kind.ordinal)
+    }
 
     companion object {
         private const val OPEN = "io.github.yhzion.velo.OPEN_PANE_NOTIFICATION"

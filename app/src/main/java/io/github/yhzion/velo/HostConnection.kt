@@ -589,6 +589,27 @@ class HostConnection(
         paneWrites.remove(tag)
     }
 
+    private val paneScreens = mutableMapOf<String, (String?) -> Unit>()
+    private var paneScreenSerial = 0L
+
+    /**
+     * Read the last lines of the text of the terminal [block] of [session], for the
+     * notification of its prompt (`Core.paneScreen`, #32). The server has the text of every
+     * terminal, so any session works, selected or not, and a pane no view shows. [done] runs
+     * once on main: with the lines, or with null when they could not be read or did not come
+     * within [SCREEN_WAIT_MS], so that the notification is not kept back.
+     */
+    internal fun paneScreen(session: String, block: String, done: (String?) -> Unit) {
+        if (destroyed) {
+            main.post { done(null) }
+            return
+        }
+        val tag = "s${++paneScreenSerial}"
+        paneScreens[tag] = done
+        op("paneScreen", "tag" to tag, "session" to session, "block" to block)
+        main.postDelayed({ paneScreens.remove(tag)?.invoke(null) }, SCREEN_WAIT_MS)
+    }
+
     /**
      * Stops the core for good; nothing of the remote is drawn any more. The panes give their
      * surfaces back here, before the views go; the core itself is torn down on its own thread,
@@ -609,6 +630,9 @@ class HostConnection(
         val writes = paneWrites.values.toList()
         paneWrites.clear()
         for (done in writes) main.post { done(PaneWriteResult.Unconfirmed, "the connection was closed") }
+        val screens = paneScreens.values.toList()
+        paneScreens.clear()
+        for (done in screens) main.post { done(null) }
         // A download that waits for an answer or streams a file ends now ([endDownload]).
         if (downloadRunning) VeloCore.downloadCancel(core)
         if (idle()) destroyCore()
@@ -702,6 +726,10 @@ class HostConnection(
         main.post { paneWrites.remove(tag)?.invoke(PaneWriteResult.fromWire(result), message) }
     }
 
+    override fun onPaneScreen(tag: String, text: String) {
+        main.post { paneScreens.remove(tag)?.invoke(text.ifEmpty { null }) }
+    }
+
     override fun onReconnectToken(token: String) {
         main.post { if (!destroyed) env.store.saveToken(url, token) }
     }
@@ -763,6 +791,12 @@ class HostConnection(
         const val TEXT_SIZE_STEP = 1.15f
         /** The longest a first dial waits for the node; a node that starts takes 2 to 5 s to run. */
         const val NODE_WAIT_MS = 10_000L
+        /**
+         * The longest a notification waits for its pane's last lines ([paneScreen]): two
+         * requests to the server, which a tailnet answers well within it. Short enough that
+         * the notification does not seem late, since it is posted without the lines after it.
+         */
+        const val SCREEN_WAIT_MS = 800L
     }
 }
 
