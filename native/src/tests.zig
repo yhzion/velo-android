@@ -5,6 +5,8 @@ test {
     _ = @import("net/test_net.zig");
     _ = @import("net/test_endpoint.zig");
     _ = @import("net/test_tls.zig");
+    // Its own tests: an import from Conn.zig alone does not run them.
+    _ = @import("net/TlsClient.zig");
     _ = @import("rex/test_model.zig");
     _ = @import("rex/test_core.zig");
     _ = @import("rex/Download.zig");

@@ -30,7 +30,10 @@ run separately in Kotlin.
   intermediates; the nameConstraints of every CA in the path, the trusted one included, hold
   for dNSName, iPAddress and directoryName; the server's certificate must allow TLS server
   use in extendedKeyUsage, and no presented certificate may carry an unknown critical
-  extension; IP hosts get no SNI and match iPAddress names only). The roots are every CA of
+  extension; IP hosts get no SNI and match iPAddress names only; every length a server
+  sends, in a certificate or a handshake message, is compared with the bytes that are
+  there, because the release core is built ReleaseFast, without the safety checks
+  upstream's parser relies on). The roots are every CA of
   `AndroidCAStore`, system and user, which the app copies as PEM into `no_backup/user-cas`
   on every start (`TrustedCas.kt`): the store leaves out the system CAs the user turned off
   and reads the updatable store of Android 14 and later, the app may not read

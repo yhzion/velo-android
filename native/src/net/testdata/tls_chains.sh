@@ -1,7 +1,8 @@
 #!/bin/sh
 # Certificate chains for the TLS chain-walk tests in net/test_tls.zig, which runs this
 # script (embedded) as `sh -c SCRIPT sh DIR` and serves each chain with `openssl s_server`.
-# Everything is generated into DIR, valid for one day, with throwaway P-256 keys.
+# Everything is generated into DIR, valid for one day, with throwaway P-256 keys (one
+# RSA key, for case rsa).
 #
 # DIR/ca/root.pem          trusted root for most cases
 # DIR/ca-pathlen0/          a root with pathlen 0 (trust store of its own)
@@ -17,7 +18,13 @@ set -eu
 cd "$1"
 mkdir -p ca ca-pathlen0 ca-leaf ca-self ca-v1root ca-v1signed ca-nc
 
-key() { openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$1.key" 2>/dev/null; }
+key() {
+    if [ "${key_type:-}" = rsa ]; then
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$1.key" 2>/dev/null
+    else
+        openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$1.key" 2>/dev/null
+    fi
+}
 
 # cert NAME SUBJECT ISSUER EXTENSIONS: NAME.pem signed by ISSUER.key (ISSUER.pem's name).
 cert() {
@@ -145,6 +152,11 @@ for n in ip_wild ip_dns ip_cn; do cp inter.pem "$n.issuers.pem"; done
 
 # direct: the root signs the server's certificate, with no intermediate.
 cert direct "/CN=localhost" root "$leaf\nsubjectAltName=DNS:localhost"
+
+# rsa: the one server key that is RSA, so the server signs the handshake with RSA.
+key_type=rsa
+cert rsa "/CN=localhost" root "$leaf\nsubjectAltName=DNS:localhost"
+key_type=
 
 # valid6: as valid, for the IPv6 locator [::1].
 cert valid6 "/CN=localhost" inter "$leaf\nsubjectAltName=DNS:localhost,IP:::1"

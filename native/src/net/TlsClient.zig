@@ -24,6 +24,14 @@
 //!    have a critical extension this client does not process (RFC 5280 6.1.4(o)).
 //!  - An IP address host is not sent as SNI (RFC 6066 section 3) and matches only an
 //!    iPAddress subjectAltName, never a dNSName (wildcard or not) or the common name.
+//!  - Every length the server sends is compared with the bytes that are there. Upstream
+//!    leaves that to Zig's safety checks in several places, and the release core is built
+//!    without them (ReleaseFast). A presented certificate is parsed by `parseCertificate`,
+//!    not by `std.crypto.Certificate.parse`, and that also covers the subjectAltName and
+//!    the RSA key std reads later; a trusted certificate goes through it too when it is
+//!    used. The ServerHello session id length, the header of a handshake message after
+//!    the handshake, and the length of an RSA handshake signature are checked, and
+//!    key_update is refused on TLS 1.2, where upstream read the TLS 1.3 secrets.
 //!  - A note above `cipher_suites` on why ChaCha20 comes first on Android (#337); comment
 //!    only, marked "Velo note".
 //! When moving to a newer Zig, copy the new upstream file and re-apply the patches.
@@ -529,7 +537,9 @@ pub fn init(input: *Reader, output: *Writer, options: Options) InitError!Client 
                             return error.TlsUnexpectedMessage;
                         }
                         const legacy_session_id_echo_len = hsd.decode(u8);
-                        try hsd.ensure(legacy_session_id_echo_len + 2 + 1);
+                        // Velo patch: upstream adds in u8, so a length of 253 or more
+                        // overflowed and the session id was read without its bytes.
+                        try hsd.ensure(@as(usize, legacy_session_id_echo_len) + 2 + 1);
                         const legacy_session_id_echo = hsd.slice(legacy_session_id_echo_len);
                         const cipher_suite_tag = hsd.decode(tls.CipherSuite);
                         hsd.skip(1); // legacy_compression_method
@@ -711,7 +721,9 @@ pub fn init(input: *Reader, output: *Writer, options: Options) InitError!Client 
                                 .buffer = certd.buf,
                                 .index = @intCast(certd.idx),
                             };
-                            const subject = try subject_cert.parse();
+                            // Velo patch: upstream's parse reads the lengths in the
+                            // certificate without comparing them with its size.
+                            const subject = try parseCertificate(subject_cert);
                             // Velo patch: keep the path for the constraints of the CAs above.
                             if (cert_index >= max_path) return error.TlsCertificateChainTooLong;
                             path[cert_index] = subject;
@@ -1341,6 +1353,9 @@ fn readIndirect(c: *Client) Reader.Error!usize {
         .handshake => {
             var ct_i: usize = 0;
             while (true) {
+                // Velo patch: the type and the 3 length bytes have to be there. Upstream
+                // read them past the end of a record that stops short of them.
+                if (cleartext.len - ct_i < 4) return failRead(c, error.TlsBadLength);
                 const handshake_type: tls.HandshakeType = @fromBackingInt(@intCast(cleartext[ct_i]));
                 ct_i += 1;
                 const handshake_len = mem.readInt(u24, cleartext[ct_i..][0..3], .big);
@@ -1353,6 +1368,9 @@ fn readIndirect(c: *Client) Reader.Error!usize {
                         // This client implementation ignores new session tickets.
                     },
                     .key_update => {
+                        // Velo patch: TLS 1.2 has no key_update. Upstream took one there
+                        // and read the TLS 1.3 secrets out of the TLS 1.2 key block.
+                        if (c.tls_version != .tls_1_3) return failRead(c, error.TlsUnexpectedMessage);
                         if (handshake.len != 1) return failRead(c, error.TlsDecodeError);
                         switch (c.application_cipher) {
                             inline else => |*p| {
@@ -1667,11 +1685,18 @@ const CertificatePublicKey = struct {
                 const RsaSignature = SchemeRsa(comptime_scheme);
                 const Hash = SchemeHash(comptime_scheme);
                 const PublicKey = Certificate.rsa.PublicKey;
+                // Velo patch: `parseDer` compares no length with the key.
+                try checkRsaKey(pub_key);
                 const components = try PublicKey.parseDer(pub_key);
                 const exponent = components.exponent;
                 const modulus = components.modulus;
                 switch (modulus.len) {
                     inline 128, 256, 384, 512 => |modulus_len| {
+                        // Velo patch: a signature is as long as the modulus (RFC 8017
+                        // 8.1.2, 8.2.2). `fromBytes` below copies it into an array of
+                        // that size without comparing, so a longer one was written past
+                        // the array.
+                        if (encoded_sig.len != modulus_len) return error.TlsBadRsaSignatureBitCount;
                         const key: PublicKey = try .fromBytes(exponent, modulus);
                         const sig = RsaSignature.fromBytes(modulus_len, encoded_sig);
                         try RsaSignature.concatVerify(modulus_len, &sig, msg, key, Hash);
@@ -1734,8 +1759,11 @@ const max_path = 10;
 fn verifyByAnchor(bundle: Certificate.Bundle, subject: Certificate.Parsed, now_sec: i64, below: usize, path: []const Certificate.Parsed) !void {
     const index = bundle.find(subject.issuer()) orelse return error.CertificateIssuerNotFound;
     const anchor_cert: Certificate = .{ .buffer = bundle.bytes.items, .index = index };
-    // Every certificate in the bundle was parsed before it was added.
-    const anchor = anchor_cert.parse() catch unreachable;
+    // Every certificate in the bundle was parsed before it was added, by upstream's parser
+    // (`Bundle.parseCert`), which checks no length. The CA files are the device's, not the
+    // server's, so that is left as it is; here the checked parser costs nothing extra and
+    // turns a certificate it refuses into an error.
+    const anchor = try parseCertificate(anchor_cert);
     try subject.verify(anchor, now_sec);
     if (mem.eql(u8, try certBytes(anchor.certificate), try certBytes(subject.certificate))) return;
     try checkIssuer(anchor, .anchor, below, now_sec);
@@ -2191,6 +2219,170 @@ fn derRead(bytes: []const u8, tag: u8) !Der {
     return element;
 }
 
+/// The DER element of `bytes` at `index`, which has to end at or before `limit`: the end
+/// of the element that holds it, never past `bytes`. In std's form, for `parseCertificate`.
+fn derAt(bytes: []const u8, index: u32, limit: u32) !Certificate.der.Element {
+    if (limit > bytes.len or index >= limit) return error.CertificateFieldHasInvalidLength;
+    const element = try derNext(bytes[index..limit]);
+    const body_end: u32 = @intCast(limit - element.rest.len);
+    return .{
+        .identifier = @bitCast(element.tag),
+        .slice = .{ .start = @intCast(body_end - element.body.len), .end = body_end },
+    };
+}
+
+/// `std.crypto.Certificate.parse` with every length checked. Upstream's `der.Element.parse`
+/// compares no length with the buffer and leaves that to the safety checks, which a
+/// release build does not have: a certificate whose length field points past its end, sent
+/// by any server before anything is verified, was read out of bounds. Here each element
+/// has to lie inside the element that holds it, so no offset of the result points outside
+/// the certificate. An indefinite length, which upstream took for zero, is refused.
+///
+/// The result is also safe for the DER that std reads later from the same bytes: the
+/// subjectAltName in `Parsed.verifyHostName` and the RSA key in `rsa.PublicKey.parseDer`
+/// (`Parsed.verify`, `CertificatePublicKey.verifySignature`). Both are walked here first
+/// with `derNext`, which finds the same offsets as upstream or fails.
+fn parseCertificate(cert: Certificate) !Certificate.Parsed {
+    const bytes = cert.buffer;
+    const bytes_end = std.math.cast(u32, bytes.len) orelse return error.CertificateFieldHasInvalidLength;
+    const certificate = try derAt(bytes, cert.index, bytes_end);
+    const cert_end = certificate.slice.end;
+    const tbs = try derAt(bytes, certificate.slice.start, cert_end);
+    const tbs_end = tbs.slice.end;
+    const version_elem = try derAt(bytes, tbs.slice.start, tbs_end);
+    const version = try Certificate.parseVersion(bytes, version_elem);
+    const serial_number = if (@as(u8, @bitCast(version_elem.identifier)) == 0xa0)
+        try derAt(bytes, version_elem.slice.end, tbs_end)
+    else
+        version_elem;
+    const tbs_signature = try derAt(bytes, serial_number.slice.end, tbs_end);
+    const issuer = try derAt(bytes, tbs_signature.slice.end, tbs_end);
+    const validity = try derAt(bytes, issuer.slice.end, tbs_end);
+    const not_before = try derAt(bytes, validity.slice.start, validity.slice.end);
+    const not_before_utc = try cert.parseTime(not_before);
+    const not_after = try derAt(bytes, not_before.slice.end, validity.slice.end);
+    const not_after_utc = try cert.parseTime(not_after);
+    const subject = try derAt(bytes, validity.slice.end, tbs_end);
+
+    const pub_key_info = try derAt(bytes, subject.slice.end, tbs_end);
+    const pub_key_algorithm = try derAt(bytes, pub_key_info.slice.start, pub_key_info.slice.end);
+    const pub_key_algo_elem = try derAt(bytes, pub_key_algorithm.slice.start, pub_key_algorithm.slice.end);
+    const pub_key_algo: Certificate.Parsed.PubKeyAlgo = switch (try Certificate.parseAlgorithmCategory(bytes, pub_key_algo_elem)) {
+        inline else => |tag| @unionInit(Certificate.Parsed.PubKeyAlgo, @tagName(tag), {}),
+        .X9_62_id_ecPublicKey => pub_key_algo: {
+            const params_elem = try derAt(bytes, pub_key_algo_elem.slice.end, pub_key_algorithm.slice.end);
+            break :pub_key_algo .{ .X9_62_id_ecPublicKey = try Certificate.parseNamedCurve(bytes, params_elem) };
+        },
+    };
+    const pub_key = try derBitString(cert, try derAt(bytes, pub_key_algorithm.slice.end, pub_key_info.slice.end));
+    switch (pub_key_algo) {
+        .rsaEncryption, .rsassa_pss => try checkRsaKey(bytes[pub_key.start..pub_key.end]),
+        .X9_62_id_ecPublicKey, .curveEd25519 => {},
+    }
+
+    var common_name: Certificate.der.Element.Slice = .empty;
+    var name_i = subject.slice.start;
+    while (name_i < subject.slice.end) {
+        const rdn = try derAt(bytes, name_i, subject.slice.end);
+        var rdn_i = rdn.slice.start;
+        while (rdn_i < rdn.slice.end) {
+            const atav = try derAt(bytes, rdn_i, rdn.slice.end);
+            var atav_i = atav.slice.start;
+            while (atav_i < atav.slice.end) {
+                const ty_elem = try derAt(bytes, atav_i, atav.slice.end);
+                const val = try derAt(bytes, ty_elem.slice.end, atav.slice.end);
+                atav_i = val.slice.end;
+                const ty = Certificate.parseAttribute(bytes, ty_elem) catch |err| switch (err) {
+                    error.CertificateHasUnrecognizedObjectId => continue,
+                    else => |e| return e,
+                };
+                switch (ty) {
+                    .commonName => common_name = val.slice,
+                    else => {},
+                }
+            }
+            rdn_i = atav.slice.end;
+        }
+        name_i = rdn.slice.end;
+    }
+
+    const sig_algo = try derAt(bytes, tbs_end, cert_end);
+    const algo_elem = try derAt(bytes, sig_algo.slice.start, sig_algo.slice.end);
+    const signature_algorithm = try Certificate.parseAlgorithm(bytes, algo_elem);
+    const signature = try derBitString(cert, try derAt(bytes, sig_algo.slice.end, cert_end));
+
+    // As upstream: version 1 has no extensions, and neither has a certificate whose field
+    // after the public key is not [3] (upstream compares the tag number alone).
+    var subject_alt_name: Certificate.der.Element.Slice = .empty;
+    ext: {
+        if (version == .v1) break :ext;
+        if (pub_key_info.slice.end >= tbs_end) break :ext;
+        const outer_extensions = try derAt(bytes, pub_key_info.slice.end, tbs_end);
+        if (outer_extensions.identifier.tag != .bitstring) break :ext;
+        const list = try derAt(bytes, outer_extensions.slice.start, outer_extensions.slice.end);
+        var ext_i = list.slice.start;
+        while (ext_i < list.slice.end) {
+            const extension = try derAt(bytes, ext_i, list.slice.end);
+            ext_i = extension.slice.end;
+            const oid_elem = try derAt(bytes, extension.slice.start, extension.slice.end);
+            const ext_id = Certificate.parseExtensionId(bytes, oid_elem) catch |err| switch (err) {
+                error.CertificateHasUnrecognizedObjectId => continue,
+                else => |e| return e,
+            };
+            const critical_elem = try derAt(bytes, oid_elem.slice.end, extension.slice.end);
+            const ext_bytes_elem = if (critical_elem.identifier.tag != .boolean)
+                critical_elem
+            else
+                try derAt(bytes, critical_elem.slice.end, extension.slice.end);
+            switch (ext_id) {
+                .subject_alt_name => subject_alt_name = ext_bytes_elem.slice,
+                else => continue,
+            }
+        }
+    }
+    try checkGeneralNames(bytes[subject_alt_name.start..subject_alt_name.end]);
+
+    return .{
+        .certificate = cert,
+        .common_name_slice = common_name,
+        .issuer_slice = issuer.slice,
+        .subject_slice = subject.slice,
+        .signature_slice = signature,
+        .signature_algorithm = signature_algorithm,
+        .message_slice = .{ .start = certificate.slice.start, .end = tbs_end },
+        .pub_key_algo = pub_key_algo,
+        .pub_key_slice = pub_key,
+        .validity = .{ .not_before = not_before_utc, .not_after = not_after_utc },
+        .subject_alt_name_slice = subject_alt_name,
+        .version = version,
+    };
+}
+
+/// `Certificate.parseBitString`, which reads the count of unused bits without checking
+/// that the BIT STRING has that byte.
+fn derBitString(cert: Certificate, element: Certificate.der.Element) !Certificate.der.Element.Slice {
+    if (element.slice.start == element.slice.end) return error.CertificateFieldHasInvalidLength;
+    return cert.parseBitString(element);
+}
+
+/// The lengths `rsa.PublicKey.parseDer` reads from `key`, an RSAPublicKey (a SEQUENCE of
+/// the modulus and the exponent), without comparing them with the key: each element has to
+/// lie inside the one that holds it. Types are left to `parseDer`.
+fn checkRsaKey(key: []const u8) !void {
+    const sequence = try derNext(key);
+    const modulus = try derNext(sequence.body);
+    _ = try derNext(modulus.rest);
+}
+
+/// The lengths `Parsed.verifyHostName` reads from `san`, the value of a subjectAltName
+/// extension (empty: the certificate has none), without comparing them with it: the
+/// GeneralNames element, and each name up to its end.
+fn checkGeneralNames(san: []const u8) !void {
+    if (san.len == 0) return;
+    var names = (try derNext(san)).body;
+    while (names.len > 0) names = (try derNext(names)).rest;
+}
+
 /// A non-negative INTEGER body; values past u64 saturate (no limit in practice).
 fn derUint(body: []const u8) !u64 {
     if (body.len == 0 or body[0] & 0x80 != 0) return error.CertificateFieldHasWrongDataType;
@@ -2436,5 +2628,351 @@ test "zero-length key_update body" {
             .client_key = undefined,
             .client_iv = undefined,
         } } },
+    ));
+}
+
+// ---- Velo patch: tests for the lengths a server controls ----
+
+const fixed_rsa = @embedFile("testdata/fixed_rsa.der");
+const fixed_ec = @embedFile("testdata/fixed_ec.der");
+/// A time within the validity of the fixed certificates (testdata/tls_fixed_certs.sh).
+const fixed_now_sec = 1_800_000_000;
+
+/// The body of a TLS 1.2 ServerHello: an empty session id, an ECDHE-RSA suite, no extensions.
+const test_server_hello = [2]u8{ 0x03, 0x03 } ++ @as([32]u8, @splat(0x11)) ++ [_]u8{ 0x00, 0xc0, 0x2f, 0x00 };
+
+/// One handshake message of `parts` in a cleartext record, appended to `wire`.
+fn testHandshakeRecord(wire: *std.ArrayList(u8), kind: tls.HandshakeType, parts: []const []const u8) !void {
+    const gpa = std.testing.allocator;
+    var len: usize = 0;
+    for (parts) |part| len += part.len;
+    try wire.appendSlice(gpa, &(.{@backingInt(tls.ContentType.handshake)} ++
+        int(u16, @backingInt(tls.ProtocolVersion.tls_1_2)) ++ int(u16, @intCast(len + 4)) ++
+        .{@backingInt(kind)} ++ int(u24, @intCast(len))));
+    for (parts) |part| try wire.appendSlice(gpa, part);
+}
+
+/// `init` for host velo.test against a server that answers with a ServerHello of `hello`,
+/// then (unless null) a Certificate message holding `cert`, and hangs up: always an error.
+/// The certificate has to verify as self-signed, and an accepted one ends in
+/// `error.TlsConnectionTruncated`. `init` reads a certificate from a slice of exactly its
+/// size, so the tests' safety checks catch a read past it.
+fn testHandshake(hello: []const u8, cert: ?[]const u8) !void {
+    const gpa = std.testing.allocator;
+    var wire: std.ArrayList(u8) = .empty;
+    defer wire.deinit(gpa);
+    try testHandshakeRecord(&wire, .server_hello, &.{hello});
+    if (cert) |bytes| try testHandshakeRecord(&wire, .certificate, &.{
+        &int(u24, @intCast(bytes.len + 3)),
+        &int(u24, @intCast(bytes.len)),
+        bytes,
+    });
+
+    const buffers = try gpa.alloc(u8, 4 * min_buffer_len);
+    defer gpa.free(buffers);
+    @memcpy(buffers[0..wire.items.len], wire.items);
+    var input: Reader = .fixed(buffers[0..min_buffer_len]);
+    input.end = wire.items.len;
+    var output: Writer.Discarding = .init(buffers[min_buffer_len..][0..min_buffer_len]);
+    const entropy: [Options.entropy_len]u8 = @splat(0x5a);
+    _ = try init(&input, &output.writer, .{
+        .host = .{ .explicit = "velo.test" },
+        .ca = .self_signed,
+        .write_buffer = buffers[2 * min_buffer_len ..][0..min_buffer_len],
+        .read_buffer = buffers[3 * min_buffer_len ..],
+        .entropy = &entropy,
+        .realtime_now = .fromNanoseconds(fixed_now_sec * std.time.ns_per_s),
+    });
+    return error.TestHandshakeCompleted;
+}
+
+/// A DER element of a certificate under test: where its tag is, and the child numbers
+/// that lead to it from the Certificate SEQUENCE (which has the empty path).
+const TestElement = struct {
+    at: usize,
+    path_buf: [12]u8 = undefined,
+    depth: usize = 0,
+
+    fn path(self: *const TestElement) []const u8 {
+        return self.path_buf[0..self.depth];
+    }
+};
+
+/// The elements `element` holds: the body of a constructed element, and the body of an
+/// OCTET STRING or the bytes of a BIT STRING when they are DER elements end to end, as
+/// an extension value and an RSA public key are.
+fn testChildren(element: Der) ?[]const u8 {
+    if (element.tag & 0x20 != 0) return element.body;
+    const inner = switch (element.tag) {
+        0x04 => element.body,
+        0x03 => if (element.body.len > 1 and element.body[0] == 0) element.body[1..] else return null,
+        else => return null,
+    };
+    if (inner.len == 0) return null;
+    var rest = inner;
+    while (rest.len > 0) rest = (derNext(rest) catch return null).rest;
+    return inner;
+}
+
+/// Every element of `region`, which starts at offset `base` of the certificate, and
+/// every element inside those, appended to `list`.
+fn testCollect(list: *std.ArrayList(TestElement), region: []const u8, base: usize, parent: ?TestElement) !void {
+    var rest = region;
+    var number: u8 = 0;
+    while (rest.len > 0) : (number += 1) {
+        const element = try derNext(rest);
+        var found: TestElement = .{ .at = base + (region.len - rest.len) };
+        if (parent) |p| {
+            found.path_buf = p.path_buf;
+            found.path_buf[p.depth] = number;
+            found.depth = p.depth + 1;
+        }
+        try list.append(std.testing.allocator, found);
+        if (testChildren(element)) |children| {
+            const children_at = found.at + (rest.len - element.rest.len) - children.len;
+            try testCollect(list, children, children_at, found);
+        }
+        rest = element.rest;
+    }
+}
+
+/// `region` (at offset `base` of the certificate) copied to `out`, with a length of 2 GiB
+/// written for the element whose tag is at offset `target`. The lengths of the elements
+/// around that one are written again to fit, so that one length is all that is wrong.
+fn testOverlong(out: *std.ArrayList(u8), region: []const u8, base: usize, target: usize) !void {
+    const gpa = std.testing.allocator;
+    var rest = region;
+    while (rest.len > 0) {
+        const element = try derNext(rest);
+        const at = base + (region.len - rest.len);
+        const size = rest.len - element.rest.len;
+        if (at == target) {
+            try out.appendSlice(gpa, &.{ element.tag, 0x84, 0x7f, 0xff, 0xff, 0xff });
+            try out.appendSlice(gpa, element.body);
+        } else if (target > at and target < at + size) {
+            const children = testChildren(element).?;
+            // A BIT STRING keeps its count of unused bits before the elements.
+            const before = element.body[0 .. element.body.len - children.len];
+            var inner: std.ArrayList(u8) = .empty;
+            defer inner.deinit(gpa);
+            try testOverlong(&inner, children, at + size - children.len, target);
+            const len = before.len + inner.items.len;
+            try out.append(gpa, element.tag);
+            if (len < 0x80) {
+                try out.append(gpa, @intCast(len));
+            } else if (len < 0x100) {
+                try out.appendSlice(gpa, &.{ 0x81, @intCast(len) });
+            } else {
+                try out.appendSlice(gpa, &(.{0x82} ++ int(u16, @intCast(len))));
+            }
+            try out.appendSlice(gpa, before);
+            try out.appendSlice(gpa, inner.items);
+        } else {
+            try out.appendSlice(gpa, rest[0..size]);
+        }
+        rest = element.rest;
+    }
+}
+
+/// The steps of the handshake that read a presented certificate, each one run even when
+/// an earlier one failed; the first error.
+fn testPresented(bytes: []const u8) !void {
+    const cert = try parseCertificate(.{ .buffer = bytes, .index = 0 });
+    var first: ?anyerror = null;
+    verifyHostName(cert, "velo.test") catch |err| {
+        first = first orelse err;
+    };
+    verifyHostName(cert, "192.0.2.1") catch |err| {
+        first = first orelse err;
+    };
+    checkLeaf(cert) catch |err| {
+        first = first orelse err;
+    };
+    var key: CertificatePublicKey = undefined;
+    key.init(cert.pub_key_algo, cert.pubKey()) catch |err| {
+        first = first orelse err;
+    };
+    cert.verify(cert, fixed_now_sec) catch |err| {
+        first = first orelse err;
+    };
+    if (first) |err| return err;
+}
+
+test "the fixed certificates pass every check on a presented certificate" {
+    for ([_][]const u8{ fixed_rsa, fixed_ec }) |cert| {
+        try testPresented(cert);
+        try std.testing.expectError(error.TlsConnectionTruncated, testHandshake(&test_server_hello, cert));
+    }
+}
+
+test "a certificate length past the certificate is refused at every nesting level the handshake parses" {
+    const Level = struct { path: []const u8, name: []const u8, rsa_only: bool = false, ec_only: bool = false };
+    const levels = [_]Level{
+        .{ .path = &.{}, .name = "Certificate" },
+        .{ .path = &.{0}, .name = "TBSCertificate" },
+        .{ .path = &.{ 0, 0 }, .name = "version" },
+        .{ .path = &.{ 0, 1 }, .name = "serialNumber" },
+        .{ .path = &.{ 0, 2 }, .name = "signature" },
+        .{ .path = &.{ 0, 3 }, .name = "issuer" },
+        .{ .path = &.{ 0, 4 }, .name = "validity" },
+        .{ .path = &.{ 0, 4, 0 }, .name = "notBefore" },
+        .{ .path = &.{ 0, 4, 1 }, .name = "notAfter" },
+        .{ .path = &.{ 0, 5 }, .name = "subject" },
+        .{ .path = &.{ 0, 5, 1 }, .name = "subject RelativeDistinguishedName" },
+        .{ .path = &.{ 0, 5, 1, 0 }, .name = "subject AttributeTypeAndValue" },
+        .{ .path = &.{ 0, 5, 1, 0, 0 }, .name = "subject attribute type" },
+        .{ .path = &.{ 0, 5, 1, 0, 1 }, .name = "subject attribute value" },
+        .{ .path = &.{ 0, 6 }, .name = "subjectPublicKeyInfo" },
+        .{ .path = &.{ 0, 6, 0 }, .name = "public key algorithm" },
+        .{ .path = &.{ 0, 6, 0, 0 }, .name = "public key algorithm OID" },
+        .{ .path = &.{ 0, 6, 0, 1 }, .name = "named curve", .ec_only = true },
+        .{ .path = &.{ 0, 6, 1 }, .name = "subjectPublicKey" },
+        .{ .path = &.{ 0, 6, 1, 0 }, .name = "RSAPublicKey", .rsa_only = true },
+        .{ .path = &.{ 0, 6, 1, 0, 0 }, .name = "RSA modulus", .rsa_only = true },
+        .{ .path = &.{ 0, 6, 1, 0, 1 }, .name = "RSA exponent", .rsa_only = true },
+        .{ .path = &.{ 0, 7 }, .name = "extensions [3]" },
+        .{ .path = &.{ 0, 7, 0 }, .name = "Extensions" },
+        .{ .path = &.{ 0, 7, 0, 0 }, .name = "subjectAltName Extension" },
+        .{ .path = &.{ 0, 7, 0, 0, 0 }, .name = "subjectAltName extnID" },
+        .{ .path = &.{ 0, 7, 0, 0, 1 }, .name = "subjectAltName extnValue" },
+        .{ .path = &.{ 0, 7, 0, 0, 1, 0 }, .name = "GeneralNames" },
+        .{ .path = &.{ 0, 7, 0, 0, 1, 0, 0 }, .name = "dNSName" },
+        .{ .path = &.{ 0, 7, 0, 0, 1, 0, 1 }, .name = "iPAddress" },
+        .{ .path = &.{ 0, 7, 0, 1 }, .name = "basicConstraints Extension" },
+        .{ .path = &.{ 0, 7, 0, 1, 1 }, .name = "basicConstraints critical" },
+        .{ .path = &.{ 0, 7, 0, 1, 2 }, .name = "basicConstraints extnValue" },
+        .{ .path = &.{ 0, 7, 0, 1, 2, 0 }, .name = "BasicConstraints" },
+        .{ .path = &.{ 0, 7, 0, 1, 2, 0, 0 }, .name = "cA" },
+        .{ .path = &.{ 0, 7, 0, 1, 2, 0, 1 }, .name = "pathLenConstraint" },
+        .{ .path = &.{ 0, 7, 0, 2, 2, 0 }, .name = "KeyUsage" },
+        .{ .path = &.{ 0, 7, 0, 3, 1, 0 }, .name = "ExtKeyUsageSyntax" },
+        .{ .path = &.{ 0, 7, 0, 3, 1, 0, 0 }, .name = "KeyPurposeId" },
+        .{ .path = &.{1}, .name = "signatureAlgorithm" },
+        .{ .path = &.{ 1, 0 }, .name = "signatureAlgorithm OID" },
+        .{ .path = &.{2}, .name = "signatureValue" },
+    };
+
+    const gpa = std.testing.allocator;
+    var failed: usize = 0;
+    for ([_][]const u8{ fixed_rsa, fixed_ec }, 0..) |cert, cert_index| {
+        const is_rsa = cert_index == 0;
+        var elements: std.ArrayList(TestElement) = .empty;
+        defer elements.deinit(gpa);
+        try testCollect(&elements, cert, 0, null);
+
+        var named: usize = 0;
+        for (elements.items) |element| {
+            var mutant: std.ArrayList(u8) = .empty;
+            defer mutant.deinit(gpa);
+            try testOverlong(&mutant, cert, 0, element.at);
+            // Any element, read or not: no read past the certificate (a panic here).
+            const got = testHandshake(&test_server_hello, mutant.items);
+            const direct = testPresented(mutant.items);
+            const want = error.CertificateFieldHasInvalidLength;
+
+            const level = for (levels) |level| {
+                if (level.rsa_only and !is_rsa) continue;
+                if (level.ec_only and is_rsa) continue;
+                if (mem.eql(u8, level.path, element.path())) break level;
+            } else continue;
+            named += 1;
+            if (got != want or direct != want) {
+                failed += 1;
+                std.debug.print("FAIL {s} of the {s} certificate: handshake {any}, direct {any}\n", .{
+                    level.name, if (is_rsa) "RSA" else "EC", got, direct,
+                });
+            }
+        }
+        // Every level of the table was found in the certificate.
+        var expected: usize = 0;
+        for (levels) |level| expected += @intFromBool(!(if (is_rsa) level.ec_only else level.rsa_only));
+        try std.testing.expectEqual(expected, named);
+    }
+    try std.testing.expectEqual(@as(usize, 0), failed);
+}
+
+test "a truncated certificate, or a length one byte too long, is not read past its end" {
+    const gpa = std.testing.allocator;
+    for ([_][]const u8{ fixed_rsa, fixed_ec }) |cert| {
+        // Exact-size copies: the safety checks catch a read past the end of one.
+        for (0..cert.len) |len| {
+            const prefix = try gpa.dupe(u8, cert[0..len]);
+            defer gpa.free(prefix);
+            try std.testing.expectError(error.CertificateFieldHasInvalidLength, testPresented(prefix));
+        }
+
+        var elements: std.ArrayList(TestElement) = .empty;
+        defer elements.deinit(gpa);
+        try testCollect(&elements, cert, 0, null);
+        for (elements.items) |element| {
+            const mutant = try gpa.dupe(u8, cert);
+            defer gpa.free(mutant);
+            // The last length byte, in the short and the long form alike.
+            const len_at = if (mutant[element.at + 1] & 0x80 == 0) element.at + 1 else element.at + 1 + (mutant[element.at + 1] & 0x7f);
+            mutant[len_at] +%= 1;
+            // Some of these still parse (the length of an element nothing reads): the
+            // check is that no step reads outside the copy.
+            testPresented(mutant) catch {};
+        }
+    }
+}
+
+test "an RSA signature longer than the key's modulus is refused" {
+    const cert = try parseCertificate(.{ .buffer = fixed_rsa, .index = 0 });
+    var key: CertificatePublicKey = undefined;
+    try key.init(cert.pub_key_algo, cert.pubKey());
+    var message = int(u16, @backingInt(tls.SignatureScheme.rsa_pss_rsae_sha256)) ++ int(u16, 257) ++ @as([257]u8, @splat(0x01));
+    var decoder: tls.Decoder = .fromTheirSlice(&message);
+    try std.testing.expectError(error.TlsBadRsaSignatureBitCount, key.verifySignature(&decoder, &.{"signed"}));
+}
+
+test "a ServerHello session id length past the message is refused" {
+    const head = [2]u8{ 0x03, 0x03 } ++ @as([32]u8, @splat(0x11));
+    // 255 and 254: with the 3 bytes that follow the session id, both pass 255.
+    try std.testing.expectError(error.TlsDecodeError, testHandshake(&(head ++ [_]u8{0xff}), null));
+    try std.testing.expectError(error.TlsDecodeError, testHandshake(&(head ++ [_]u8{ 0xfe, 0xc0, 0x2f, 0x00 }), null));
+}
+
+/// What reading gives for a TLS 1.3 record that decrypts to `plaintext`, with keys of zeroes.
+fn testReadError13(comptime plaintext: []const u8) ReadError {
+    const Chacha = crypto.aead.chacha_poly.ChaCha20Poly1305;
+    const header = [_]u8{ 0x17, 0x03, 0x03 } ++ mem.toBytes(big(@as(u16, plaintext.len + Chacha.tag_length)));
+    var ct: [plaintext.len]u8 = undefined;
+    var tag: [Chacha.tag_length]u8 = undefined;
+    Chacha.encrypt(&ct, &tag, plaintext, &header, @splat(0), @splat(0));
+    const wire = header ++ ct ++ tag;
+    return testReadError(&wire, .tls_1_3, .{ .CHACHA20_POLY1305_SHA256 = .{ .tls_1_3 = .{
+        .server_key = @splat(0),
+        .server_iv = @splat(0),
+        .client_secret = @splat(0),
+        .server_secret = @splat(0),
+        .client_key = @splat(0),
+        .client_iv = @splat(0),
+    } } });
+}
+
+test "a handshake record after the handshake that ends inside a message header is refused" {
+    // The last byte of each is the inner content type: handshake.
+    try std.testing.expectEqual(error.TlsBadLength, testReadError13(&.{0x16}));
+    try std.testing.expectEqual(error.TlsBadLength, testReadError13(&.{ 0x18, 0x16 }));
+    try std.testing.expectEqual(error.TlsBadLength, testReadError13(&.{ 0x18, 0x00, 0x00, 0x16 }));
+    // A whole key_update, then one byte of a second message.
+    try std.testing.expectEqual(error.TlsBadLength, testReadError13(&.{ 0x18, 0x00, 0x00, 0x01, 0x00, 0x18, 0x16 }));
+}
+
+test "key_update on a TLS 1.2 connection is refused" {
+    const P = tls.ApplicationCipherT(crypto.aead.aes_gcm.Aes128Gcm, crypto.hash.sha2.Sha256, 8);
+    const plaintext = [_]u8{ 0x18, 0x00, 0x00, 0x01, 0x00 };
+    const record_iv: [P.record_iv_length]u8 = @splat(0);
+    const header = [_]u8{ 0x16, 0x03, 0x03 } ++ mem.toBytes(big(@as(u16, P.record_iv_length + plaintext.len + P.mac_length)));
+    const ad = mem.toBytes(big(@as(u64, 0))) ++ header[0..3].* ++ mem.toBytes(big(@as(u16, plaintext.len)));
+    var ct: [plaintext.len]u8 = undefined;
+    var tag: [P.mac_length]u8 = undefined;
+    P.AEAD.encrypt(&ct, &tag, &plaintext, &ad, @splat(0), @splat(0));
+
+    try std.testing.expectEqual(error.TlsUnexpectedMessage, testReadError(
+        &(header ++ record_iv ++ ct ++ tag),
+        .tls_1_2,
+        .{ .AES_128_GCM_SHA256 = .{ .tls_1_2 = mem.zeroes(P.Tls_1_2) } },
     ));
 }

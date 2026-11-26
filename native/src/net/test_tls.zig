@@ -109,6 +109,7 @@ const cases = [_]Case{
     .{ .name = "ip_dns", .host = "127.0.0.1", .err = error.CertificateHostMismatch, .why = "dNSName 127.0.0.1 for an IP locator" },
     .{ .name = "ip_cn", .host = "127.0.0.1", .err = error.CertificateHostMismatch, .why = "common name 127.0.0.1, no subjectAltName" },
     .{ .name = "direct", .err = null, .why = "a root signs the server's certificate directly" },
+    .{ .name = "rsa", .err = null, .why = "an RSA server key: the handshake signature is as long as its modulus" },
     .{ .name = "valid6", .host = "[::1]", .listen = "[::1]", .err = null, .why = "an IPv6 locator matches an iPAddress name" },
     .{ .name = "v1_root", .ca = "ca-v1root", .err = null, .why = "a self-signed v1 root signs (OpenSSL's V1_ROOT)" },
     .{ .name = "v1_signed", .ca = "ca-v1signed", .err = error.TlsCertificateIssuerNotCa, .why = "a trusted v1 certificate that is not self-signed signs" },
