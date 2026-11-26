@@ -60,6 +60,73 @@ class TerminalLinksTest {
     }
 
     @Test
+    fun readsWhereTheLinkCameFrom() {
+        // A link without the fields is one read from the text, which shows its target.
+        val read = TerminalLink.parse("""{"kind":"url","target":"https://x.com"}""")!!
+        assertFalse(read.set)
+        assertTrue(read.shown)
+        assertEquals(
+            TerminalLink("url", "https://evil.example/", set = true, shown = false),
+            TerminalLink.parse("""{"kind":"url","target":"https://evil.example/","line":0,"col":0,"set":true,"shown":false}"""),
+        )
+    }
+
+    @Test
+    fun aLinkAProgramSetUnderOtherTextAsksFirst() {
+        assertEquals(LinkTap.Hidden(LinkTap.Open("https://evil.example/a")), linkTap(TerminalLink("url", "https://evil.example/a", set = true, shown = false)))
+        assertEquals(LinkTap.Hidden(LinkTap.Open("mailto:a@b.com")), linkTap(TerminalLink("url", "mailto:a@b.com", set = true, shown = false)))
+        assertEquals(LinkTap.Hidden(LinkTap.File("file:///home/me/a.apk")), linkTap(TerminalLink("file", "file:///home/me/a.apk", set = true, shown = false)))
+        // A link that launches another app has its own question, which shows the target too.
+        assertEquals(LinkTap.Ask("ssh://me@host", "ssh"), linkTap(TerminalLink("url", "ssh://me@host", set = true, shown = false)))
+    }
+
+    @Test
+    fun aLinkThatShowsItsTargetOpensAsBefore() {
+        // A program set it on its own target.
+        assertEquals(LinkTap.Open("https://x.com/a"), linkTap(TerminalLink("url", "https://x.com/a", set = true, shown = true)))
+        assertEquals(LinkTap.File("/home/me/a.png"), linkTap(TerminalLink("file", "/home/me/a.png", set = true, shown = true)))
+        // Read from the text on the screen.
+        assertEquals(LinkTap.Open("https://x.com/a"), linkTap(TerminalLink("url", "https://x.com/a", set = false, shown = true)))
+        assertEquals(LinkTap.File("src/b.kt"), linkTap(TerminalLink("file", "src/b.kt", set = false, shown = true)))
+    }
+
+    @Test
+    fun theQuestionAboutAHiddenLinkShowsItsTarget() {
+        val web = LinkTap.Open("https://evil.example/a")
+        assertEquals("Open https link?", hiddenLinkTitle(web))
+        assertEquals(
+            "https://evil.example/a\n\nA program in the terminal printed this link under other text. It opens in the browser.",
+            hiddenLinkText(web),
+        )
+        val mail = LinkTap.Open("MAILTO:a@b.com")
+        assertEquals("Open mailto link?", hiddenLinkTitle(mail))
+        assertEquals(
+            "MAILTO:a@b.com\n\nA program in the terminal printed this link under other text. It opens another app on this phone.",
+            hiddenLinkText(mail),
+        )
+        val long = "https://evil.example/" + "a".repeat(500)
+        assertEquals(long.take(LINK_QUESTION_CHARS) + "…", hiddenLinkText(LinkTap.Open(long)).substringBefore("\n"))
+    }
+
+    @Test
+    fun theQuestionAboutAHiddenFileShowsItsPathOnTheRemote() {
+        assertEquals(
+            "/home/me/a.png\n\nA program in the terminal printed this link under other text. Velo downloads the file from workstation and opens it on this phone.",
+            hiddenFileText("/home/me/a.png", "workstation"),
+        )
+        val long = "/" + "a".repeat(500)
+        assertEquals(long.take(LINK_QUESTION_CHARS) + "…", hiddenFileText(long, "workstation").substringBefore("\n"))
+    }
+
+    @Test
+    fun aHiddenFileLinkIsStillAFileLink() {
+        assertEquals(LinkTap.File("a.png"), LinkTap.Hidden(LinkTap.File("a.png")).file)
+        assertEquals(LinkTap.File("a.png"), LinkTap.File("a.png").file)
+        assertNull(LinkTap.Hidden(LinkTap.Open("https://x.com")).file)
+        assertNull(LinkTap.Open("https://x.com").file)
+    }
+
+    @Test
     fun theTapsRightAfterAnOpenedLinkDoNotOpenItAgain() {
         val gate = LinkTapGate(windowMs = 300)
         assertTrue(gate.take(1000))

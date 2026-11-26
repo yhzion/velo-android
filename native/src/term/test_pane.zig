@@ -1481,6 +1481,39 @@ test "an OSC 8 file link and a loopback link are told apart" {
     local.deinit(std.testing.allocator);
 }
 
+test "a link tells whether a program set it and whether its text shows its target" {
+    const p = try linkPane();
+    defer p.destroy();
+    // Row 0: a hyperlink under other text. Row 1: one on blank cells. Row 2: a URL in the text.
+    p.write("\x1b]8;;https://evil.example/x\x1b\\click here\x1b]8;;\x1b\\\r\n");
+    p.write("\x1b]8;;https://evil.example/y\x1b\\    \x1b]8;;\x1b\\\r\n");
+    p.write("see https://x.com/a");
+    const hidden = try expectLinkAt(p, tapCell(7, 0), .url, "https://evil.example/x");
+    hidden.deinit(std.testing.allocator);
+    try std.testing.expect(hidden.set and !hidden.shown);
+    const blank = try expectLinkAt(p, tapCell(2, 1), .url, "https://evil.example/y");
+    blank.deinit(std.testing.allocator);
+    try std.testing.expect(blank.set and !blank.shown);
+    const read = try expectLinkAt(p, tapCell(6, 2), .url, "https://x.com/a");
+    read.deinit(std.testing.allocator);
+    try std.testing.expect(!read.set and read.shown);
+}
+
+test "a hyperlink a program set on its own target shows it, also over a wrap" {
+    const p = try linkPane();
+    defer p.destroy();
+    // 22 cells on a 20 column grid: the last two wrap onto row 1.
+    p.write("\x1b]8;;https://docs.example/a\x1b\\https://docs.example/a\x1b]8;;\x1b\\\r\n");
+    // Another target under text that reads as a URL.
+    p.write("\x1b]8;;https://evil.example/\x1b\\https://x.com/\x1b]8;;\x1b\\");
+    const same = try expectLinkAt(p, tapCell(1, 1), .url, "https://docs.example/a");
+    same.deinit(std.testing.allocator);
+    try std.testing.expect(same.set and same.shown);
+    const other = try expectLinkAt(p, tapCell(3, 2), .url, "https://evil.example/");
+    other.deinit(std.testing.allocator);
+    try std.testing.expect(other.set and !other.shown);
+}
+
 test "a path reports its line, and a bare loopback address gets http" {
     const p = try linkPane();
     defer p.destroy();

@@ -163,6 +163,11 @@ pub const Link = struct {
     /// A path's line and column after it; 0 when it has none.
     line: u32 = 0,
     col: u32 = 0,
+    /// A program set it on the cells (OSC 8); false for a link read from the text there.
+    set: bool = false,
+    /// The text on its cells is its target. A link read from the text always shows it; one a
+    /// program set can open something the person never saw, also from blank cells.
+    shown: bool = true,
     start: c.GhosttyPointCoordinate,
     end: c.GhosttyPointCoordinate,
 
@@ -1520,9 +1525,15 @@ pub const Pane = struct {
             while (first > 0 and try self.sameUri(gpa, cells.items[first - 1].at, uri)) first -= 1;
             var last = index;
             while (last + 1 < cells.items.len and try self.sameUri(gpa, cells.items[last + 1].at, uri)) last += 1;
+            // What the person reads on those cells, without the blanks around it. A link that
+            // runs on past the rows read here is cut, so it does not show its target either.
+            const text_end = if (last + 1 < cells.items.len) cells.items[last + 1].offset else text.items.len;
+            const label = std.mem.trim(u8, text.items[cells.items[first].offset..text_end], " ");
             return .{
                 .kind = Links.classify(uri),
                 .target = try gpa.dupe(u8, uri),
+                .set = true,
+                .shown = std.mem.eql(u8, label, uri),
                 .start = cells.items[first].at,
                 .end = cells.items[last].at,
             };
