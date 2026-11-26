@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.11.1 - 2026-11-26
+
 ### Fixed
 - While Velo waits for you to log in in the browser, Cancel takes you back to the login step.
 - English typed on the on-screen keyboard reaches the terminal letter by letter, so completion in programs such as Claude Code works while you type.
