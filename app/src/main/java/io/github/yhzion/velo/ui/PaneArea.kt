@@ -374,7 +374,7 @@ private fun PaneCard(
                 v.onPasteSelection = {
                     if (input.connection === conn && input.workspaceAcceptsInput && conn.connected) {
                         val text = clipboardText(context)
-                        if (text.isNotEmpty()) input.pasteTextIntoPane(conn, block, text)
+                        if (text.isNotEmpty() && !input.finishCompositionBeforePaste()) input.pasteTextIntoPane(conn, block, text)
                     }
                 }
             },

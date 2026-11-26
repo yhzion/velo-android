@@ -55,6 +55,7 @@ internal fun PaneMenu(
     window: WindowInfo, block: String, onDismiss: () -> Unit, conn: HostConnection,
     onAutoSplit: (String) -> Unit, onFind: (String) -> Unit, onNotifications: (String) -> Unit, onClose: (String) -> Unit, onCompose: (String, String) -> Unit, showing: (() -> Unit) -> () -> Unit,
     keyboard: Boolean = false, expanded: Boolean = true, onMoveToTab: ((String) -> Unit)? = null, onMoveToNewTab: (String) -> Unit,
+    beforePaste: () -> Boolean = { false },
 ) {
     val panes = tabBlocks(window)
     val label = paneLabel(panes, block) ?: return
@@ -75,7 +76,9 @@ internal fun PaneMenu(
         // The picker takes over from the menu, so the menu only closes; it is no layout command.
         PaneAction.MoveToTab -> { onDismiss(); onMoveToTab?.invoke(block) }
         PaneAction.Copy -> act { copyPane(context, conn, block) }
-        PaneAction.Paste -> {
+        // What the keyboard composes goes first ([TerminalInputView.finishCompositionBeforePaste]); a keyboard
+        // paste that waits for its question keeps the pane, and the menu only closes.
+        PaneAction.Paste -> if (beforePaste()) onDismiss() else {
             val text = clipboardText(context)
             val title = pasteQuestion(text, conn.bracketedPaste(block))
             if (title != null) pasteAsked = PasteAsked(title, text)
