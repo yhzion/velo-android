@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.12.0 - 2026-11-26
+
 ### Added
 - On a wide enough screen, such as the unfolded Fold8 held upright, a pin button at the top of the sidebar docks it beside the panes or undocks it.
 
