@@ -1,0 +1,79 @@
+package io.github.yhzion.velo.ui
+
+import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
+import io.github.yhzion.velo.core.SessionInfo
+import io.github.yhzion.velo.core.TabInfo
+import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.ui.theme.UiSize
+import io.github.yhzion.velo.ui.theme.VeloTheme
+import io.github.yhzion.velo.ui.theme.mediumAt
+import io.github.yhzion.velo.ui.theme.tileLayers
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * The tab's tile in the caption under the panes (#45): laid out by its face, the face's centre on
+ * the title's line and the board's 8 between the farthest part the tile draws and the title.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi")
+class PaneCaptionTest {
+    private val compose = createComposeRule()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
+
+    private var size by mutableStateOf(UiSize.Medium)
+    private var panes by mutableStateOf(1)
+
+    private fun row(panes: Int): TabRow {
+        val tab = TabInfo("w", label = "build", program = "zsh", panes = panes)
+        val state = UiState(status = "connected", sessions = listOf(SessionInfo("s", tabs = listOf(tab))))
+        return sessionGroups(state, false, emptySet(), false, "").single().rows.single()
+    }
+
+    private fun show() = compose.setContent {
+        VeloTheme(size = size) { PaneCaption(row(panes), connected = true, ActivityReadState(), host = "studio") }
+    }
+
+    private fun bounds(tag: String): DpRect = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
+
+    @Test fun theFaceSitsOnTheTitlesLine() {
+        show()
+        for (s in UiSize.entries) {
+            size = s
+            compose.waitForIdle()
+            val face = bounds("caption-tab-tile-face")
+            val title = bounds("pane-caption-title")
+            val faceCentre = (face.top + face.bottom) / 2
+            val titleCentre = (title.top + title.bottom) / 2
+            assertEquals("$s", titleCentre.value, faceCentre.value, 0.5f)
+        }
+    }
+
+    @Test fun theBoardsEightLiesBetweenTheTileAndTheTitle() {
+        show()
+        for (s in UiSize.entries) for (n in listOf(1, 2, 4)) {
+            size = s
+            panes = n
+            compose.waitForIdle()
+            // The farthest part drawn right: the face alone, or the farthest layer behind it.
+            val right = if (tileLayers(n) == 1) bounds("caption-tab-tile-face").right
+            else maxOf(bounds("caption-tab-tile-face").right, bounds("caption-tab-tile-layer-${tileLayers(n)}").right)
+            val gap = bounds("pane-caption-title").left - right
+            assertEquals("$s, $n panes", mediumAt(s, 8.dp).value, gap.value, 0.5f)
+        }
+    }
+}

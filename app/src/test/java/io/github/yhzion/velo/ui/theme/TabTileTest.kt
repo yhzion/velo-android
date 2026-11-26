@@ -27,6 +27,26 @@ class TabTileTest {
         assertEquals(2.5f, tileStep(16f), 0f)
     }
 
+    @Test fun laidOutByItsFaceTheTileTakesOnlyTheStepsItDraws() {
+        // The caption's 18 tile in its 26 box: the face at the box's lower left, 8 above it.
+        val one = tileFaceBounds(1, 18f)
+        assertEquals(0f, one.left, 0f)
+        assertEquals(8f, one.top, 0f)
+        assertEquals(18f, one.right, 0f)
+        assertEquals(26f, one.bottom, 0f)
+        // One step of 2.5 to the right for each layer behind the face, none past four panes.
+        assertEquals(20.5f, tileFaceBounds(2, 18f).right, 0.001f)
+        assertEquals(25.5f, tileFaceBounds(4, 18f).right, 0.001f)
+        assertEquals(25.5f, tileFaceBounds(9, 18f).right, 0.001f)
+        for (size in listOf(16f, 18f, 30f, 44f)) for (panes in 1..6) {
+            val bounds = tileFaceBounds(panes, size)
+            // As high as the face, and as wide as the face or the farthest layer reaches.
+            assertEquals(size, bounds.height, 0.001f)
+            val farthest = tileBackLayers(panes, size).firstOrNull()?.let { tileLayerRect(it, size).right } ?: size
+            assertEquals("$size $panes", farthest, bounds.right, 0.001f)
+        }
+    }
+
     @Test fun layersBehindStepUpRightSmallerAndDarker() {
         assertEquals(emptyList<TileLayer>(), tileBackLayers(1, 30f))
         val layers = tileBackLayers(6, 30f)

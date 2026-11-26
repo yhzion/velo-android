@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.geometry.RoundRect
@@ -40,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,6 +127,16 @@ fun tileStep(size: Float): Float = max(2.5f, size * 0.115f)
 /** The square the tile takes: the face and room for three steps above and to its right, so a row's text never moves. */
 fun tileBox(size: Float): Float = size + ceil(tileStep(size) * 3)
 
+/**
+ * The part of the tile's box a tile of [panes] panes is laid out by, when it lines up by its face
+ * (the caption under the panes): the face, and to its right only the steps its layers take. The
+ * layers that step above the face draw outside it.
+ */
+fun tileFaceBounds(panes: Int, size: Float): Rect {
+    val top = tileBox(size) - size
+    return Rect(0f, top, size + (tileLayers(panes) - 1) * tileStep(size), top + size)
+}
+
 /** A layer behind the face. [number] is the board's name for it: 2 is just behind the face, 4 the farthest. */
 data class TileLayer(val number: Int, val dx: Float, val dy: Float, val scale: Float, val alpha: Float, val brightness: Float)
 
@@ -206,7 +218,9 @@ private val LayerRim = Color.White.copy(alpha = 0.18f)
  * The tile of a tab that runs [brand] in [panes] panes. [size] is the face; the tile takes
  * [tileBox] of it, the face at its lower left. [dot] puts a state dot at the face's upper right;
  * from five panes the pane count sits at its lower right. Both are ringed in [ring], the colour
- * of the row behind the tile.
+ * of the row behind the tile. [byFace] lays the tile out by [tileFaceBounds] instead of its box,
+ * so a row centres the face and the next item starts where the farthest layer ends; the rest of
+ * the box draws outside.
  *
  * [tag] is the tile's test tag, `tab-tile-<tab id>`; its parts get the canvas's names under it
  * (`-face`, `-logo`, `-letter`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
@@ -217,7 +231,7 @@ private val LayerRim = Color.White.copy(alpha = 0.18f)
 fun TabTile(
     brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, size: Dp = VeloTheme.sizes.tabTile,
     dot: TileDot? = null, ring: Color = VeloTheme.surface.surface, tag: String? = null,
-    contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null,
+    contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null, byFace: Boolean = false,
 ) {
     val colors = VeloTheme.colors.sheet
     // One board unit at this size, and the face in board units: the rules are in those.
@@ -234,8 +248,14 @@ fun TabTile(
     }
     val corner = u(tileCorner(s))
     val shape = RoundedCornerShape(corner)
+    val laidOut = if (!byFace) Modifier else Modifier.layout { measurable, _ ->
+        val box = measurable.measure(Constraints())
+        // The face's pixels, as the face below is sized, so its centre is the reported centre.
+        val face = size.roundToPx()
+        layout(u(tileFaceBounds(panes, s).right).roundToPx(), face) { box.place(0, face - box.height) }
+    }
     Box(
-        modifier.size(u(tileBox(s))).tagged("")
+        modifier.then(laidOut).size(u(tileBox(s))).tagged("")
             .then(if (contentDescription != null) Modifier.semantics {
                 this.contentDescription = contentDescription
                 role = Role.Image

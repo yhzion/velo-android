@@ -47,7 +47,7 @@ internal fun PaneCaption(
     ) {
         if (row != null && activity != null) {
             val tile = tabTile(row, activity)
-            TabTile(tile.brand, panes = tile.panes, size = VeloTheme.medium(18.dp), dot = tile.dot, ring = VeloTheme.surface.surface, tag = "caption-tab-tile",
+            TabTile(tile.brand, panes = tile.panes, size = VeloTheme.medium(18.dp), dot = tile.dot, ring = VeloTheme.surface.surface, tag = "caption-tab-tile", byFace = true,
                 contentDescription = tabTileDescription(tile, activity.icon ?: row.icon),
                 stateDescription = activity.badge?.let { "Unread, ${it.description}" })
         }

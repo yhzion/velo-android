@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- In the caption under the panes, the tab's tile sits on the title's line, with the usual small gap before the title.
+
 ## 2.12.2 - 2026-11-26
 
 ### Security
