@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.AddToPhotos
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LaptopMac
 import androidx.compose.material.icons.outlined.Smartphone
+import androidx.compose.material.icons.outlined.PushPin as PushPinOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,6 +130,8 @@ class SidebarActions(
     val moveTab: (Remote, TabRow, forward: Boolean) -> Unit,
     /** Close the tab: at once when it is known to hold only a shell, else after asking ([closeTabQuestion]). */
     val closeTab: (Remote, TabRow) -> Unit,
+    /** App: the toolbar's pin, where the window can dock the sidebar. Docks it beside the panes or undocks it ([toggleSidebarDock]). */
+    val toggleDock: () -> Unit = {},
 )
 
 /** The server as Rex for Mac names a remote: `account@name`. */
@@ -169,7 +172,7 @@ private val Int.bd: Dp @Composable @ReadOnlyComposable get() = VeloTheme.medium(
 
 /**
  * The sidebar of Rex for Mac, as the Sidebar board draws it: a toolbar of app-level controls
- * (sidebar, activity, command palette, settings), then This Device, one block per saved remote
+ * (sidebar, the pin that docks it where the window can, activity, command palette, settings), then This Device, one block per saved remote
  * (its row and, when expanded, a group per session: a header and one row per tab), the Rex servers
  * found on the tailnet and "Add Remote…", over the filter. Activity and the filter cover every remote.
  * Every part carries the board's name as its test tag.
@@ -179,6 +182,8 @@ internal fun Sidebar(
     device: DeviceRow, hosts: List<SidebarHost>, modifier: Modifier, actions: SidebarActions,
     /** The gear's dot: an update was found that the Updates page has not shown yet. */
     settingsBadge: Boolean = false,
+    /** The pin beside the toggle ([dockSwitch]): whether the sidebar is docked beside the panes; null draws no pin. */
+    docked: Boolean? = null,
     state: SidebarState = remember { SidebarState() },
 ) = VeloSurface(VeloTheme.colors.sidebar) {
     val c = VeloTheme.surface
@@ -204,6 +209,12 @@ internal fun Sidebar(
             // Rex for Mac's hide-sidebar glyph is an SF Symbol like the capsule's, so it is drawn for this app too.
             GlassIconButton(ImageVector.vectorResource(R.drawable.ic_toolbar_sidebar), "Toggle Sidebar", actions.toggleSidebar,
                 Modifier.testTag("sidebar-toggle"))
+            // Only where the window can dock the sidebar (the unfolded screen upright): a push pin, filled while docked.
+            if (docked != null) {
+                Spacer(Modifier.width(8.bd))
+                GlassIconSwitch(if (docked) Icons.Filled.PushPin else Icons.Outlined.PushPinOutline, DockSidebarSwitch, docked,
+                    { actions.toggleDock() }, Modifier.testTag("sidebar-dock"))
+            }
             Spacer(Modifier.weight(1f))
             GlassCapsule(Modifier.testTag("sidebar-actions")) {
                 // Rex for Mac draws eye while Activity is off and eye.fill while it is on.

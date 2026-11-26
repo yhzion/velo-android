@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -85,6 +86,23 @@ fun GlassIconButton(
             .semantics { if (selected) this.selected = true },
         contentAlignment = Alignment.Center,
     ) { Icon(icon, contentDescription, Modifier.size(s.icon), tint = if (enabled) c.onGlass else c.disabled) }
+}
+
+/**
+ * A [GlassIconButton] that is an on/off switch: assistive services read [contentDescription] as its
+ * name and [checked] as its state, and a tap asks for the other state ([onCheckedChange]). The icon
+ * itself says the state to the eye, so the glass stays as it is.
+ */
+@Composable
+fun GlassIconSwitch(
+    icon: ImageVector, contentDescription: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier,
+) {
+    val c = VeloTheme.surface
+    val s = VeloTheme.sizes
+    Box(
+        modifier.size(s.control).glass(Capsule).toggleable(checked, role = Role.Switch, onValueChange = onCheckedChange),
+        contentAlignment = Alignment.Center,
+    ) { Icon(icon, contentDescription, Modifier.size(s.icon), tint = c.onGlass) }
 }
 
 private val LocalCapsuleVertical = staticCompositionLocalOf { false }

@@ -139,15 +139,12 @@ internal fun Workspace(
     val outerX = if (compactStyle && !compact) with(density) { sizes.compactWideSidePx.toDp() } else outerY
     // Where the open sidebar covers the panes: on a small window, and where it would leave them too narrow,
     // unless the user docked it beside them where there is room for both (the unfolded screen upright).
-    val dockable = sidebarDockable(
-        config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat(),
-        sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value,
-    )
-    val covers = sidebarPlace(
-        config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat(),
-        sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value, docked = s.sidebarDocked,
-    ) == SidebarPlace.Covers
+    val fit = sidebarFit(s.sidebarDocked, gap, outerX)
+    val dockable = fit.dockable
+    val covers = fit.place == SidebarPlace.Covers
     val panesHidden = covers && sidebar
+    /** The palette's docking command and the sidebar's pin (sidebar-dock): [toggleSidebarDock]. */
+    fun toggleDock() { sidebar = toggleSidebarDock(s.sidebarDocked, s::saveSidebarDocked) }
     /**
      * The one rule for the sidebar that covers the panes ([covers]): an action that changes
      * what the panes show runs, then the sidebar closes so its result is seen. Toggling the sidebar and opening a
@@ -653,7 +650,7 @@ internal fun Workspace(
                 }
             }
             val device = deviceRow(Tailnet.state)
-            Sidebar(device, hosts, sidebarSlot(if (covers) SidebarPlace.Covers else SidebarPlace.Beside), SidebarActions(
+            Sidebar(device, hosts, sidebarSlot(fit.place), SidebarActions(
                 toggleSidebar = { sidebar = false },
                 openSettings = onSettings,
                 openPalette = ::openPalette,
@@ -685,7 +682,8 @@ internal fun Workspace(
                 renameTab = { remote, row -> app.connectionOf(remote)?.let { rename(it, RenameTarget.OfTab(row.session, row.tab)) } },
                 moveTab = { remote, row, forward -> app.connectionOf(remote)?.let { moveTabOnePlace(it, row.session, row.tab, forward) } },
                 closeTab = { remote, row -> app.connectionOf(remote)?.let { closeTab(it, row) } },
-            ), settingsBadge = updateDot())
+                toggleDock = ::toggleDock,
+            ), settingsBadge = updateDot(), docked = dockSwitch(dockable, s.sidebarDocked))
             if (!covers) Spacer(Modifier.width(gap))
         }
         if (!panesHidden) Column(paneColumnSlot()) {
@@ -976,12 +974,7 @@ internal fun Workspace(
         val commands = paletteItems(units).map { item -> PaletteCommand(item.label, item.enabled, item.note) { run(item.action) } } + listOf(
             PaletteCommand(ToggleSidebarCommand) { sidebar = !sidebar },
         ) + listOfNotNull(dockCommand(dockable, s.sidebarDocked)?.let { title ->
-            // Docking shows the sidebar beside the panes at once; undocking leaves it where it is, closed.
-            PaletteCommand(title) {
-                val dock = !s.sidebarDocked
-                s.saveSidebarDocked(dock)
-                sidebar = dock
-            }
+            PaletteCommand(title, run = ::toggleDock)
         }) + listOf(
             PaletteCommand("Show Tab Overview", state.windows.isNotEmpty()) { overview.open() },
         ) + listOfNotNull(if (focused != null && focused in terminalPanes) {
@@ -1168,12 +1161,40 @@ fun sidebarPlace(widthDp: Float, heightDp: Float, sidebarDp: Float, railDp: Floa
 const val ToggleSidebarCommand = "Toggle Sidebar"
 const val DockSidebarCommand = "Dock Sidebar Beside Panes"
 const val UndockSidebarCommand = "Undock Sidebar"
+/** The name of the sidebar's pin, an on/off switch: the same whether it is on or off. */
+const val DockSidebarSwitch = "Dock Sidebar"
 
 /** The palette's docking command: only where the window can dock ([sidebarDockable]), the one that changes what is [docked]. */
 fun dockCommand(dockable: Boolean, docked: Boolean): String? = when {
     !dockable -> null
     docked -> UndockSidebarCommand
     else -> DockSidebarCommand
+}
+
+/** The sidebar's pin (sidebar-dock): null where the window cannot dock ([sidebarDockable]) and no pin is drawn, else whether it is [docked]. */
+fun dockSwitch(dockable: Boolean, docked: Boolean): Boolean? = if (dockable) docked else null
+
+/**
+ * Docks the sidebar beside the panes or undocks it, for the palette's command ([dockCommand]) and the
+ * sidebar's pin alike: [save]s the other choice than [docked] and says whether the sidebar is open after.
+ * Docking shows it beside the panes at once; undocking closes it rather than leave it over them.
+ */
+fun toggleSidebarDock(docked: Boolean, save: (Boolean) -> Unit): Boolean = (!docked).also(save)
+
+/** Whether the window can dock the sidebar ([sidebarDockable]) and where the open sidebar goes ([sidebarPlace]). */
+internal data class SidebarFit(val dockable: Boolean, val place: SidebarPlace)
+
+/** [SidebarFit] for this window at the current sizes, with [gap] beside the sidebar and [outerX] at the window's sides. */
+@Composable
+internal fun sidebarFit(docked: Boolean, gap: Dp, outerX: Dp): SidebarFit {
+    val config = LocalConfiguration.current
+    val sizes = VeloTheme.sizes
+    val w = config.screenWidthDp.toFloat()
+    val h = config.screenHeightDp.toFloat()
+    return SidebarFit(
+        dockable = sidebarDockable(w, h, sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value),
+        place = sidebarPlace(w, h, sizes.sidebar.value, sizes.rail.value, gap.value, outerX.value, docked),
+    )
 }
 
 /**
