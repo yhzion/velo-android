@@ -796,7 +796,8 @@ internal fun Workspace(
                 if (window != null) openPaneMenu?.let { b ->
                     PaneMenu(window, b, onDismiss = { menuFor = null }, conn = conn,
                         onAutoSplit = ::autoSplit, onFind = ::openSearch, onNotifications = ::editAlerts, onCompose = ::openComposer,
-                        onClose = ::askToCloseFromPaneMenu, showing = ::showing, keyboard = true, onMoveToTab = ::pickPlaceFor, onMoveToNewTab = ::moveToNewTab)
+                        onClose = ::askToCloseFromPaneMenu, showing = ::showing, keyboard = true, onMoveToTab = ::pickPlaceFor, onMoveToNewTab = ::moveToNewTab,
+                        beforePaste = input::finishCompositionBeforePaste)
                 }
                 // This box is inside the safe-drawing insets and above the caption and the key bar, so
                 // the notice stays clear of the soft keyboard. It is last, so it covers the pause layer.
@@ -856,7 +857,7 @@ internal fun Workspace(
                     PaneMenu(window, railTarget ?: focused, onDismiss = { railMenuFor = null }, conn = conn,
                         onAutoSplit = ::autoSplit, onFind = ::openSearch, onNotifications = ::editAlerts, onCompose = ::openComposer,
                         onClose = ::askToCloseFromPaneMenu, showing = ::showing, expanded = railTarget != null, onMoveToTab = ::pickPlaceFor,
-                        onMoveToNewTab = ::moveToNewTab)
+                        onMoveToNewTab = ::moveToNewTab, beforePaste = input::finishCompositionBeforePaste)
                 }
             },
             strip = {

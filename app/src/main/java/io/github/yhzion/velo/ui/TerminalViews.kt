@@ -777,6 +777,19 @@ class TerminalInputView(context: Context) : View(context) {
         return pasteAsking
     }
 
+    /**
+     * Text from a pane's menu or its selection is about to go to the pane. What the keyboard
+     * composes goes first, as before a key of the bar ([finishBarComposition]), and the keyboard
+     * starts afresh: letters it streamed (#18) would otherwise be edited after the paste, erasing
+     * it. An editor that cannot send now (a window over the app) has its composition retired.
+     * True while a paste waits for its question: the caller does not paste then.
+     */
+    fun finishCompositionBeforePaste(): Boolean {
+        if (finishBarComposition()) return true
+        retireComposition()
+        return false
+    }
+
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI or
