@@ -22,7 +22,8 @@ import org.robolectric.annotation.Config
 
 /**
  * The caption's title (pane-caption-title) is in the board's caption type at the chosen UI size, and nothing
- * else: a pinch in the focused pane changes the pane's text, not the caption's (#46).
+ * else (#46). No pinch is exercised here: `PaneCaption` takes no terminal text size, so its signature makes one
+ * impossible to pass, and a pinch in the focused pane can change only the pane's text.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)

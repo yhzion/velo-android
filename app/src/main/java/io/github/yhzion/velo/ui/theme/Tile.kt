@@ -59,7 +59,7 @@ import kotlin.math.roundToInt
 enum class TileBrand(
     /** What a screen reader calls the program. */
     val label: String,
-    /** The logo on the face: a Simple Icons path (NOTICE), or Codex's C. */
+    /** The logo on the face: a Simple Icons path, or Velo's own drawing of omp's or pi's mark (NOTICE). Codex has a letter. */
     @DrawableRes val logo: Int? = null,
     /** The text on the face when there is no logo. */
     val letter: String? = null,
@@ -252,7 +252,7 @@ fun TabTile(
         val box = measurable.measure(Constraints())
         // The face's pixels, as the face below is sized, so its centre is the reported centre.
         val face = size.roundToPx()
-        layout(u(tileFaceBounds(panes, s).right).roundToPx(), face) { box.place(0, face - box.height) }
+        layout(u(tileFaceBounds(panes, s).right).roundToPx(), face) { box.placeRelative(0, face - box.height) }
     }
     Box(
         modifier.then(laidOut).size(u(tileBox(s))).tagged("")

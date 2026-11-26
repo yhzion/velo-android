@@ -50,13 +50,15 @@ class BrandIconsTest {
             assertTrue(name, xml.contains("android:viewportWidth=\"24\"") && xml.contains("android:viewportHeight=\"24\""))
             assertTrue(name, xml.contains("android:fillColor=\"#FFFFFFFF\""))
             assertFalse(name, xml.contains("android:strokeColor"))
+            assertEquals(name, 1, Regex("<path\\b").findAll(xml).count())
             assertTrue(name, Regex("android:pathData=\"[Mm][^\"]{20,}\"").containsMatchIn(xml))
         }
     }
 
     @Test fun theNoticeNamesOmpAndPiDrawings() {
         val section = notice().substringAfter("Program logos").substringBefore("\n\n\n")
-        for (said in listOf("omp", "pi", "Velo's own")) assertTrue(said, said in section)
+        val said = listOf("omp", "pi", "Velo's own", "ic_agent_omp.xml", "ic_mark_pi.xml", "pi-coding-agent")
+        for (name in said) assertTrue(name, name in section)
     }
 
     private fun notice() = File("../NOTICE").readText()

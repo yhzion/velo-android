@@ -18,7 +18,9 @@ import java.util.IdentityHashMap
 
 /**
  * Debug builds only: which composables recompose while something moves on screen, and what made them, for the
- * recomposition e2e (`dev/emulator/e2e_pane_effects.py`, `overview.recompose` and `workspace.pinch-recompose`, #335).
+ * recomposition e2e (`dev/emulator/e2e_pane_effects.py`, `overview.recompose`, #335). Its `workspace.pinch-recompose`
+ * no longer holds: it proved a pinch by the caption recomposing, and the caption no longer follows a pinch (#46), so
+ * that check needs a new proof of the pinch.
  * `adb shell am broadcast -a io.github.yhzion.velo.debug.RECOMPOSE -p io.github.yhzion.velo -e id N -e op OP`, where OP is
  * - `start`: forgets what was counted and counts from now on, in every composition of the activity in front (its
  *   dialogs and popups too); it logs `N started`, or `N started no-activity` / `N started no-recomposer`;
