@@ -13,7 +13,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -31,19 +30,16 @@ private const val CaptionTile = 18f
 /**
  * The caption under the panes (WsBar*, WsClosed*, WsOpen* boards, pane-caption): the shown tab's
  * tile, which machine the keys go to and the tab's name, and what its program does now ([rowMark]).
- * Its text takes the focused pane's text size ([terminalFontPx]) when one is given, so a pinch shows
- * in it too (#335); the board's 13 otherwise. It lies on the backdrop between the panes and the key bar,
+ * Its text is the board's caption type at the chosen UI size, whatever the focused pane's text size (#46). It lies on the backdrop between the panes and the key bar,
  * 40 high as the board draws it, or only as high as its line in the [compact] pane style.
  */
 @Composable
 internal fun PaneCaption(
-    row: TabRow?, connected: Boolean, readState: ActivityReadState, host: String, modifier: Modifier = Modifier, terminalFontPx: Float? = null,
+    row: TabRow?, connected: Boolean, readState: ActivityReadState, host: String, modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) = VeloSurface(VeloTheme.colors.backdrop) {
     val activity = row?.let { readState.activity(it, connected) }
-    val density = LocalDensity.current
-    val caption = VeloTheme.type.caption.naturalLines()
-    val style = if (terminalFontPx == null) caption else caption.copy(fontSize = with(density) { terminalFontPx.toSp() })
+    val style = VeloTheme.type.caption.naturalLines()
     val shown = row != null && activity != null
     // Laid out by its face, the tile's layers step above the face: the compact row keeps the tile's box high,
     // as before, so they stay in the compact gap above it and off the pane, but for a fraction of a pixel.

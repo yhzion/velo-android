@@ -833,8 +833,8 @@ internal fun Workspace(
             if (fold.tabletop) Spacer(Modifier.weight(1f))
             // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-            FocusedTabCaption(conn, focused, window?.row(state, state.session.orEmpty(), true), connected,
-                host = hostLabel, compact = compactStyle, modifier = captionSlot(gap))
+            PaneCaption(window?.row(state, state.session.orEmpty(), true), connected, conn.activityReadState,
+                host = hostLabel, modifier = captionSlot(gap), compact = compactStyle)
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
                 KeyBar(s.keyBar, armed, keyBarSlot(gap),
                     enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
@@ -1101,15 +1101,6 @@ internal fun Workspace(
     if (panesHidden) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.screenSafeDrawing).padding(sizes.overlayPadding)) {
         ErrorNotice(conn, Modifier.align(Alignment.BottomCenter), ::noticeText)
     }
-}
-
-/**
- * The caption under the panes ([PaneCaption]), at the text size of the [focused] pane. A composable of its own: a pinch
- * changes that size on each step, and then only the caption runs again, not the whole workspace (#335).
- */
-@Composable
-private fun FocusedTabCaption(conn: HostConnection, focused: String?, row: TabRow?, connected: Boolean, host: String, compact: Boolean, modifier: Modifier) {
-    PaneCaption(row, connected, conn.activityReadState, host = host, terminalFontPx = conn.terminalFontPx(focused), modifier = modifier, compact = compact)
 }
 
 // Where each part of the workspace goes in its row (WsBar*, WsClosed*, WsOpen* boards): the open sidebar, the pane
