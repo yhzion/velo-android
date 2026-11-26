@@ -50,16 +50,44 @@ A file path opens the same way, through the app your phone already uses for that
 
 You need a 64-bit ARM device running Android 11 or later and a computer running a Rex server. The phone connects to the server; it does not run one.
 
-1. Once a stable APK is published, download `velo-<tag>-arm64-v8a.apk` from [GitHub Releases](https://github.com/yhzion/velo-android/releases/latest) and install it on your phone. Until then, use the source build instructions below.
-2. On the computer running Rex, run `rex server tailscale pair` to display a QR code.
-3. Connect your phone to the same Tailscale network. In **Velo**, choose **Add by QR code or address** and scan the code. You can also enter an address directly, such as `https://rex.example.ts.net`, `ssh://user@rex.example.ts.net`, or a local socket path.
-4. Open the server and select the session and tab you want to continue.
+1. Download `velo-<tag>-arm64-v8a.apk` from [GitHub Releases](https://github.com/yhzion/velo-android/releases/latest) and install it on your phone. The `.sha256` file beside it holds the APK's digest.
+2. Add the server, over Tailscale or by its address, as described below.
+3. Open the server and select the session and tab you want to continue.
+
+### Over Tailscale
+
+Velo runs its own Tailscale node, so the phone needs no Tailscale app or VPN.
+
+1. In **Velo**, log in to Tailscale once, in the browser, to the tailnet your Rex server is on.
+2. Velo lists the Rex servers it finds on that tailnet. Tap one to save it.
+3. Or, on the computer running Rex, run `rex server tailscale pair` and scan the QR code it shows: choose **Add by QR code or address**, then **Scan QR code**.
+
+### By address
+
+Choose **Add by QR code or address** and type the address. You do not need to log in to Tailscale for this. While Velo's Tailscale node is off, Velo connects over the phone's own network.
+
+| You type | Velo connects to |
+| --- | --- |
+| `rex.example.ts.net` | HTTPS on port 443: an address without a scheme is HTTPS |
+| `rex.example.ts.net:8443` | HTTPS on port 8443 |
+| `https://192.0.2.29`, `https://[2001:db8::1]:8443` | HTTPS to an IPv4 or IPv6 address |
+| `http://127.0.0.1:7890` | plain HTTP, without TLS |
+| `ssh://user@rex.example.ts.net`, `ssh://user@host:2222` | that user's Rex server on that host, over SSH (port 22 unless you give one) |
+| `/tmp/rex.sock`, `unix:///tmp/rex.sock` | a Unix socket on the phone itself |
+
+Velo refuses an address that holds a password (`https://me:pw@host`), an SSH address without a user (`ssh://host`) or with a path after the host, and other schemes such as `wss://`.
+
+Velo does not encrypt `http://`. To a server on your tailnet, Tailscale encrypts the traffic; anywhere else, use `https://` or `ssh://`.
+
+Over SSH, Velo logs in with the phone's own key, a key you import, a password or the host's prompts. The first time, it shows the host key's fingerprint and asks you to trust it. If the host later presents another key, Velo blocks the connection. It then finds the Rex server's socket on that host as the desktop app does, and starts the server if it is not running.
+
+A socket path is a path on the phone, not on the server. Android keeps each app's files to itself, so Velo cannot open the socket of a Rex server that another app, such as Termux, runs on the same phone. To reach the socket on a computer, use its `ssh://` address.
 
 ## Update the app
 
 If you have Velo v2.9.17 or an earlier build tied to the old private repository, download the first public APK from [Velo's releases](https://github.com/yhzion/velo-android/releases) and install it as an update once. **Do not uninstall the existing app.** An in-place upgrade requires the same package name and signing certificate and a higher version code. If Android rejects the update, stop rather than deleting saved servers, settings, or SSH keys. The public build checks the new repository for subsequent updates.
 
-Once releases are available, open **Settings → About → Updates** to check for new versions or enable update notifications. Stable (the default) offers stable Velo releases only. Preview also includes preview builds; Edge adds experimental builds on top of both. Switching channels never downgrades the installed app.
+Open **Settings → About → Updates** to check for new versions or enable update notifications. Stable (the default) offers stable Velo releases only. Preview also includes preview builds; Edge adds experimental builds on top of both. Switching channels never downgrades the installed app.
 
 Background checks run roughly every 12 hours when connected. They never download an APK. To update Velo, choose **Download update**, then **Install update**. Android may ask whether this app can install updates. Velo checks the APK digest, package, version and signing certificate before opening Android's confirmation screen.
 
@@ -77,7 +105,7 @@ The picker takes one TTF, OTF, or TTC file at a time. A Regular TTF supplies one
 
 ## QR scanning and privacy
 
-ZXing reads pairing QR codes on your device. The scanner does not upload camera frames, decoded results, or scanner usage metrics. Velo uses a valid HTTPS address from the code to save and connect to that server. You can enter a server address instead of granting camera access.
+ZXing reads pairing QR codes on your device. The scanner does not upload camera frames, decoded results, or scanner usage metrics. Velo takes only an `https://` address from a code, and uses it to save and connect to that server. It refuses a code that holds anything else, such as an `ssh://` login or a socket path: type that address instead. You can enter a server address instead of granting camera access.
 
 ## Build from source
 
