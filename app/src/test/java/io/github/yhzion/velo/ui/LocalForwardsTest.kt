@@ -2,7 +2,9 @@ package io.github.yhzion.velo.ui
 
 import io.github.yhzion.velo.core.ForwardInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalForwardsTest {
@@ -70,5 +72,70 @@ class LocalForwardsTest {
         assertEquals("On this phone at 127.0.0.1:41000", forwardDetail(ForwardInfo("block:f", "localhost", 5173, 41000, 0)))
         assertEquals("On this phone at 127.0.0.1:5173 · 1 connection", forwardDetail(ForwardInfo("block:f", "localhost", 5173, 5173, 1)))
         assertEquals("On this phone at 127.0.0.1:5173 · 3 connections", forwardDetail(ForwardInfo("block:f", "localhost", 5173, 5173, 3)))
+    }
+
+    @Test
+    fun aForwardOfTheSameAddressIsTheLinksForward() {
+        val forwards = listOf(ForwardInfo("block:f", "localhost", 5173, 41000, 0), ForwardInfo("block:g", "::1", 3000, 3000, 0))
+        assertTrue(hasForward(forwards, loopbackLink("http://localhost:5173/a")!!))
+        assertTrue(hasForward(forwards, loopbackLink("http://[::1]:3000/")!!))
+        // Another port, and another name for the loopback: the core makes a forward of its own for each.
+        assertFalse(hasForward(forwards, loopbackLink("http://localhost:5174/")!!))
+        assertFalse(hasForward(forwards, loopbackLink("http://127.0.0.1:5173/")!!))
+        assertFalse(hasForward(emptyList(), loopbackLink("http://localhost:5173/")!!))
+    }
+
+    @Test
+    fun theForwardQuestionNamesTheRemoteAndThePortAndShowsTheLink() {
+        val link = loopbackLink("http://localhost:5173/app?x=1")!!
+        assertEquals("http://localhost:5173/app?x=1", link.url)
+        assertEquals("Forward port 5173?", forwardQuestionTitle(link))
+        assertEquals(
+            "http://localhost:5173/app?x=1\n\nA program in the terminal printed this link. To open it, Velo forwards port 5173 of workstation to this phone. " +
+                "While the forward is open, apps on this phone can reach that port of workstation. It stays open until you stop it in Settings → Remotes.",
+            forwardQuestionText(link, "workstation"),
+        )
+        val long = loopbackLink("http://localhost:5173/" + "a".repeat(500))!!
+        assertEquals(long.url.take(LINK_QUESTION_CHARS) + "…", forwardQuestionText(long, "workstation").substringBefore("\n"))
+    }
+
+    @Test
+    fun aTapOnALoopbackLinkAsksBeforeItMakesANewForward() {
+        val link = loopbackLink("http://localhost:5173/")!!
+        var forwarded = 0
+        val question = forwardTap(link, hidden = false, forwards = emptyList(), remote = "workstation") { forwarded++ }!!
+        assertEquals("Forward port 5173?", question.title)
+        assertEquals(forwardQuestionText(link, "workstation"), question.text)
+        assertEquals("Forward", question.confirm)
+        // Declined, the question goes and nothing was forwarded.
+        assertEquals(0, forwarded)
+        question.open()
+        assertEquals(1, forwarded)
+    }
+
+    @Test
+    fun aTapOnALinkWhoseForwardExistsOpensItWithoutAQuestion() {
+        val link = loopbackLink("http://localhost:5173/")!!
+        var opened = 0
+        assertNull(forwardTap(link, hidden = false, forwards = listOf(ForwardInfo("block:f", "localhost", 5173, 5173, 0)), remote = "workstation") { opened++ })
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun aHiddenLoopbackLinkGetsOneQuestionThatShowsItsTarget() {
+        val link = loopbackLink("http://localhost:5173/admin")!!
+        var opened = 0
+        // No forward yet: the forward question shows the link.
+        val forward = forwardTap(link, hidden = true, forwards = emptyList(), remote = "workstation") { opened++ }!!
+        assertEquals("Forward port 5173?", forward.title)
+        assertTrue(forward.text.startsWith("http://localhost:5173/admin\n"))
+        // Its forward exists: the question of a hidden web link.
+        val shown = forwardTap(link, hidden = true, forwards = listOf(ForwardInfo("block:f", "localhost", 5173, 5173, 0)), remote = "workstation") { opened++ }!!
+        assertEquals("Open http link?", shown.title)
+        assertEquals(hiddenLinkText(LinkTap.Open("http://localhost:5173/admin")), shown.text)
+        assertEquals("Open", shown.confirm)
+        assertEquals(0, opened)
+        shown.open()
+        assertEquals(1, opened)
     }
 }

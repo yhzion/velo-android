@@ -7427,6 +7427,61 @@ test "Core: a port another program holds on the phone is replaced by a free one"
     try expectRefusedStream(core, &recorder, local);
 }
 
+/// The id of one of the requests the core waits for on other threads.
+fn anyAsk(core: *Core) !u64 {
+    core.lock.lock();
+    defer core.lock.unlock();
+    var it = core.pending.iterator();
+    while (it.next()) |kv| if (std.meta.activeTag(kv.value_ptr.*) == .ask) return kv.key_ptr.*;
+    return error.NoRequest;
+}
+
+fn waitQueued(core: *Core, method: []const u8, count: usize) !void {
+    for (0..400) |_| {
+        if (queued(core, method) == count) return;
+        try std.Io.sleep(testing.io, .fromMilliseconds(5), .awake);
+    }
+    return error.NotQueued;
+}
+
+test "Core: a forward serves a limited number of connections at a time and resets the ones above it" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    const core = try withTerminal(&recorder, me);
+    defer core.destroy();
+    const port = try freePort();
+    try openForward(core, port);
+    const max = core_mod.forward_connections_max;
+    const asked = queued(core, protocol.methods.dataConnect);
+
+    // As many as it serves, each waiting for its stream.
+    var browsers: [max]std.Io.net.Stream = undefined;
+    var open: usize = 0;
+    defer for (browsers[0..open]) |b| b.close(testing.io);
+    while (open < max) : (open += 1) browsers[open] = try connectLoopback(port);
+    try waitConnections(&recorder, max);
+    try waitQueued(core, protocol.methods.dataConnect, asked + max);
+
+    // One more is reset at once: it asks for no stream, and the earlier ones stay.
+    {
+        const extra = try connectLoopback(port);
+        defer extra.close(testing.io);
+        var buffer: [16]u8 = undefined;
+        var data: [1][]u8 = .{&buffer};
+        try testing.expectError(error.ConnectionResetByPeer, extra.read(testing.io, &data));
+    }
+    try testing.expectEqual(asked + max, queued(core, protocol.methods.dataConnect));
+    try waitConnections(&recorder, max);
+
+    // When one of them ends, the next connection is served again.
+    try answerError(core, try anyAsk(core), "internal");
+    try waitConnections(&recorder, max - 1);
+    const next = try connectLoopback(port);
+    defer next.close(testing.io);
+    try waitQueued(core, protocol.methods.dataConnect, asked + max + 1);
+    try waitConnections(&recorder, max);
+}
+
 test "Core: after a lost link a forward takes its block again before it asks for a stream" {
     var recorder: Recorder = .{};
     defer recorder.deinit();

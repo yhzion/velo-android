@@ -18,6 +18,9 @@ internal data class LoopbackLink(val scheme: String, val host: String, val port:
     /** The link as the person reads it, for messages. */
     val label: String get() = "$host:$port"
 
+    /** The whole link, with its port written out, for the question that shows where it goes. */
+    val url: String get() = "$scheme://$host:$port$rest"
+
     /**
      * The link as the phone opens it: the forward listens on the phone's `127.0.0.1:`[localPort].
      * A `localhost` name stays, so the page's origin, and the cookies and OAuth callbacks tied to
@@ -81,6 +84,37 @@ internal fun forwardFailure(answer: ForwardAnswer, link: LoopbackLink): String? 
     answer.code == "NotConnected" -> "The remote is not connected."
     answer.message.isNotEmpty() -> answer.message
     else -> "Velo could not forward ${link.label} (${answer.code.ifEmpty { "error" }})."
+}
+
+/**
+ * True when [forwards], the remote's forwards the core reports, has the one a tap on [link] would
+ * use: the core keeps one forward per host and port as the link writes them (`findForward`).
+ */
+internal fun hasForward(forwards: List<ForwardInfo>, link: LoopbackLink): Boolean =
+    forwards.any { it.host == link.remoteHost && it.port == link.port }
+
+/** The question before a tap on [link] makes a new forward: it names the port. */
+internal fun forwardQuestionTitle(link: LoopbackLink): String = "Forward port ${link.port}?"
+
+/**
+ * The link (cut after [LINK_QUESTION_CHARS]) and what a forward of its port of the remote named
+ * [remote] means: any program can print such a link, and any app on the phone can use the forward.
+ */
+internal fun forwardQuestionText(link: LoopbackLink, remote: String): String =
+    "${cutForQuestion(link.url)}\n\nA program in the terminal printed this link. To open it, Velo forwards port ${link.port} of $remote to this phone. " +
+        "While the forward is open, apps on this phone can reach that port of $remote. It stays open until you stop it in Settings → Remotes."
+
+/**
+ * What a tap on the loopback link [link] does on a remote named [remote] with [forwards]. A new
+ * forward asks first, and so does a link the terminal did not show ([hidden]) whose forward
+ * exists: the question comes back, and its Open runs [open]. Otherwise [open] runs at once and
+ * null comes back. One question is enough for a hidden link: the forward's shows the link too.
+ */
+internal fun forwardTap(link: LoopbackLink, hidden: Boolean, forwards: List<ForwardInfo>, remote: String, open: () -> Unit): LinkQuestion? {
+    if (!hasForward(forwards, link)) return LinkQuestion(forwardQuestionTitle(link), forwardQuestionText(link, remote), confirm = "Forward", open = open)
+    if (hidden) return LinkTap.Open(link.url).let { LinkQuestion(hiddenLinkTitle(it), hiddenLinkText(it), open = open) }
+    open()
+    return null
 }
 
 /** The line under a forward in the remote's list: where the phone reaches it, and what it relays. */

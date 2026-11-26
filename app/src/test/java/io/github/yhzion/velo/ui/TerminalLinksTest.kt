@@ -76,6 +76,10 @@ class TerminalLinksTest {
         assertEquals(LinkTap.Hidden(LinkTap.Open("https://evil.example/a")), linkTap(TerminalLink("url", "https://evil.example/a", set = true, shown = false)))
         assertEquals(LinkTap.Hidden(LinkTap.Open("mailto:a@b.com")), linkTap(TerminalLink("url", "mailto:a@b.com", set = true, shown = false)))
         assertEquals(LinkTap.Hidden(LinkTap.File("file:///home/me/a.apk")), linkTap(TerminalLink("file", "file:///home/me/a.apk", set = true, shown = false)))
+        assertEquals(
+            LinkTap.Hidden(LinkTap.Forward(loopbackLink("http://localhost:5173/")!!)),
+            linkTap(TerminalLink("localhost", "http://localhost:5173/", set = true, shown = false)),
+        )
         // A link that launches another app has its own question, which shows the target too.
         assertEquals(LinkTap.Ask("ssh://me@host", "ssh"), linkTap(TerminalLink("url", "ssh://me@host", set = true, shown = false)))
     }

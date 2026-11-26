@@ -45,13 +45,16 @@ internal sealed interface LinkTap {
     /** A path or `file:` URL: the app downloads the remote's file and opens the copy ([RemoteFileOpener]). */
     data class File(val target: String) : LinkTap
 
-    /** A web link to the remote's loopback: the app forwards its port to the phone and opens it there. */
+    /**
+     * A web link to the remote's loopback: the app forwards its port to the phone and opens it
+     * there. It asks before it makes a new forward ([forwardTap]).
+     */
     data class Forward(val link: LoopbackLink) : LinkTap
 
     /**
      * A hyperlink a program set under text that is not its target, also under blank cells: the
      * person could not read where it goes, so the app shows the target and asks before [then]
-     * (an [Open] or a [File]).
+     * (an [Open] or a [File]). A [Forward] is asked about as [forwardTap] says.
      */
     data class Hidden(val then: LinkTap) : LinkTap
 
@@ -70,7 +73,7 @@ private val directSchemes = setOf("http", "https", "mailto")
 internal fun linkTap(link: TerminalLink): LinkTap? {
     val tap = shownLinkTap(link)
     // [LinkTap.Ask] shows the target in its own question.
-    return if (link.set && !link.shown && (tap is LinkTap.Open || tap is LinkTap.File)) LinkTap.Hidden(tap) else tap
+    return if (link.set && !link.shown && tap != null && tap !is LinkTap.Ask) LinkTap.Hidden(tap) else tap
 }
 
 /** What a tap on [link] does when the person can read its target. */
@@ -109,7 +112,7 @@ internal fun linkQuestionTitle(ask: LinkTap.Ask): String = "Open ${ask.scheme} l
 internal fun linkQuestionText(ask: LinkTap.Ask): String =
     "${cutForQuestion(ask.uri)}\n\nA program in the terminal printed this link. It opens another app on this phone."
 
-private fun cutForQuestion(target: String): String =
+internal fun cutForQuestion(target: String): String =
     if (target.length > LINK_QUESTION_CHARS) target.take(LINK_QUESTION_CHARS) + "…" else target
 
 private const val HIDDEN_LINK_WHY = "A program in the terminal printed this link under other text."
@@ -131,10 +134,11 @@ internal fun hiddenFileText(path: String, remote: String): String =
     "${cutForQuestion(path)}\n\n$HIDDEN_LINK_WHY Velo downloads the file from $remote and opens it on this phone."
 
 /**
- * A question about a link from a pane of [conn], waiting for the person: [title] and [text] as
- * [linkQuestionTitle] and its kin word them, and [open], which runs when the person says Open.
+ * A question about a link from a pane, waiting for the person: [title] and [text] as
+ * [linkQuestionTitle] and its kin word them, and [open], which runs when the person takes
+ * [confirm]. Dismissed, the tap did nothing.
  */
-internal class LinkQuestion(val conn: HostConnection, val title: String, val text: String, val open: () -> Unit)
+internal class LinkQuestion(val title: String, val text: String, val confirm: String = "Open", val open: () -> Unit)
 
 /**
  * Opens [uri] in the app this phone uses for it, as a browser opens a link: only an app that takes

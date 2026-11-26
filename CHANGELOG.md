@@ -9,6 +9,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A link that a program in the terminal hides under other text, or under blank space, now shows where it goes and asks before it opens.
 - While Velo waits for you to log in to Tailscale, the login address no longer appears in the device log, where someone reading the log could open it before you and log in to their own tailnet.
 - A file you tap in the terminal can no longer fill your phone: Velo stops the download once the file is larger than the server said it would be, or larger than 256 MB, and tells you so.
+- A tap on a link to the remote's own localhost asks before it forwards a new port to this phone, and a forwarded port serves at most 64 connections at a time.
 
 ## 2.12.0 - 2026-11-26
 

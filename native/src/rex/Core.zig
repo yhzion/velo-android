@@ -699,6 +699,11 @@ const Ask = struct {
 
 const too_old_message = "This remote's Rex server is too old to forward ports.";
 
+/// The connections one forward serves at a time. Any app on the phone can connect to its
+/// port, and each connection costs a task here and a stream on the remote. A browser that
+/// loads a page keeps a handful per origin, so a development page never comes near this.
+pub const forward_connections_max = 64;
+
 /// A link to the remote's loopback opened through a tunnel block (#226): the phone listens
 /// on `127.0.0.1:local_port`, and each connection it accepts is relayed over a stream of
 /// `block`, which connects it to `host`:`port` on the remote.
@@ -1962,13 +1967,31 @@ pub const Core = struct {
                     continue;
                 },
             };
-            fwd.tasks.concurrent(self.io, serveForwarded, .{ self, fwd, local }) catch tunnel.reset(self.io, local);
+            // Counted here, not in its task: the next accept must already see this one.
+            if (!self.admitConnection(fwd)) {
+                tunnel.reset(self.io, local);
+                continue;
+            }
+            fwd.tasks.concurrent(self.io, serveForwarded, .{ self, fwd, local }) catch {
+                self.countConnection(fwd, -1);
+                tunnel.reset(self.io, local);
+            };
         }
     }
 
-    /// One connection the forward accepted: a stream of its block, then the relay.
-    fn serveForwarded(self: *Core, fwd: *Forward, local: std.Io.net.Stream) void {
+    /// Counts one more connection of `fwd`; false when it serves `forward_connections_max` already.
+    fn admitConnection(self: *Core, fwd: *Forward) bool {
+        {
+            self.lock.lock();
+            defer self.lock.unlock();
+            if (fwd.connections >= forward_connections_max) return false;
+        }
         self.countConnection(fwd, 1);
+        return true;
+    }
+
+    /// One connection the forward accepted and counted: a stream of its block, then the relay.
+    fn serveForwarded(self: *Core, fwd: *Forward, local: std.Io.net.Stream) void {
         defer self.countConnection(fwd, -1);
         var buffer: [ds.max_ticket_len]u8 = undefined;
         const ticket = self.forwardTicket(fwd, &buffer) catch |err| {
