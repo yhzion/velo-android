@@ -58,30 +58,39 @@ You need a 64-bit ARM device running Android 11 or later and a computer running 
 
 Velo runs its own Tailscale node, so the phone needs no Tailscale app or VPN.
 
-1. In **Velo**, log in to Tailscale once, in the browser, to the tailnet your Rex server is on.
-2. Velo lists the Rex servers it finds on that tailnet. Tap one to save it.
-3. Or, on the computer running Rex, run `rex server tailscale pair` and scan the QR code it shows: choose **Add by QR code or address**, then **Scan QR code**.
+1. On the computer running Rex, run `rex server tailscale on`. The server then serves its API on your tailnet. The first time, it asks you to log in: the login link appears in the server log and in `rex server status`. The setting lasts until the server restarts; start the server with `--tailscale` to keep it.
+2. In **Velo**, tap **Log in to Tailscale** and log in once, in the browser, to the same tailnet.
+3. Velo lists the Rex servers it finds on that tailnet. Tap one to save it.
+
+Instead of step 3, you can scan the server's QR code. On the computer, run `rex server tailscale pair`. In Velo, choose **Add by QR code or address**, then **Scan QR code**. The code holds only the server's tailnet address, so the phone must be on the tailnet first (step 2).
+
+**Log in to Tailscale** and **Add by QR code or address** are on the start screen, which Velo shows only while no server is open. After that, log in under **Settings → Remotes → Tailscale**, and add a server with **Add Remote…** in the sidebar or in **Settings → Remotes**. The sidebar also lists the servers found on the tailnet.
 
 ### By address
 
-Choose **Add by QR code or address** and type the address. You do not need to log in to Tailscale for this. While Velo's Tailscale node is off, Velo connects over the phone's own network.
+On the start screen, choose **Add by QR code or address**; later, choose **Add Remote…**. Type the address and tap **Add**.
+
+While Velo's Tailscale node is running, Velo opens every `https://` and `http://` connection through it. In any other state, such as off or waiting for a login, Velo connects over the phone's own network. An `ssh://` address goes through the node only when its host is on the tailnet.
+
+An address outside a tailnet needs no Tailscale login. A tailnet name such as `rex.example.ts.net` resolves only on the tailnet: log in to Tailscale in Velo, or run the Tailscale app on the phone.
 
 | You type | Velo connects to |
 | --- | --- |
 | `rex.example.ts.net` | HTTPS on port 443: an address without a scheme is HTTPS |
-| `rex.example.ts.net:8443` | HTTPS on port 8443 |
+| `rex.example.com:8443` | HTTPS on port 8443 |
 | `https://192.0.2.29`, `https://[2001:db8::1]:8443` | HTTPS to an IPv4 or IPv6 address |
-| `http://127.0.0.1:7890` | plain HTTP, without TLS |
-| `ssh://user@rex.example.ts.net`, `ssh://user@host:2222` | that user's Rex server on that host, over SSH (port 22 unless you give one) |
-| `/tmp/rex.sock`, `unix:///tmp/rex.sock` | a Unix socket on the phone itself |
+| `http://192.0.2.29:7890` | plain HTTP, without TLS |
+| `ssh://user@rex.example.com`, `ssh://user@host:2222` | that user's Rex server on that host, over SSH (port 22 unless you give one) |
 
-Velo refuses an address that holds a password (`https://me:pw@host`), an SSH address without a user (`ssh://host`) or with a path after the host, and other schemes such as `wss://`.
+HTTPS to an IP address works only when the server's certificate names that address. Rex's tailnet certificate names only its `ts.net` name, so `https://100.x.y.z` fails the certificate check: use the `ts.net` name instead.
+
+Velo refuses an address that holds a password (`https://me:pw@host`), a user name outside `ssh://` (`https://me@host`), an SSH address without a user (`ssh://host`) or with a path after the host, and other schemes such as `wss://`.
 
 Velo does not encrypt `http://`. To a server on your tailnet, Tailscale encrypts the traffic; anywhere else, use `https://` or `ssh://`.
 
 Over SSH, Velo logs in with the phone's own key, a key you import, a password or the host's prompts. The first time, it shows the host key's fingerprint and asks you to trust it. If the host later presents another key, Velo blocks the connection. It then finds the Rex server's socket on that host as the desktop app does, and starts the server if it is not running.
 
-A socket path is a path on the phone, not on the server. Android keeps each app's files to itself, so Velo cannot open the socket of a Rex server that another app, such as Termux, runs on the same phone. To reach the socket on a computer, use its `ssh://` address.
+Velo also takes a socket path (`/path/to/rex.sock` or `unix:///path/to/rex.sock`), but that path is on the phone. Android keeps each app's files to itself, so Velo cannot open the socket of a Rex server that another app, such as Termux, runs on the same phone. To reach a Rex server in Termux, use Termux's SSH server (`ssh://user@127.0.0.1:8022`) or that server's own tailnet name. To reach the socket on a computer, use its `ssh://` address.
 
 ## Update the app
 
@@ -105,7 +114,7 @@ The picker takes one TTF, OTF, or TTC file at a time. A Regular TTF supplies one
 
 ## QR scanning and privacy
 
-ZXing reads pairing QR codes on your device. The scanner does not upload camera frames, decoded results, or scanner usage metrics. Velo takes only an `https://` address from a code, and uses it to save and connect to that server. It refuses a code that holds anything else, such as an `ssh://` login or a socket path: type that address instead. You can enter a server address instead of granting camera access.
+ZXing reads pairing QR codes on your device. The scanner does not upload camera frames, decoded results, or scanner usage metrics. Velo takes only an `https://` address from a code. On the start screen's **Add by QR code or address**, Velo saves that server and connects to it. In **Add Remote…**, the scan only fills the address field, and you tap **Add**. Velo refuses a code that holds anything else, such as an `ssh://` login or a socket path: type that address instead. You can enter a server address instead of granting camera access.
 
 ## Build from source
 
