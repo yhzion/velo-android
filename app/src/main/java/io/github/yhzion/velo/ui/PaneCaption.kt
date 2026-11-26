@@ -23,7 +23,7 @@ import io.github.yhzion.velo.ui.theme.TabTile
 import io.github.yhzion.velo.ui.theme.VeloSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.naturalLines
-import io.github.yhzion.velo.ui.theme.tileCentredBox
+import io.github.yhzion.velo.ui.theme.tileBox
 
 /** The caption's tile, the board's 18. */
 private const val CaptionTile = 18f
@@ -45,11 +45,11 @@ internal fun PaneCaption(
     val caption = VeloTheme.type.caption.naturalLines()
     val style = if (terminalFontPx == null) caption else caption.copy(fontSize = with(density) { terminalFontPx.toSp() })
     val shown = row != null && activity != null
-    // Laid out by its face, the tile's layers step above the face: the compact row is high enough to hold
-    // them with the face centred, so they stay off the pane above, which is only the compact gap away.
+    // Laid out by its face, the tile's layers step above the face: the compact row keeps the tile's box high,
+    // as before, so they stay in the compact gap above it and off the pane, but for a fraction of a pixel.
     val least = when {
         !compact -> VeloTheme.medium(40.dp)
-        shown -> VeloTheme.medium(tileCentredBox(CaptionTile).dp)
+        shown -> VeloTheme.medium(tileBox(CaptionTile).dp)
         else -> 0.dp
     }
     Row(
