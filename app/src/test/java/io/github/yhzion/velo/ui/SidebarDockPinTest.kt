@@ -147,16 +147,19 @@ class SidebarDockPinTest {
     @Config(qualifiers = "w821dp-h1088dp-420dpi")
     @Test fun theToolbarHoldsThePinAtEverySize() {
         show()
-        for (each in UiSize.entries) {
+        // Docked, the sidebar keeps its own width beside the panes: the narrowest toolbar the pin is in.
+        for (docked in listOf(false, true)) for (each in UiSize.entries) {
+            settings.saveSidebarDocked(docked)
             size = each
             compose.waitForIdle()
             val pin = compose.onNodeWithTag("sidebar-dock").getBoundsInRoot()
             val actions = compose.onNodeWithTag("sidebar-actions").getBoundsInRoot()
             val toolbar = compose.onNodeWithTag("sidebar-toolbar").getBoundsInRoot()
+            if (docked) compose.onNodeWithTag("panes").assertExists() else compose.onNodeWithTag("panes").assertDoesNotExist()
             // The capsule keeps its three controls and stays clear of the pin, inside the toolbar.
-            assertTrue("$each", actions.right - actions.left >= 48.dp * 3)
-            assertTrue("$each", pin.right <= actions.left)
-            assertTrue("$each", actions.right <= toolbar.right)
+            assertTrue("$each docked=$docked", actions.right - actions.left >= 48.dp * 3)
+            assertTrue("$each docked=$docked", pin.right <= actions.left)
+            assertTrue("$each docked=$docked", actions.right <= toolbar.right)
         }
     }
 
