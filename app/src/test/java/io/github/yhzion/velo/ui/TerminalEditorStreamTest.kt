@@ -282,6 +282,18 @@ class TerminalEditorStreamTest {
         assertEquals("😁", remote.line.toString())
     }
 
+    /** A keyboard that deletes one UTF-16 unit of an emoji leaves half of it: no half goes to the remote. */
+    @Test fun halfAnEmojiIsNotStreamed() {
+        compose("🙂")
+        assertEquals(listOf("🙂"), remote.take())
+        assertTrue(keyboard.deleteSurroundingText(1, 0))
+        assertEquals(listOf("⌫"), remote.take())
+        assertTrue(keyboard.deleteSurroundingText(1, 0))
+        keyboard.finishComposingText()
+        assertEquals(emptyList<String>(), remote.take())
+        assertEquals("", remote.line.toString())
+    }
+
     @Test fun aKeyOrAnActionSendsOnlyWhatIsLeft() {
         compose("l", "ls")
         assertTrue(keyboard.performEditorAction(EditorInfo.IME_ACTION_SEND))
