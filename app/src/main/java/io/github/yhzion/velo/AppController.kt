@@ -479,6 +479,7 @@ class AppController(context: Context) {
     /**
      * Forget the host key trusted for the ssh remote [url]'s `host:port` (every login to it): the
      * next login shows the key and waits for the user's Trust, as for a host the phone never met.
+     * The passwords saved for the logins to it go too (#29), so that login asks for the password.
      * A connection already logged in carries on. Prefs only: any thread.
      */
     fun forgetHostKey(url: String) = forgetTrustedHostKey(sshSecrets, url)

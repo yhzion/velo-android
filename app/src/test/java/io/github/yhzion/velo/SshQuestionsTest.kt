@@ -156,12 +156,47 @@ class SshQuestionsTest {
 
     @Test
     fun aSavedPasswordAnswersUntilTheHostRefusesIt() {
-        val saved = mapOf(target to "hunter2")
-        assertEquals(AutoAnswer.Answer("hunter2"), autoAnswer(passwordQuestion(), emptyMap(), saved))
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true), emptyMap(), saved))
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(), emptyMap(), emptyMap()))
+        val trusted = mapOf(hostPort to "ssh-ed25519 $fingerprint")
+        val saved = mapOf(target to SavedPassword("hunter2", "ssh-ed25519 $fingerprint"))
+        assertEquals(AutoAnswer.Answer("hunter2"), autoAnswer(passwordQuestion(), trusted, saved))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true), trusted, saved))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(), trusted, emptyMap()))
         // Saved for another login: not this one's.
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(), emptyMap(), mapOf("ssh://root@studio.example:2222" to "hunter2")))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(), trusted, mapOf("ssh://root@studio.example:2222" to SavedPassword("hunter2", "ssh-ed25519 $fingerprint"))))
+    }
+
+    // #29: the login does not say which host it reaches; the host key does. A saved password
+    // answers only while the key trusted for its host:port is the key of the host that accepted it.
+    @Test
+    fun aSavedPasswordAnswersOnlyTheHostKeyThatAcceptedIt() {
+        val accepted = "ssh-ed25519 $fingerprint"
+        val other = "ssh-ed25519 SHA256:otherkeyotherkeyotherkeyotherkeyotherkeyoth"
+        assertEquals(PasswordUse.Answer, passwordUse(bound = accepted, trusted = accepted))
+        // Forget, then Trust of another key: stale. The same fingerprint as another key type is another key.
+        assertEquals(PasswordUse.Stale, passwordUse(bound = accepted, trusted = other))
+        assertEquals(PasswordUse.Stale, passwordUse(bound = accepted, trusted = "ssh-rsa $fingerprint"))
+        // No key trusted, or two that differ: the phone knows no host to answer, and the password stays.
+        assertEquals(PasswordUse.Ask, passwordUse(bound = accepted, trusted = null))
+        assertEquals(PasswordUse.Ask, passwordUse(bound = accepted, trusted = SshSecrets.HOST_KEYS_DIFFER))
+        // Saved before #29, without a key: bound to the one key trusted, else the user's.
+        assertEquals(PasswordUse.Bind, passwordUse(bound = null, trusted = accepted))
+        assertEquals(PasswordUse.Ask, passwordUse(bound = null, trusted = null))
+        assertEquals(PasswordUse.Ask, passwordUse(bound = null, trusted = SshSecrets.HOST_KEYS_DIFFER))
+
+        val saved = mapOf(target to SavedPassword("hunter2", accepted))
+        val old = mapOf(target to SavedPassword("hunter2", null))
+        assertEquals(AutoAnswer.Answer("hunter2"), autoAnswer(passwordQuestion(), mapOf(hostPort to accepted), saved))
+        assertEquals(AutoAnswer.Answer("hunter2"), autoAnswer(passwordQuestion(), mapOf(hostPort to accepted), old))
+        for (hostKeys in listOf(mapOf(hostPort to other), emptyMap(), mapOf(hostPort to SshSecrets.HOST_KEYS_DIFFER),
+            // The key of another port or host is not this login's.
+            mapOf("studio.example:22" to accepted), mapOf("mac.example:2222" to accepted))) {
+            assertEquals("$hostKeys", AutoAnswer.AskUser, autoAnswer(passwordQuestion(), hostKeys, saved))
+        }
+        for (hostKeys in listOf(emptyMap(), mapOf(hostPort to SshSecrets.HOST_KEYS_DIFFER))) {
+            assertEquals("$hostKeys", AutoAnswer.AskUser, autoAnswer(passwordQuestion(), hostKeys, old))
+        }
+        // The password is in no text a log could take.
+        assertFalse(saved.toString().contains("hunter2"))
     }
 
     // Review Focus 2 and ruling R4 (#284): the last answer to this host stalled, so the pool marks
@@ -169,14 +204,16 @@ class SshQuestionsTest {
     // saved password, so a refusal in that login refused the user's own answer: the saved one stays.
     @Test
     fun afterStallAsksWithoutForgetting() {
-        val saved = mapOf(target to "hunter2")
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(afterStall = true), emptyMap(), saved))
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true, afterStall = true), emptyMap(), saved))
-        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true), emptyMap(), saved))
+        val trusted = mapOf(hostPort to "ssh-ed25519 $fingerprint")
+        val saved = mapOf(target to SavedPassword("hunter2", "ssh-ed25519 $fingerprint"))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(afterStall = true), trusted, saved))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true, afterStall = true), trusted, saved))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(passwordQuestion(retry = true), trusted, saved))
 
         val pool = FakePool { 0 }
         val secrets = SshSecrets(FakePrefs(), FakeSealer(), FakeKeys())
-        secrets.savePassword(target, "hunter2")
+        secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
+        secrets.savePassword(target, "hunter2", "ssh-ed25519 $fingerprint")
         val questions = SshQuestions(pool, secrets, RecordingNotices())
 
         // after_stall alone: the user is asked, and the saved password stays.
@@ -224,7 +261,7 @@ class SshQuestionsTest {
     @Test
     fun promptsAreAlwaysTheUsersAndUnknownKindsAreDeclined() {
         val prompt = SshQuestion(1, "prompt", target, "Verification code:", "", "", echo = true, retry = false)
-        assertEquals(AutoAnswer.AskUser, autoAnswer(prompt, emptyMap(), mapOf(target to "hunter2")))
+        assertEquals(AutoAnswer.AskUser, autoAnswer(prompt, mapOf(hostPort to "ssh-ed25519 $fingerprint"), mapOf(target to SavedPassword("hunter2", "ssh-ed25519 $fingerprint"))))
         assertEquals(AutoAnswer.Decline, autoAnswer(prompt.copy(kind = "agent"), emptyMap(), emptyMap()))
     }
 
@@ -251,8 +288,8 @@ class SshQuestionsTest {
         assertEquals("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPhone1 velo", secrets.publicLine())
         // Public, for the e2e mocks to authorize (ruling P4).
         assertEquals(secrets.publicLine(), prefs.getString("ssh:public", null))
-        secrets.savePassword(target, "correct horse battery staple")
         secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
+        secrets.savePassword(target, "correct horse battery staple", "ssh-ed25519 $fingerprint")
 
         val text = prefsText(prefs)
         assertFalse(text, text.contains("correct horse"))
@@ -367,7 +404,8 @@ class SshQuestionsTest {
     fun aRefusalCarriedToTheNextLoginForgetsTheSavedPasswordThere() {
         val pool = FakePool { 0L }
         val secrets = SshSecrets(FakePrefs(), FakeSealer(), FakeKeys())
-        secrets.savePassword(target, "stale")
+        secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
+        secrets.savePassword(target, "stale", "ssh-ed25519 $fingerprint")
         val questions = SshQuestions(pool, secrets, RecordingNotices())
         // The saved password answers; the host hangs up on it, so no Retry comes in this login.
         val first = pool.ask(passwordQuestion())
@@ -397,7 +435,8 @@ class SshQuestionsTest {
         val clock = longArrayOf(0)
         val pool = FakePool { clock[0] }
         val secrets = SshSecrets(FakePrefs(), FakeSealer(), FakeKeys())
-        secrets.savePassword(target, "old password")
+        secrets.trustHostKey(hostPort, "ssh-ed25519 $fingerprint")
+        secrets.savePassword(target, "old password", "ssh-ed25519 $fingerprint")
         val questions = SshQuestions(pool, secrets, RecordingNotices())
 
         pool.ask(passwordQuestion())

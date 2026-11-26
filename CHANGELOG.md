@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Security
+- A saved SSH password is sent only to the host whose key accepted it. Forgetting a host key in SSH details also forgets the passwords saved for that host.
+
 ## 2.12.0 - 2026-11-26
 
 ### Added

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import io.github.yhzion.velo.core.isSshLocator
+import io.github.yhzion.velo.core.sshHostPort
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,22 +63,63 @@ const val SSH_TRUST = "trust"
 const val SSH_CHANGED = "changed"
 
 /**
+ * A password kept for a login, with the key (`TYPE SHA256:…`) of the host that accepted it
+ * (#29). [hostKey] is null for one saved by a version before #29, which kept no key.
+ */
+data class SavedPassword(val text: String, val hostKey: String?) {
+    // Never in a log.
+    override fun toString() = "SavedPassword(…, $hostKey)"
+}
+
+/** What a saved password may do for a password question ([passwordUse]). */
+enum class PasswordUse {
+    /** It answers: the host trusted now is the one that accepted it. */
+    Answer,
+    /** It answers, and is bound to the key trusted now: an older version saved it without one. */
+    Bind,
+    /** The user answers, and it stays: the phone cannot tell now which host this is. */
+    Ask,
+    /** The user answers, and it goes: another host accepted it. */
+    Stale,
+}
+
+/**
+ * What the password saved with the host key [bound] may do while [trusted] is what the phone
+ * trusts for the login's `host:port` ([SshSecrets.hostKey]). #29: a password answers only the
+ * host that accepted it, as OpenSSH asks again once a host's key is another one; the login alone
+ * does not say which host it reaches. With no key trusted, or two that differ
+ * ([SshSecrets.HOST_KEYS_DIFFER]), no host is known and the user is asked. A password without a
+ * key ([bound] null, saved before #29) takes the one key trusted: under the older version the
+ * host that accepted it was the trusted one. A password bound to another key is stale.
+ */
+fun passwordUse(bound: String?, trusted: String?): PasswordUse = when {
+    trusted == null || trusted == SshSecrets.HOST_KEYS_DIFFER -> PasswordUse.Ask
+    bound == null -> PasswordUse.Bind
+    bound == trusted -> PasswordUse.Answer
+    else -> PasswordUse.Stale
+}
+
+/**
  * The answer the phone's stores give [q]: [hostKeys] by `host:port` (`TYPE SHA256:…`) and
  * [passwords] by login. A known host key that is the same is trusted, another one is "changed"
  * (no question to the user), and so is any key while the phone keeps two different ones for the
- * host ([SshSecrets.HOST_KEYS_DIFFER]); an unknown one is the user's. A saved password answers, unless
+ * host ([SshSecrets.HOST_KEYS_DIFFER]); an unknown one is the user's. A saved password answers
+ * only while the key trusted for its login's `host:port` ([sshHostPort], in [hostKeys]) is the
+ * one it was saved with ([passwordUse], #29), and not once
  * the host refused it ([SshQuestion.retry]: in this login, or at the end of the one before): then
  * it is the user's again, and the caller forgets it. In a login after a stalled answer ([SshQuestion.afterStall]) it never
  * answers: the user does, and a refusal there refused the user's answer, so the caller keeps the
  * saved one (ruling R4). Prompts are always the user's; a kind this app does not know is declined.
  */
-fun autoAnswer(q: SshQuestion, hostKeys: Map<String, String>, passwords: Map<String, String>): AutoAnswer = when (q.kind) {
+fun autoAnswer(q: SshQuestion, hostKeys: Map<String, String>, passwords: Map<String, SavedPassword>): AutoAnswer = when (q.kind) {
     "hostkey" -> when (hostKeys[q.text]) {
         null -> AutoAnswer.AskUser
         "${q.keyType} ${q.fingerprint}" -> AutoAnswer.Answer(SSH_TRUST)
         else -> AutoAnswer.Answer(SSH_CHANGED)
     }
-    "password" -> passwords[q.target]?.takeIf { !q.retry && !q.afterStall }?.let { AutoAnswer.Answer(it) } ?: AutoAnswer.AskUser
+    "password" -> passwords[q.target]?.takeIf { !q.retry && !q.afterStall }
+        ?.takeIf { passwordUse(it.hostKey, sshHostPort(q.target)?.let(hostKeys::get)).let { use -> use == PasswordUse.Answer || use == PasswordUse.Bind } }
+        ?.let { AutoAnswer.Answer(it.text) } ?: AutoAnswer.AskUser
     "prompt" -> AutoAnswer.AskUser
     else -> AutoAnswer.Decline
 }
@@ -197,8 +239,11 @@ class SshQuestions(
     private val asked = LinkedHashMap<Long, SshQuestion>()
     /** The ids already answered or asked; the pool's ids only grow, so one is never seen twice. */
     private val handled = HashSet<Long>()
-    /** Passwords the user gave, saved once their login connects ("a password that logged in"). */
-    private val candidates = HashMap<String, String>()
+    /**
+     * Passwords the user gave, saved once their login connects ("a password that logged in"),
+     * each with the host key trusted when it was given: the host it went to (#29).
+     */
+    private val candidates = HashMap<String, SavedPassword>()
     /** Logins whose host gets the phone key once they connect. */
     private val installs = HashSet<String>()
     /**
@@ -250,17 +295,54 @@ class SshQuestions(
             candidates.remove(q.target)
             if (!q.afterStall) secrets.forgetPassword(q.target)
         }
-        val hostKeys = if (q.kind != "hostkey") emptyMap() else secrets.hostKey(q.text)?.let { mapOf(q.text to it) }.orEmpty()
-        val passwords = if (q.kind != "password" || q.retry || q.afterStall) emptyMap()
-            else (candidates[q.target] ?: secrets.password(q.target))?.let { mapOf(q.target to it) }.orEmpty()
-        return autoAnswer(q, hostKeys, passwords)
+        return when (q.kind) {
+            "hostkey" -> autoAnswer(q, secrets.hostKey(q.text)?.let { mapOf(q.text to it) }.orEmpty(), emptyMap())
+            "password" -> {
+                val hostPort = sshHostPort(q.target)
+                val trusted = hostPort?.let(secrets::hostKey)
+                val hostKeys = if (hostPort != null && trusted != null) mapOf(hostPort to trusted) else emptyMap()
+                val password = if (q.retry || q.afterStall) null else passwordFor(q.target, trusted)
+                autoAnswer(q, hostKeys, password?.let { mapOf(q.target to it) }.orEmpty())
+            }
+            else -> autoAnswer(q, emptyMap(), emptyMap())
+        }
+    }
+
+    /**
+     * The password that may answer [target]'s question while [trusted] is the key the phone
+     * trusts for its host ([passwordUse], #29): the one the user gave in a login that has not
+     * connected yet, else the saved one. One bound to another key is stale and goes; one an older
+     * version saved without a key is bound to [trusted]; one that cannot answer now (no key is
+     * trusted, or two differ) stays, and is not opened.
+     */
+    private fun passwordFor(target: String, trusted: String?): SavedPassword? {
+        candidates[target]?.let { given ->
+            when (passwordUse(given.hostKey, trusted)) {
+                PasswordUse.Answer -> return given
+                PasswordUse.Stale -> candidates.remove(target)
+                PasswordUse.Bind, PasswordUse.Ask -> {}
+            }
+        }
+        if (!secrets.hasPassword(target)) return null
+        when (passwordUse(secrets.passwordHostKey(target), trusted)) {
+            PasswordUse.Answer -> {}
+            PasswordUse.Bind -> if (trusted == null || !secrets.bindPassword(target, trusted)) return null
+            PasswordUse.Ask -> return null
+            PasswordUse.Stale -> {
+                secrets.forgetPassword(target)
+                log("password for $target: saved for another host key, forgotten")
+                return null
+            }
+        }
+        return secrets.savedPassword(target)
     }
 
     /**
      * The user's answer to question [id]; [ok] false declines it (the login stops as declined).
      * A host key is trusted whatever [text] says, and the trusted key then answers the other
      * logins that wait on the same `host:port` ("trust" or "changed"), so a second Trust cannot
-     * replace it. A password is saved ([savePassword]) once its login connects, and then the
+     * replace it. A password is saved ([savePassword]) once its login connects, with the host key
+     * trusted when it was given (#29), and then the
      * host gets the phone key ([installKey], "Use this phone's key from now on"). An answer that
      * comes after the pool stopped waiting connects the login again. A second answer to the same
      * question sends nothing.
@@ -273,7 +355,12 @@ class SshQuestions(
                 pool.answer(id, SSH_TRUST, true).also { answerHostKeys(q.text) }
             }
             "password" -> {
-                if (savePassword) candidates[q.target] = text
+                if (savePassword) {
+                    // The key trusted now is the key of the host this answer goes to (#29); with
+                    // none, or two that differ, there is no host to save it for.
+                    val hostKey = sshHostPort(q.target)?.let(secrets::hostKey)?.takeIf { it != SshSecrets.HOST_KEYS_DIFFER }
+                    if (hostKey != null) candidates[q.target] = SavedPassword(text, hostKey) else candidates.remove(q.target)
+                }
                 if (installKey) installs += q.target
                 pool.answer(id, text, true)
             }
@@ -314,9 +401,13 @@ class SshQuestions(
                 log("key login to $target: saved password forgotten")
             }
         }
-        candidates.remove(target)?.let { password ->
-            try {
-                if (!secrets.savePassword(target, password)) log("save password for $target: forgotten meanwhile")
+        candidates.remove(target)?.let { given ->
+            // #29: saved for the key it was given under, and only while the phone still trusts
+            // that key (a Forget of the host key meanwhile forgets it too).
+            if (given.hostKey == null || sshHostPort(target)?.let(secrets::hostKey) != given.hostKey) {
+                log("save password for $target: host key forgotten meanwhile")
+            } else try {
+                if (!secrets.savePassword(target, given.text, given.hostKey)) log("save password for $target: forgotten meanwhile")
             } catch (e: Exception) {
                 log("save password for $target: ${e.javaClass.simpleName}")
             }
