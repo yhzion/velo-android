@@ -343,7 +343,7 @@ not name. A line of interface text is as tall as the browser sets a line of Robo
 (1900 of 2048 units) and its descent (500), each rounded to a whole dp, 19 at 16 and 15 at 13
 (`robotoLine`). The boards set no line height on a label, so the browser gives it that one, and
 the app's labels then line up with the boards'. A paragraph sets its own (1.4, 1.45 or 1.5 em, as
-its board does). The line heights of `key`, `clock`, `wordmark` and the glyph styles are derived.
+its board does). The line heights of `key`, `clock` and `wordmark` are derived.
 
 | token | size / line, weight | for, and source |
 |---|---|---|
@@ -807,21 +807,23 @@ face's size at Medium and are unit-tested (`TabTileTest`):
 | The state dot (`TileDot.Unread` accent, `Waiting` warning, `Failed` danger) keeps the upper right; the two never overlap | `tileDotRect(size)` |
 | Each layer behind steps `max(2.5, size × 0.115)` up and right, 12 % smaller, 20 % fainter and darker; it is laid out where it draws, rim and all dimmed | `tileStep`, `tileBackLayers(panes, size)`, `tileLayerRect(layer, size)` |
 | The box is the face and three steps, so a row's words never move | `tileBox(size)` |
+| Laid out by its face (`byFace`): the face, and to its right the steps its layers take | `tileFaceBounds(panes, size)` |
 | Corner `size × 0.27`, logo `size × 0.6`, letter `size × 0.56` (`>_` 0.4) | `tileCorner`, `tileGlyph`, `tileLetter` |
 | What a screen reader says: "Claude Code, 3 panes" | `tileLabel(brand, panes)` |
 | A program's brand from its name | `tileBrand(program)` |
 
 `TileBrand` holds each brand's label, logo and colours. Claude and Codex fill their tile (the
 orange gradient; white to `#E3E3E3` with a black C in Roboto Bold, as the Tile board sets it);
-omp and pi, which the board does not show, keep the marks the app gave them before (omp's
-gradient with its ring, pi's `#30556B` tile with a π). The tools draw a Simple Icons 16.38.1 logo
+omp and pi, which the board does not show, keep their fills (omp's gradient, pi's `#30556B`)
+with Velo's own drawings of their marks (`ic_agent_omp`, `ic_mark_pi`, NOTICE). The tools draw a Simple Icons 16.38.1 logo
 (`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass; Azure and Heroku are letter tiles;
 any other program is `>_`. A login shell (`-zsh`) has its shell's brand. The parts carry the
 canvas's test tags under `tag`: `-face`, `-logo`, `-letter`, `-layer-2` to `-layer-4`, `-badge`,
 `-pane-count`.
 
 The sidebar's tab rows (`TabListRow`, `ui/theme/TabRow.kt`: Controls board sample-tab-row, Sidebar
-board tab-row) draw it, the caption under the panes too (`PaneCaption`, 18). What a tab's tile
+board tab-row) draw it, and so do the caption under the panes (`PaneCaption`, 18, laid out by its
+face), the names under the overview's cards (`CardName`) and the rail's wheel. What a tab's tile
 shows is a pure function of its report (`ui/TabTiles.kt`, `TabTilesTest`): the brand of the agent
 the report names, else of the program (`tabTile`); the dot of a report not yet seen (`tileDot`:
 a finish blue, a failure red, a program waiting for the user orange); and, at the row's end, what

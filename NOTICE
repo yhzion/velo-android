@@ -65,7 +65,8 @@ Jetendard 0.1.0 is not redistributed. Its saved selection resolves to D2Coding.
 
 Program logos (app/src/main/res/drawable/ic_brand_*.xml)
 --------------------------------------------------------
-The logos on the sidebar's tab tiles and the Tailscale logo come from
+Most logos on the tab tiles (all but Velo's own drawings of omp's and pi's
+marks, named below) and the Tailscale logo come from
 Simple Icons 16.38.1 (https://simpleicons.org). Simple Icons releases its SVG
 data under CC0 1.0: Claude, Google Gemini, Docker, Zsh, htop, Python and
 Tailscale. Simple Icons records two of the logos used here under licenses of
