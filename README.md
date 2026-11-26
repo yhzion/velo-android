@@ -15,6 +15,36 @@ I built Velo because I wanted to use Rex away from my desk. The name is the velo
 - Unfold your phone to see terminal panes side by side. Drag the divider to resize them.
 - Use the row above the on-screen keyboard to enter special keys.
 - Choose which panes notify you when a task finishes, needs a reply or fails. Tap a notification to return to that pane.
+- Tap an address or a file path the terminal printed to open it on the phone: Velo forwards the port, or copies the file and hands it to the app your phone uses.
+- Let a coding agent open its own pane for a job and close it when the job is done.
+
+## An agent runs its own pane
+
+Ask a coding agent in one pane to do a job, and it opens a second pane for the work, reads what the command printed, and closes the pane when it is done. Rex's agent skill gives Claude Code and Codex the commands; Velo draws the panes as they come and go, so you watch the job from the phone without typing the commands yourself.
+
+![A coding agent opens a pane beside itself, runs a build in it, reports the APK size and test count, then closes the pane.](docs/media/agent-pane.gif)
+
+## One layout per shape
+
+Rex keeps the split, so you pick the direction that suits the way you are holding the phone. Side by side uses the width of an unfolded Fold8, or of any phone turned on its side. Stacked gives each terminal the full width when the phone stands upright. Drag the divider to resize either way.
+
+|  | side by side | stacked |
+| --- | --- | --- |
+| Fold8, unfolded | ![](docs/media/fold-unfolded-landscape.png) | ![](docs/media/fold-unfolded-portrait.png) |
+| Fold8, cover screen | ![](docs/media/fold-cover-landscape.png) | ![](docs/media/fold-cover-portrait.png) |
+| Bar phone (LG Velvet) | ![](docs/media/bar-landscape.png) | ![](docs/media/bar-portrait.png) |
+
+## Open what the terminal printed
+
+Tap a `localhost` address a server printed, and Velo forwards that port from the Rex server to the phone and opens the page in your browser. Tap a file path, and Velo copies that file from the server and hands it to the app your phone uses for its type.
+
+| the address in the terminal | the page on the phone |
+| --- | --- |
+| ![](docs/media/forward-terminal.png) | ![](docs/media/forward-browser.png) |
+
+A file path opens the same way, through the app your phone already uses for that type.
+
+![The coverage report file, copied from the Rex server and opened in the phone browser from a content URI.](docs/media/remote-file-opened.png)
 
 ## Open your first session
 
