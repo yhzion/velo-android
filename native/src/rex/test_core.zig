@@ -7226,7 +7226,7 @@ test "Core: a cancel before download_begin asks, such as one between a download'
     core.downloadCancel();
     try testing.expectError(error.Canceled, core.downloadBegin(testing.allocator, term_block, "a.png", null, generation));
     try testing.expectEqual(@as(usize, 0), queued(core, protocol.methods.downloadBegin));
-    try testing.expectError(error.Canceled, core.downloadFetch("AAECAwQFBgcICQoLDA0ODw", 1, generation));
+    try testing.expectError(error.Canceled, core.downloadFetch("AAECAwQFBgcICQoLDA0ODw", 1, null, generation));
 }
 
 // ------------------------------------------------------------ port forwards (#226)

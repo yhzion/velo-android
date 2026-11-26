@@ -83,6 +83,23 @@ internal fun downloadFailure(answer: RemoteFileAnswer): String = when (answer.co
     else -> answer.message?.takeIf { it.isNotBlank() } ?: "the server did not say why"
 }
 
+/**
+ * The most a file of the remote may have: the core ends a larger download (`max_file_bytes` in
+ * native/src/rex/Download.zig, which must say the same). It is the size of the app's cache of
+ * opened files, so a larger one could not be kept anyway.
+ */
+internal const val MAX_FILE_BYTES = 256L * 1024 * 1024
+
+/** What [io.github.yhzion.velo.core.VeloCore.downloadFetch] returns instead of a size. */
+internal const val FETCH_STOPPED = -1L
+internal const val FETCH_FAILED = -2L
+internal const val FETCH_TOO_LARGE = -3L
+
+/** Why a fetch that returned the negative [result] left no whole file, for the notice. */
+internal fun fetchFailure(result: Long): String =
+    if (result == FETCH_TOO_LARGE) "it is larger than Velo opens (${MAX_FILE_BYTES / (1024 * 1024)} MB)"
+    else "the download ended before the whole file arrived"
+
 /** The longest name a copy gets. */
 private const val NAME_CHARS = 120
 

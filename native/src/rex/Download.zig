@@ -9,6 +9,10 @@ const subprotocol = "rex.data.bytes.v1";
 const max_message = 4 * 1024 * 1024;
 /// A stream that sends nothing for this long is given up.
 const idle_ms = 60_000;
+/// The most a file may have: Velo keeps 256 MiB of opened files in its cache (`CACHE_BYTES` in
+/// RemoteFileOpener.kt), so a larger one could not be kept anyway, and a server that keeps
+/// sending would otherwise fill the phone until the person pressed Stop. Keep the two in step.
+pub const max_file_bytes: u64 = 256 * 1024 * 1024;
 
 pub const Guard = struct {
     ctx: *anyopaque,
@@ -24,7 +28,10 @@ pub const Sink = struct {
 
 /// Blocking, single use: opens the stream of `ticket`, writes the file to `sink` and returns how
 /// many bytes it had. Succeeds only when the server ended the file with the empty frame and a
-/// normal close; any other end means the sink does not hold the whole file.
+/// normal close; any other end means the sink does not hold the whole file. `announced` is the
+/// size the server gave in its `download_begin` answer, if it did: a stream that goes past it,
+/// or past `max_file_bytes` whatever the server announced, ends with `error.TooLarge` and writes
+/// no byte beyond the limit.
 pub fn fetch(
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -33,8 +40,10 @@ pub fn fetch(
     ticket: []const u8,
     sink: Sink,
     guard: Guard,
+    announced: ?u64,
 ) !u64 {
     var run = Run.init(io, guard, sink);
+    run.announced = announced;
     return run.start(gpa, host, net, ticket);
 }
 
@@ -59,6 +68,10 @@ const Run = struct {
     guard: Guard,
     sink: Sink,
     received: u64 = 0,
+    /// The file's size as the server announced it.
+    announced: ?u64 = null,
+    /// No file is larger; a field only so that a test can lower it.
+    ceiling: u64 = max_file_bytes,
     /// Only end the stream ([release]).
     release_only: bool = false,
     /// When the stream last sent something: the idle limit runs from here.
@@ -142,6 +155,9 @@ const Run = struct {
         // A stream that ends here for any other reason ends with a normal close too: otherwise
         // the server keeps it, and the file open, waiting for a resume.
         errdefer if (ws.close_code == 0) ws.close();
+        // The size is known before the first byte: a file too large is not read at all.
+        const limit = @min(self.announced orelse self.ceiling, self.ceiling);
+        if ((self.announced orelse 0) > self.ceiling) return error.TooLarge;
         // The empty frame is the stream's half-close: the file is whole once a normal close follows.
         var ended = false;
         while (try ws.recv()) |message| {
@@ -153,6 +169,8 @@ const Run = struct {
                 continue;
             }
             try self.check();
+            // A message that would pass the limit is not written, not even in part.
+            if (message.data.len > limit - self.received) return error.TooLarge;
             try self.sink.write(self.sink.ctx, message.data);
             self.received += message.data.len;
         }
@@ -192,10 +210,18 @@ const Fixtures = struct {
     };
 
     fn exchange(input: []const u8, writer: *std.Io.Writer, received: *Received) !u64 {
+        return exchangeLimited(input, writer, received, null, max_file_bytes);
+    }
+
+    /// `exchange` for a download of a file the server announced as `announced` bytes, under a
+    /// `ceiling` smaller than the real one (a test cannot stream 256 MiB).
+    fn exchangeLimited(input: []const u8, writer: *std.Io.Writer, received: *Received, announced: ?u64, ceiling: u64) !u64 {
         var reader: std.Io.Reader = .fixed(input);
         const ws = try WebSocket.initStreams(testing.allocator, testing.io, &reader, writer);
         defer ws.deinit();
         var run = Run.init(testing.io, .{ .ctx = received, .active = Received.active }, .{ .ctx = received, .write = Received.write });
+        run.announced = announced;
+        run.ceiling = ceiling;
         return run.transfer(ws, hello.*);
     }
 
@@ -306,4 +332,80 @@ test "a released ticket opens its stream and ends it with a normal close, readin
     try testing.expectEqualSlices(u8, Fixtures.hello, try Fixtures.frame(&bytes, 2));
     try testing.expectEqualSlices(u8, "\x03\xe8", try Fixtures.frame(&bytes, 8));
     try testing.expectEqual(0, bytes.len);
+}
+
+/// The stream ended with a normal close from this side: the server lets the file go instead of
+/// waiting for a resume.
+fn expectClosedNormally(writer: *std.Io.Writer) !void {
+    var bytes = writer.buffered();
+    _ = try Fixtures.frame(&bytes, 2);
+    try testing.expectEqualSlices(u8, "\x03\xe8", try Fixtures.frame(&bytes, 8));
+    try testing.expectEqual(0, bytes.len);
+}
+
+test "a stream longer than the size the server announced ends with TooLarge and writes no more" {
+    var received: Fixtures.Received = .{};
+    defer received.bytes.deinit(testing.allocator);
+    var sent: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&sent);
+    // 6 bytes announced as 5: the second message would pass the size, so it is not written.
+    try testing.expectError(error.TooLarge, Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x03abc" ++ "\x82\x03def" ++ Fixtures.eof ++ Fixtures.close_ok, &writer, &received, 5, max_file_bytes));
+    try testing.expectEqualStrings("abc", received.bytes.items);
+    try expectClosedNormally(&writer);
+}
+
+test "one message that alone passes the announced size is not written" {
+    var received: Fixtures.Received = .{};
+    defer received.bytes.deinit(testing.allocator);
+    var sent: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&sent);
+    try testing.expectError(error.TooLarge, Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x06abcdef" ++ Fixtures.eof ++ Fixtures.close_ok, &writer, &received, 5, max_file_bytes));
+    try testing.expectEqual(0, received.bytes.items.len);
+    try expectClosedNormally(&writer);
+}
+
+test "a stream longer than the ceiling ends with TooLarge when the server announced no size" {
+    var received: Fixtures.Received = .{};
+    defer received.bytes.deinit(testing.allocator);
+    var sent: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&sent);
+    try testing.expectError(error.TooLarge, Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x02ab" ++ "\x82\x03cde" ++ Fixtures.eof ++ Fixtures.close_ok, &writer, &received, null, 4));
+    try testing.expectEqualStrings("ab", received.bytes.items);
+    try expectClosedNormally(&writer);
+}
+
+test "a file announced as larger than the ceiling is refused before it is read" {
+    var received: Fixtures.Received = .{};
+    defer received.bytes.deinit(testing.allocator);
+    var sent: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&sent);
+    try testing.expectError(error.TooLarge, Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x01a" ++ Fixtures.eof ++ Fixtures.close_ok, &writer, &received, 5, 4));
+    try testing.expectEqual(0, received.bytes.items.len);
+    try expectClosedNormally(&writer);
+    // With the real ceiling: one byte over 256 MiB.
+    var again: Fixtures.Received = .{};
+    defer again.bytes.deinit(testing.allocator);
+    var sent2: [64]u8 = undefined;
+    var writer2: std.Io.Writer = .fixed(&sent2);
+    try testing.expectError(error.TooLarge, Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x01a", &writer2, &again, max_file_bytes + 1, max_file_bytes));
+    try testing.expectEqual(0, again.bytes.items.len);
+    try testing.expectEqual(@as(u64, 256 * 1024 * 1024), max_file_bytes);
+}
+
+test "a file of exactly the announced size, or the ceiling, arrives whole; a shorter one is not an error" {
+    inline for (.{
+        .{ @as(?u64, 11), @as(u64, max_file_bytes) },
+        .{ @as(?u64, null), @as(u64, 11) },
+        .{ @as(?u64, 11), @as(u64, 11) },
+        // The file shrank after the server announced its size.
+        .{ @as(?u64, 100), @as(u64, max_file_bytes) },
+    }) |case| {
+        var received: Fixtures.Received = .{};
+        defer received.bytes.deinit(testing.allocator);
+        var sent: [64]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&sent);
+        const n = try Fixtures.exchangeLimited(Fixtures.welcome ++ "\x82\x06hello " ++ "\x82\x05world" ++ Fixtures.eof ++ Fixtures.close_ok, &writer, &received, case[0], case[1]);
+        try testing.expectEqual(@as(u64, 11), n);
+        try testing.expectEqualStrings("hello world", received.bytes.items);
+    }
 }

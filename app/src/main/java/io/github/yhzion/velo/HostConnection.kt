@@ -493,7 +493,8 @@ class HostConnection(
         RemoteFileAnswer.parse(VeloCore.paneDownloadBegin(core, block, path, ifNoneMatch, generation))
 
     /** Blocking, on the download's thread: the file of [ticket] into the open file [fd]; see [VeloCore.downloadFetch]. */
-    internal fun downloadFetch(ticket: String, fd: Int, generation: Long): Long = VeloCore.downloadFetch(core, ticket, fd, generation)
+    internal fun downloadFetch(ticket: String, fd: Int, announced: Long?, generation: Long): Long =
+        VeloCore.downloadFetch(core, ticket, fd, announced ?: -1L, generation)
 
     /** Blocking, on the download's thread: ends the stream of [ticket], whose file the app does not need. */
     internal fun downloadRelease(ticket: String, generation: Long): Boolean = VeloCore.downloadRelease(core, ticket, generation)

@@ -33,7 +33,12 @@ object VeloCore {
     @JvmStatic external fun paneClick(core: Long, block: String, x: Float, y: Float): Boolean
     @JvmStatic external fun downloadGeneration(core: Long): Long
     @JvmStatic external fun paneDownloadBegin(core: Long, block: String, path: String, ifNoneMatch: String?, generation: Long): String?
-    @JvmStatic external fun downloadFetch(core: Long, ticket: String, fd: Int, generation: Long): Long
+    /**
+     * [announced]: the size the server gave in the begin answer, -1 when it gave none. Returns the file's size, or -1
+     * when the download was stopped, -2 when it failed or ended early, -3 when the file is larger than announced or
+     * than Velo opens.
+     */
+    @JvmStatic external fun downloadFetch(core: Long, ticket: String, fd: Int, announced: Long, generation: Long): Long
     @JvmStatic external fun downloadRelease(core: Long, ticket: String, generation: Long): Boolean
     @JvmStatic external fun downloadCancel(core: Long)
     /** Blocking: forwards [host]:[port] of the remote to the phone (`Core.forwardOpen`); answers JSON. */

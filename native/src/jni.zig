@@ -349,14 +349,21 @@ export fn Java_io_github_yhzion_velo_core_VeloCore_paneDownloadBegin(env: Env, _
     return jni.newString(gpa, env, answer);
 }
 
-/// downloadFetch(core: Long, ticket: String, fd: Int, generation: Long): Long
-/// Blocking: writes the file of `ticket` to the open file `fd`, which the caller closes. Returns
-/// its size, -1 when `downloadCancel` ended it, or -2 when it failed or ended incomplete.
-export fn Java_io_github_yhzion_velo_core_VeloCore_downloadFetch(env: Env, _: c.jclass, handle: c.jlong, ticket: c.jstring, fd: c.jint, generation: c.jlong) callconv(.c) c.jlong {
+/// downloadFetch(core: Long, ticket: String, fd: Int, announced: Long, generation: Long): Long
+/// Blocking: writes the file of `ticket` to the open file `fd`, which the caller closes.
+/// `announced` is the size the server gave in the begin answer, or -1 when it gave none. Returns
+/// the file's size, -1 when `downloadCancel` ended it, -2 when it failed or ended incomplete, or
+/// -3 when the file is larger than it was announced to be or than Velo opens (`fd` then holds
+/// part of it, up to the limit).
+export fn Java_io_github_yhzion_velo_core_VeloCore_downloadFetch(env: Env, _: c.jclass, handle: c.jlong, ticket: c.jstring, fd: c.jint, announced: c.jlong, generation: c.jlong) callconv(.c) c.jlong {
     const self = handleFrom(handle) orelse return -2;
     const t = Text.init(env, ticket) orelse return -2;
     defer t.deinit();
-    const size = self.core.downloadFetch(t.bytes, fd, @bitCast(generation)) catch |err| return if (err == error.Canceled) -1 else -2;
+    const size = self.core.downloadFetch(t.bytes, fd, if (announced < 0) null else @intCast(announced), @bitCast(generation)) catch |err| return switch (err) {
+        error.Canceled => -1,
+        error.TooLarge => -3,
+        else => -2,
+    };
     return @intCast(size);
 }
 

@@ -135,15 +135,19 @@ internal class RemoteFileOpener private constructor(private val context: Context
         main.post { follow(shown) }
         val size = try {
             ParcelFileDescriptor.open(partial, ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE)
-                .use { conn.downloadFetch(answer.ticket, it.fd, generation) }
+                .use { conn.downloadFetch(answer.ticket, it.fd, answer.size, generation) }
         } catch (e: Exception) {
             partial.delete()
             throw e
         }
         if (size < 0) {
             partial.delete()
-            Log.i(TAG, if (size == -1L) "the download was stopped" else "the download ended before the file did")
-            return if (size == -1L) Outcome.Canceled else Outcome.Failed("the download ended before the whole file arrived")
+            Log.i(TAG, when (size) {
+                FETCH_STOPPED -> "the download was stopped"
+                FETCH_TOO_LARGE -> "the file is larger than announced, or than the limit"
+                else -> "the download ended before the file did"
+            })
+            return if (size == FETCH_STOPPED) Outcome.Canceled else Outcome.Failed(fetchFailure(size))
         }
         Log.i(TAG, "downloaded $size bytes")
         return synchronized(cacheLock) {

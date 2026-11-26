@@ -1700,12 +1700,13 @@ pub const Core = struct {
 
     /// Write the file of a `downloadBegin` ticket to the open file `fd` (the caller closes it).
     /// Blocking; returns the file's size. A `downloadCancel` since `generation` ends it with
-    /// `error.Canceled`.
-    pub fn downloadFetch(self: *Core, ticket: []const u8, fd: c_int, generation: u64) !u64 {
+    /// `error.Canceled`. `announced` is the `size` of the begin answer, when it had one: a file
+    /// that turns out larger, or larger than `download.max_file_bytes`, ends with `error.TooLarge`.
+    pub fn downloadFetch(self: *Core, ticket: []const u8, fd: c_int, announced: ?u64, generation: u64) !u64 {
         var target: FetchTarget = .{ .core = self, .generation = generation, .fd = fd };
         const server = try self.serverCopy();
         defer self.gpa.free(server);
-        return download.fetch(self.gpa, self.io, server, self.net, ticket, .{ .ctx = &target, .write = FetchTarget.write }, .{ .ctx = &target, .active = FetchTarget.active });
+        return download.fetch(self.gpa, self.io, server, self.net, ticket, .{ .ctx = &target, .write = FetchTarget.write }, .{ .ctx = &target, .active = FetchTarget.active }, announced);
     }
 
     /// End the stream of a `downloadBegin` ticket whose file is not wanted. Blocking.

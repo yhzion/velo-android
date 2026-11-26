@@ -98,6 +98,15 @@ class RemoteFilesTest {
     }
 
     @Test
+    fun aFetchThatEndedWithoutTheFileSaysWhy() {
+        assertEquals("it is larger than Velo opens (256 MB)", fetchFailure(FETCH_TOO_LARGE))
+        assertEquals("the download ended before the whole file arrived", fetchFailure(FETCH_FAILED))
+        // The ceiling the notice names is the one the core applies.
+        assertEquals(256L * 1024 * 1024, MAX_FILE_BYTES)
+        assertEquals(-1L, FETCH_STOPPED)
+    }
+
+    @Test
     fun aKnownTextExtensionWinsOverWhatAndroidMapsItTo() {
         val binary = { byteArrayOf(0x50, 0x4b, 0, 3) }
         assertEquals("text/plain", fileType("app.ts", "video/mp2ts", binary))
