@@ -8,6 +8,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - While a pane is full screen, the command palette offers Full Screen Pane for each other pane of the tab, so you can switch the full screen pane from a hardware keyboard.
 - An image inserted from the keyboard, such as one from Gboard's clipboard strip, is now sent to the remote, and its path is typed into the pane, as Paste does for a copied file.
 
+### Changed
+- The command palette's Focus Pane and Full Screen Pane commands name each pane as the minimap's picker and the sidebar do, such as Pane 2 · zsh. A pane without a title is no longer just Pane 2, and the tab's label no longer shows as a pane's name.
+
 ### Fixed
 - A floating pane made full screen from the menu now shows Full Screen and the minimap in the caption. The minimap draws floating panes over the tab's layout, so you can pick them or swipe to them too.
 - With seven or more panes side by side, the full screen minimap's picker no longer cuts off the last ones. It scrolls instead, keeps each pane big enough to tap, and opens on the full screen pane.

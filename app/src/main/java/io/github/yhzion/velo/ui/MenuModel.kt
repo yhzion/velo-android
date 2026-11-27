@@ -1,6 +1,5 @@
 package io.github.yhzion.velo.ui
 
-import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
@@ -339,16 +338,15 @@ fun paletteItems(u: PaletteUnits): List<MenuItem<PaletteAction>> {
 data class FocusPaneCommand(val label: String, val block: String)
 
 /**
- * The palette's `Focus Pane` commands: one for every pane the shown tab [window] draws
+ * The palette's `Focus Pane` commands: one for every pane the shown tab [window] of [state] draws
  * ([keyboardPaneBlocks]: a zoomed tab draws only the zoomed pane and the floating ones), but the
- * [focused] one. Each is named as the pane picker names it: the pane's label ([paneLabel], its
- * number in the whole tab, which the pane menu shows as its target), then its title in [blocks]
- * when it has one.
+ * [focused] one. Each is named as the minimap's picker names it (#172): the pane's label ([paneLabel], its
+ * number in the whole tab, which the pane menu shows as its target), then its row's name ([zoomPaneName]).
  */
-fun focusPaneCommands(window: WindowInfo, blocks: Map<String, BlockInfo>, focused: String?): List<FocusPaneCommand> {
+fun focusPaneCommands(window: WindowInfo, state: UiState, focused: String?): List<FocusPaneCommand> {
     val tabPanes = tabBlocks(window)
     return keyboardPaneBlocks(window).filter { it != focused }.mapNotNull { block ->
-        paneCommandLabel("Focus Pane", tabPanes, block, blocks)?.let { FocusPaneCommand(it, block) }
+        paneCommandLabel("Focus Pane", tabPanes, block, state, window)?.let { FocusPaneCommand(it, block) }
     }
 }
 
@@ -360,20 +358,22 @@ data class FullScreenPaneCommand(val label: String, val block: String)
  * tab, tiled or floating, in the order the minimap's picker has them ([tabBlocks]), named as the `Focus Pane` ones
  * are. They are the picker's taps for a keyboard: the zoom hides the tiled panes, so no `Focus Pane` reaches them.
  */
-fun fullScreenPaneCommands(window: WindowInfo, blocks: Map<String, BlockInfo>): List<FullScreenPaneCommand> {
+fun fullScreenPaneCommands(window: WindowInfo, state: UiState): List<FullScreenPaneCommand> {
     val zoomed = window.zoomed ?: return emptyList()
     val tabPanes = tabBlocks(window)
     if (zoomed !in tabPanes) return emptyList()
     return tabPanes.filter { it != zoomed }.mapNotNull { block ->
-        paneCommandLabel("Full Screen Pane", tabPanes, block, blocks)?.let { FullScreenPaneCommand(it, block) }
+        paneCommandLabel("Full Screen Pane", tabPanes, block, state, window)?.let { FullScreenPaneCommand(it, block) }
     }
 }
 
-/** "[verb]: Pane n", then " · " and the pane's title in [blocks] when it has one; null for a pane not in [tabPanes]. */
-private fun paneCommandLabel(verb: String, tabPanes: List<String>, block: String, blocks: Map<String, BlockInfo>): String? {
+/**
+ * "[verb]: Pane n · name", the name the picker and the sidebar give [block] of [window] ([zoomPaneName]): one line,
+ * never the tab's label. Null for a pane not in [tabPanes].
+ */
+private fun paneCommandLabel(verb: String, tabPanes: List<String>, block: String, state: UiState, window: WindowInfo): String? {
     val label = paneLabel(tabPanes, block) ?: return null
-    val title = blocks[block]?.title.orEmpty()
-    return "$verb: $label" + if (title.isEmpty()) "" else " · $title"
+    return "$verb: $label · ${zoomPaneName(state, window, block)}"
 }
 
 /** How a remote's connection reads: the colour and the glyph of its mark. */

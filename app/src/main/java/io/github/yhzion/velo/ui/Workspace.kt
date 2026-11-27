@@ -1021,10 +1021,10 @@ internal fun Workspace(
                 if (terminalKeyboardBeforePalette) imeRestore?.suppressRestore()
                 paletteImeRequest = !terminalKeyboardBeforePalette
             }
-        } else null) + window?.let { focusPaneCommands(it, live.blocks, focused) }.orEmpty().map { c ->
+        } else null) + window?.let { focusPaneCommands(it, live, focused) }.orEmpty().map { c ->
             // What a tap on that pane does: it leaves the pane a notification opened, then moves the focus.
             PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("focus", "block" to c.block) }
-        } + window?.let { fullScreenPaneCommands(it, live.blocks) }.orEmpty().map { c ->
+        } + window?.let { fullScreenPaneCommands(it, live) }.orEmpty().map { c ->
             // What the minimap's picker does with that pane (#157): it leaves the pane a notification opened, too.
             PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("zoom", "block" to c.block) }
         } + state.sessions.filter { it.id != state.session }.map { s ->

@@ -387,7 +387,7 @@ class MenuModelTest {
 
     @Test
     fun aTabWithOnePaneHasNoFocusCommand() {
-        assertEquals(emptyList<FocusPaneCommand>(), focusPaneCommands(tiled("a"), mapOf("a" to BlockInfo(title = "zsh")), focused = "a"))
+        assertEquals(emptyList<FocusPaneCommand>(), focusPaneCommands(tiled("a"), UiState(blocks = mapOf("a" to BlockInfo(title = "zsh"))), focused = "a"))
     }
 
     @Test
@@ -396,19 +396,40 @@ class MenuModelTest {
 
         assertEquals(
             listOf(FocusPaneCommand("Focus Pane: Pane 1 · zsh", "a"), FocusPaneCommand("Focus Pane: Pane 3 · htop", "c")),
-            focusPaneCommands(tiled("a", "b", "c"), blocks, focused = "b"),
+            focusPaneCommands(tiled("a", "b", "c"), UiState(blocks = blocks), focused = "b"),
         )
     }
 
     @Test
-    fun aPaneWithoutATitleIsNamedByItsLabelAlone() {
+    fun aPaneWithoutATitleIsNamedAsItsRowIs() {
         // The label counts every pane of the tab, the focused one too: the third pane is "Pane 3".
-        val blocks = mapOf("a" to BlockInfo(title = "zsh"), "b" to BlockInfo(title = "vim"))
+        // With no title, the row names a pane by what runs in it (#172), as the picker and the sidebar do.
+        val blocks = mapOf("a" to BlockInfo(title = "zsh"), "b" to BlockInfo(program = "/bin/zsh"), "c" to BlockInfo(program = "htop"))
 
         assertEquals(
-            listOf(FocusPaneCommand("Focus Pane: Pane 2", "b"), FocusPaneCommand("Focus Pane: Pane 3", "c")),
-            focusPaneCommands(tiled("a", "b", "c"), blocks - "b", focused = "a"),
+            listOf(FocusPaneCommand("Focus Pane: Pane 2 · zsh", "b"), FocusPaneCommand("Focus Pane: Pane 3 · htop", "c")),
+            focusPaneCommands(tiled("a", "b", "c"), UiState(blocks = blocks), focused = "a"),
         )
+    }
+
+    @Test
+    fun thePaletteNamesAPaneAsTheMinimapsPickerDoes() {
+        // No title and a version for a program, a title that is the tab's label, and a title of two lines (#172).
+        val window = tiled("a", "b", "c").copy(zoomed = "a")
+        val state = UiState(session = "s", blocks = mapOf(
+            "a" to BlockInfo(program = "2.1.3"),
+            "b" to BlockInfo(program = "zsh", title = "window:1", titleIsLabel = true),
+            "c" to BlockInfo(program = "zsh", title = "build\nlog"),
+        ))
+
+        val names = tabBlocks(window).associateWith { zoomPaneName(state, window, it) }
+        assertEquals(mapOf("a" to "Terminal", "b" to "zsh", "c" to "build log"), names)
+        for (command in fullScreenPaneCommands(window, state)) {
+            assertEquals("Full Screen Pane: ${paneLabel(tabBlocks(window), command.block)} · ${names[command.block]}", command.label)
+        }
+        for (command in focusPaneCommands(window.copy(zoomed = null), state, focused = "a")) {
+            assertEquals("Focus Pane: ${paneLabel(tabBlocks(window), command.block)} · ${names[command.block]}", command.label)
+        }
     }
 
     @Test
@@ -416,8 +437,8 @@ class MenuModelTest {
         val window = tiled("a", "b", "c")
         val blocks = mapOf("b" to BlockInfo(title = "vim"))
 
-        // The menu's heading is the pane's label; the picker and the palette add the title to it.
-        for (command in focusPaneCommands(window, blocks, focused = "a")) {
+        // The menu's heading is the pane's label; the picker and the palette add the pane's name to it.
+        for (command in focusPaneCommands(window, UiState(blocks = blocks), focused = "a")) {
             val label = paneLabel(tabBlocks(window), command.block)!!
             assertTrue(command.label, command.label == "Focus Pane: $label" || command.label.startsWith("Focus Pane: $label · "))
         }
@@ -430,8 +451,8 @@ class MenuModelTest {
         val window = tiled("a", "b").copy(floating = listOf(FloatingLayer("f")), zoomed = "b")
 
         assertEquals(
-            listOf(FocusPaneCommand("Focus Pane: Pane 3", "f")),
-            focusPaneCommands(window, emptyMap(), focused = "b"),
+            listOf(FocusPaneCommand("Focus Pane: Pane 3 · htop", "f")),
+            focusPaneCommands(window, UiState(blocks = mapOf("f" to BlockInfo(program = "htop"))), focused = "b"),
         )
         assertEquals(listOf("b", "f"), keyboardPaneBlocks(window))
     }
@@ -440,13 +461,13 @@ class MenuModelTest {
     fun aZoomedTabOffersEveryOtherPaneFullScreenInThePickersOrder() {
         // The keyboard's way to the minimap's picker (#157): the tiled panes the zoom hides, then the floating one.
         val window = tiled("a", "b", "c").copy(floating = listOf(FloatingLayer("f")), zoomed = "b")
-        val blocks = mapOf("a" to BlockInfo(title = "zsh"), "f" to BlockInfo(title = "htop"))
+        val blocks = mapOf("a" to BlockInfo(title = "zsh"), "c" to BlockInfo(program = "zsh"), "f" to BlockInfo(title = "htop"))
 
-        val commands = fullScreenPaneCommands(window, blocks)
+        val commands = fullScreenPaneCommands(window, UiState(blocks = blocks))
         assertEquals(
             listOf(
                 FullScreenPaneCommand("Full Screen Pane: Pane 1 · zsh", "a"),
-                FullScreenPaneCommand("Full Screen Pane: Pane 3", "c"),
+                FullScreenPaneCommand("Full Screen Pane: Pane 3 · zsh", "c"),
                 FullScreenPaneCommand("Full Screen Pane: Pane 4 · htop", "f"),
             ),
             commands,
@@ -455,14 +476,14 @@ class MenuModelTest {
         val map = zoomMap(window, rtl = false) { null }!!
         assertEquals(map.cells.map { it.block } - "b", commands.map { it.block })
         // A floating pane made full screen offers the tiled ones.
-        assertEquals(listOf("a", "b", "c"), fullScreenPaneCommands(window.copy(zoomed = "f"), blocks).map { it.block })
+        assertEquals(listOf("a", "b", "c"), fullScreenPaneCommands(window.copy(zoomed = "f"), UiState(blocks = blocks)).map { it.block })
     }
 
     @Test
     fun aTabNotZoomedHasNoFullScreenPaneCommand() {
         // Zoom Pane makes the focused pane full screen; these switch it once one is.
-        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b"), emptyMap()))
-        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b").copy(zoomed = "x"), emptyMap()))
+        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b"), UiState()))
+        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b").copy(zoomed = "x"), UiState()))
     }
 
     @Test
