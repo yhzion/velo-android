@@ -189,8 +189,8 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-key-order" to { SettingsScene(SettingsRoute(SettingsCategory.Keyboard, open = SettingsOpen(editingOrder = true))) },
     "settings-notif" to { SettingsScene(SettingsRoute(SettingsCategory.Notifications)) { boardNotifications() } },
     "settings-remotes" to {
-        // Only the unfolded board draws studio-mac's menu open.
-        val wide = LocalConfiguration.current.screenWidthDp >= 600
+        // Only the unfolded board draws studio-mac's menu open; MenuSpeechTest opens it itself.
+        val wide = LocalConfiguration.current.screenWidthDp >= 600 && !LocalMenusShut.current
         SettingsScene(SettingsRoute(SettingsCategory.Remotes, open = SettingsOpen(remoteMenu = if (wide) "studio-mac" else null))) { sshSecrets.publicLine() }
     },
     "settings-add-remote" to {

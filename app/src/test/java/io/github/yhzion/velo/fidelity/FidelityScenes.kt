@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.fidelity
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
  * The app side of each redesign screen, keyed by the screen id the canvas boards map to
@@ -16,3 +17,9 @@ val FidelityScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     *WorkspaceScenes.toList().toTypedArray(),
     *SettingsScenes.toList().toTypedArray(),
 )
+
+/**
+ * True while a scene draws every menu shut, as MenuSpeechTest wants: it opens each menu itself. A scene
+ * that draws a menu open as its board does (settings-remotes, unfolded) then draws it shut.
+ */
+val LocalMenusShut = staticCompositionLocalOf { false }
