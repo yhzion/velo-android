@@ -5,6 +5,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ## Unreleased
 
 ### Added
+- Spread two fingers fast on a pane to make it full screen, and pinch in fast to split the tab again. An outline shows where the pane goes before you lift; slow pinches still change the text size.
 - While a pane is full screen, a minimap at the end of the caption shows the tab's panes and which have news. Tap it to pick another pane, or swipe across it for the next one.
 
 ### Changed

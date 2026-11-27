@@ -826,6 +826,189 @@ class ReleaseSpeed {
     }
 }
 
+/*
+ * The pinch ladder (#140): overview, the tab split in panes, one pane full screen. One pinch moves one step. Spread fast
+ * on a pane of a split tab and it goes full screen; pinch in fast on a full screen pane and the tab is split again. Fast
+ * or slow is decided when the fingers lift; while they are down a fast pinch shows where it would go ([LayoutIntent]).
+ */
+
+/** Fingers faster than this, in ln of the ratio per second, turn the full screen intent on. derived: issue #140, the mockup's ON. */
+const val INTENT_ON_PER_SECOND = 2.4f
+
+/** Fingers slower than this, in ln of the ratio per second, for [INTENT_HOLD_MS] turn it off. derived: issue #140, the mockup's OFF. */
+const val INTENT_OFF_PER_SECOND = 1.2f
+
+/** The intent turns on only past this ln of the ratio: a twitch of fast fingers is no step. derived: issue #140, the mockup's MIN_TRAVEL. */
+const val INTENT_MIN_TRAVEL = 0.06f
+
+/** How long the fingers stay slower than [INTENT_OFF_PER_SECOND] before the intent is off. derived: issue #140, the mockup's HOLD_OFF. */
+const val INTENT_HOLD_MS = 120L
+
+/** The pinch's speed is its change over this long ([PinchSpeed]). derived: issue #140, the mockup's speedAt. */
+private const val PINCH_SPEED_MS = 80L
+
+/** The samples [PinchSpeed] keeps. derived: the mockup's speedAt. */
+private const val PINCH_SPEED_KEEP_MS = 300L
+
+/** Samples closer than this give no speed: two moves in one frame are no measure. derived: the mockup's speedAt (12 ms). */
+private const val PINCH_SPEED_MIN_MS = 12L
+
+/** Fingers at rest send no event: the intent is looked at again after this long, a frame at 60 Hz ([layoutIntentWait]). */
+private const val INTENT_LOOK_MS = 16L
+
+/** How far toward its other place the preview takes the pane as the intent turns on. derived: issue #140, the mockup's PREVIEW. */
+private const val PREVIEW_REACH = 0.22f
+
+/** The furthest the preview takes it while the fingers are down. derived: the mockup (0.4). */
+private const val PREVIEW_REACH_MAX = 0.4f
+
+/** How much further the preview goes for each step of ln of the ratio past [INTENT_MIN_TRAVEL]. derived: the mockup (0.25). */
+private const val PREVIEW_GROWTH = 0.25f
+
+/** The share of the dimming the other panes have once the preview reaches [PREVIEW_REACH]. derived: the mockup (0.55). */
+private const val PREVIEW_DIM = 0.55f
+
+/** One step of the ladder that a pinch on a pane can take besides the text size. */
+enum class LayoutPinch(
+    /** The server's op, sent with the pane's block. */
+    val op: String,
+    /** 1 for fingers that spread, -1 for fingers that close. */
+    val sign: Float,
+) {
+    /** A fast spread on a pane of a split tab: that pane goes full screen. */
+    Zoom("zoom", 1f),
+    /** A fast pinch in on a full screen pane: the tab is split again. */
+    Unzoom("unzoom", -1f),
+}
+
+/**
+ * The step a pinch on [block] of [window] can take. A full screen pane goes back to the split tab; a tiled pane of a tab
+ * with more than one tiled pane goes full screen, as the menu's Zoom offers. A floating pane is not on the ladder, and a tab
+ * with one tiled pane has no full screen: there the pinch only does what it did before. Without the [connected] server
+ * nothing could be sent, so no step either.
+ */
+fun layoutPinch(window: WindowInfo?, block: String, connected: Boolean): LayoutPinch? {
+    if (window == null || !connected) return null
+    val zoomed = window.zoomed
+    if (zoomed != null) return if (zoomed == block) LayoutPinch.Unzoom else null
+    val tiled = window.layout?.blocks().orEmpty()
+    return if (block in tiled && tiled.size > 1) LayoutPinch.Zoom else null
+}
+
+/**
+ * A pinch whose fingers are [ratio] times as far apart as when it began, on a pane with text scale [startScale] that can
+ * take [toward]. Full screen is two steps from the overview: a pinch in there only scales the text, down to the smallest
+ * size. Anywhere else it is [pinchStep].
+ */
+fun ladderStep(startScale: Float, ratio: Float, toward: LayoutPinch?): PinchStep =
+    if (toward == LayoutPinch.Unzoom) PinchStep((startScale * ratio).coerceIn(HostConnection.MIN_SCALE, HostConnection.MAX_SCALE), 0f)
+    else pinchStep(startScale, ratio)
+
+/** How fast the fingers spread, in ln of the ratio per second, over the last [PINCH_SPEED_MS]. */
+class PinchSpeed {
+    private val samples = ArrayDeque<Pair<Long, Float>>()
+
+    /** The fingers were [lnRatio] apart, as ln of the ratio, at [timeMs]. */
+    fun add(timeMs: Long, lnRatio: Float) {
+        samples.addLast(timeMs to lnRatio)
+        while (samples.first().first < timeMs - PINCH_SPEED_KEEP_MS) samples.removeFirst()
+    }
+
+    /** The speed at [timeMs], which may be later than the last sample: fingers at rest since then slow it down. */
+    fun perSecond(timeMs: Long): Float {
+        val last = samples.lastOrNull()?.second ?: return 0f
+        val (refTime, ref) = samples.lastOrNull { it.first <= timeMs - PINCH_SPEED_MS } ?: samples.first()
+        val ms = timeMs - refTime
+        return if (ms > PINCH_SPEED_MIN_MS) (last - ref) * 1000f / ms else 0f
+    }
+}
+
+/**
+ * Whether a pinch that can take a step of the ladder would take it if the fingers lifted now ([on]), and since when the
+ * fingers have been slower than [INTENT_OFF_PER_SECOND] while it is on ([slowSince]).
+ */
+data class LayoutIntent(val on: Boolean = false, val slowSince: Long? = null)
+
+/**
+ * The intent after the fingers are [lnRatio] apart, as ln of the ratio, moving at [speed] ([PinchSpeed]) at [timeMs].
+ * It turns on above [INTENT_ON_PER_SECOND] past [INTENT_MIN_TRAVEL], and off once slower than [INTENT_OFF_PER_SECOND] for
+ * longer than [INTENT_HOLD_MS]: between the two a pinch that slows a little keeps it. Fingers that go back past where
+ * they began are the other way's gesture (the text, the overview): the intent is off at once.
+ */
+fun layoutIntent(intent: LayoutIntent, toward: LayoutPinch, lnRatio: Float, speed: Float, timeMs: Long): LayoutIntent {
+    val travel = toward.sign * lnRatio
+    val along = toward.sign * speed
+    val slowSince = intent.slowSince
+    return when {
+        travel < 0f -> LayoutIntent()
+        !intent.on -> if (along > INTENT_ON_PER_SECOND && travel > INTENT_MIN_TRAVEL) LayoutIntent(on = true) else intent
+        along >= INTENT_OFF_PER_SECOND -> LayoutIntent(on = true)
+        slowSince == null -> intent.copy(slowSince = timeMs)
+        timeMs - slowSince > INTENT_HOLD_MS -> LayoutIntent()
+        else -> intent
+    }
+}
+
+/** What a finger feels as the intent changes: the place where the pinch would take the step, and where it lets go of it. */
+fun layoutIntentFeel(before: LayoutIntent, after: LayoutIntent): Feel? = when {
+    !before.on && after.on -> Feel.ThresholdOn
+    before.on && !after.on -> Feel.ThresholdOff
+    else -> null
+}
+
+/**
+ * How long after [timeMs] the intent is to be looked at again if no event comes: fingers at rest send none, yet they slow
+ * the pinch down ([PinchSpeed.perSecond]) and the slow time runs out. Null when only a movement can change it.
+ */
+fun layoutIntentWait(intent: LayoutIntent, timeMs: Long): Long? {
+    if (!intent.on) return null
+    val slowSince = intent.slowSince ?: return INTENT_LOOK_MS
+    return (slowSince + INTENT_HOLD_MS + 1 - timeMs).coerceAtLeast(1L)
+}
+
+/**
+ * The op the pinch sends when its fingers lift: its step's, while the intent is on and the [connected] server hears it.
+ * A pinch [cut] off (a third finger took the gesture, the touch was cancelled) sends nothing.
+ */
+fun liftOp(toward: LayoutPinch?, intent: LayoutIntent, connected: Boolean, cut: Boolean): String? =
+    toward?.takeIf { intent.on && connected && !cut }?.op
+
+/**
+ * How far toward its other place the preview takes the pane, 0 to 1, with the fingers [lnRatio] apart: [PREVIEW_REACH]
+ * as the intent turns on, a little further as the fingers go on, up to [PREVIEW_REACH_MAX].
+ */
+fun previewReach(toward: LayoutPinch, lnRatio: Float): Float =
+    (PREVIEW_REACH + (toward.sign * lnRatio - INTENT_MIN_TRAVEL) * PREVIEW_GROWTH).coerceIn(PREVIEW_REACH, PREVIEW_REACH_MAX)
+
+/** The text size while the preview is in by [share]: the fingers' [fingerScale], drawn back to [startScale] by as much. */
+fun previewTextScale(fingerScale: Float, startScale: Float, share: Float): Float = blend(fingerScale, startScale, share)
+
+/**
+ * Where the preview draws the pane, in a pane area [width] by [height] in which the pane's place in the split tab is
+ * [split]: from there toward the whole area by [reach] for a zoom, from the whole area toward there for an unzoom.
+ */
+fun previewBox(toward: LayoutPinch, split: CardBox, width: Float, height: Float, reach: Float): CardBox {
+    val full = if (toward == LayoutPinch.Zoom) reach else 1f - reach
+    return CardBox(blend(split.left, 0f, full), blend(split.top, 0f, full), blend(split.right, width, full), blend(split.bottom, height, full))
+}
+
+/** How strongly the scrim dims the pane area beside the preview at [reach]: most of it by [PREVIEW_REACH], the rest on to the end. */
+fun previewDim(reach: Float): Float =
+    PREVIEW_DIM * (reach / PREVIEW_REACH).coerceIn(0f, 1f) + (1f - PREVIEW_DIM) * ((reach - PREVIEW_REACH) / (1f - PREVIEW_REACH)).coerceIn(0f, 1f)
+
+/**
+ * The place of [block] in [window] split as it is when no pane is full screen, in a pane area [width] by [height] with
+ * [gap] between the panes ([paneRects]); a floating pane's own box. In [rtl] the floating box is mirrored, as its offset is.
+ */
+fun splitPlace(window: WindowInfo, block: String, width: Float, height: Float, gap: Float, rtl: Boolean): CardBox? {
+    paneRects(window.copy(zoomed = null), width, height, gap, rtl).firstOrNull { it.block == block }?.let {
+        return CardBox(it.left, it.top, it.right, it.bottom)
+    }
+    val f = window.floating.firstOrNull { it.block == block } ?: return null
+    val left = if (rtl) (1f - f.x - f.w) * width else f.x * width
+    return CardBox(left, f.y * height, left + f.w * width, (f.y + f.h) * height)
+}
+
 /** Whose gesture the fingers on the pane area are. */
 enum class Touch {
     /** One finger in the workspace: the pane under it (scroll, selection, tap). */

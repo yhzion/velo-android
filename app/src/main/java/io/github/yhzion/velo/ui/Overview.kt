@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animate
@@ -42,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,9 +53,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -66,6 +72,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -99,6 +106,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -121,9 +129,12 @@ import io.github.yhzion.velo.ui.theme.rounded
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
@@ -169,6 +180,12 @@ private const val ORDER_HOLD_MS = 2_000L
 
 /** How long New Tab waits before its card says it is waiting. */
 private const val NEW_TAB_BUSY_MS = 300L
+
+/** How long a fast pinch's preview waits for the server to take the step it sent before it goes (#140). */
+private const val PREVIEW_WAIT_MS = 2000L
+
+/** How quickly a fast pinch's preview comes and goes. derived: the mockup's ease of about a quarter of the way each frame. */
+private const val PREVIEW_STIFFNESS = 1500f
 
 /** The new-tab card among the cards' drawn places and shifts: no tab has this ID. */
 private const val NEW_TAB_KEY = "\u0000new-tab"
@@ -216,6 +233,9 @@ private val PickupRaise = 16.dp
 
 /** The pane a pinch began on and its text scale then. */
 private class PinchFrom(val block: String, val scale: Float)
+
+/** The pane [block] of tab [tab] that a fast pinch would take a step of the ladder with ([toward]), while its preview is drawn (#140). */
+internal class LayoutPreview(val tab: String, val block: String, val toward: LayoutPinch)
 
 /**
  * A card picked up to move its tab (#218): the tab [id], the place the row was built around when the card was picked up
@@ -286,6 +306,19 @@ internal class OverviewState(
         private set
     /** A pinch that opened the overview still has its fingers down. */
     var pinching by mutableStateOf(false)
+        private set
+
+    /** The step a fast pinch would take, drawn over its tab while its intent is on and until the server has taken it (#140). */
+    var preview by mutableStateOf<LayoutPreview?>(null)
+        private set
+    /**
+     * How far the [preview] is in, 0 to 1, read while drawing: the pane's outline and the dimming show by as much, and the
+     * pinch's text goes back to its size from before the pinch by as much ([previewTextScale]).
+     */
+    var previewShare by mutableFloatStateOf(0f)
+        private set
+    /** How far toward its other place the [preview] takes the pane ([previewReach]); 1 once its step is sent. Read while drawing. */
+    var previewReach by mutableFloatStateOf(0f)
         private set
 
     /** Where it is, or is on its way to. */
@@ -532,6 +565,10 @@ internal class OverviewState(
     private var pageMotion: Job? = null
     private var rowMotion: Job? = null
     private var pinch: PinchFrom? = null
+    /** Where the [preview]'s share is going, its motion, and the text size of the pinch's fingers as it moves. */
+    private var previewGoal = 0f
+    private var previewMotion: Job? = null
+    private var previewFinger = 1f
 
     /** How far each lifted card is from its place, in px ([cardLift]): up, or to its side ([liftSides]); a card that is not here is in its place. */
     private val lifts = mutableStateMapOf<String, Float>()
@@ -1232,6 +1269,75 @@ internal class OverviewState(
     }
 
     /**
+     * One step of a pinch on [block] of [tab] that can take [toward] (#140): the fingers' [step] from text scale [startScale].
+     * While the intent is [on] the [preview] comes in and the text goes back to [startScale]; off, both go back and the
+     * text follows the fingers again. [reach]: how far the preview takes the pane ([previewReach]).
+     */
+    fun pinchToward(tab: String, block: String, toward: LayoutPinch, startScale: Float, step: PinchStep, on: Boolean, reach: Float) {
+        previewFinger = step.scale
+        if (on) {
+            previewReach = reach
+            if (preview == null) preview = LayoutPreview(tab, block, toward)
+        }
+        val goal = if (on) 1f else 0f
+        if (preview != null && previewGoal != goal) {
+            previewGoal = goal
+            previewMotion?.cancel()
+            previewMotion = scope.launch {
+                animate(previewShare, goal, 0f, spring(dampingRatio = 1f, stiffness = PREVIEW_STIFFNESS)) { value, _ ->
+                    previewShare = value
+                    // The fingers may rest while it moves: the text follows the share, at the fingers' last size.
+                    conn.scale(block, previewTextScale(previewFinger, startScale, value), live = true)
+                }
+                previewShare = goal
+                if (goal == 0f) preview = null
+            }
+        }
+        pinchBy(block, startScale, step.copy(scale = previewTextScale(step.scale, startScale, previewShare)))
+    }
+
+    /**
+     * The fingers of a pinch that could take a step of the ladder lifted, or became another gesture: [op] is the step it
+     * sends, or none ([liftOp]). Sent, the text has its size from before the pinch ([startScale]) and the [preview] goes
+     * on to the pane's other place, where it stays until the server has taken the step. Not sent, the preview goes at
+     * once and the text keeps the size it has, as after any pinch.
+     */
+    fun endPreview(startScale: Float, op: String?) {
+        previewMotion?.cancel()
+        previewGoal = 0f
+        val look = preview
+        if (op == null || look == null) {
+            preview = null
+            previewShare = 0f
+            return
+        }
+        conn.scale(look.block, startScale, live = true)
+        conn.op(op, "block" to look.block)
+        previewShare = 1f
+        previewMotion = scope.launch {
+            animate(previewReach, 1f, 0f, spring(dampingRatio = 1f, stiffness = PREVIEW_STIFFNESS)) { value, _ -> previewReach = value }
+            // A step the server does not take (the pane went, the tab changed) leaves the tab as it was.
+            withTimeoutOrNull(PREVIEW_WAIT_MS) {
+                snapshotFlow { conn.state.windows.firstOrNull { it.id == look.tab }?.zoomed }
+                    .first { if (look.toward == LayoutPinch.Zoom) it == look.block else it == null }
+            }
+            preview = null
+            previewShare = 0f
+        }
+    }
+
+    /**
+     * A fast pinch's [preview] goes at once, with nothing sent: the pinch was cut off, or a new pinch begins while the last
+     * one's still waits for the server ([endPreview]), whose share would hold the new one's text at its size from before.
+     */
+    fun dropPreview() {
+        previewMotion?.cancel()
+        previewGoal = 0f
+        preview = null
+        previewShare = 0f
+    }
+
+    /**
      * The pinch's fingers lifted at [velocity], or became another gesture. A pinch that only
      * changed the text size is a use of the pane: its terminal follows this device and is
      * fitted again. One that opened the overview settles, and its text size with it.
@@ -1390,6 +1496,8 @@ internal class OverviewState(
         pinch?.let { conn.scale(it.block, it.scale) }
         pinch = null
         pinching = false
+        // A fast pinch's preview sends nothing: its text keeps the size it has, as any pinch's that was cut off.
+        dropPreview()
         sendWaiting()
         // A dragged card has no row to drop on: it goes back with nothing sent.
         cancelTabDrag()
@@ -1488,6 +1596,10 @@ internal fun TabStage(
     val backdrop = VeloTheme.colors.backdrop
     // The selected tab's edge takes the colour of the focused pane's edge, which it turns into.
     val selectedEdge = VeloTheme.selectedCardEdge
+    // A fast pinch's preview: the pane's outline in the focused pane's colour, and the rest under the app's scrim.
+    val previewEdge = VeloTheme.paneFocus
+    val scrim = VeloTheme.colors.scrim
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val sizes = VeloTheme.sizes
     val serverTabs = state.windows.map { it.id }
     // A tab this overview moved stays where it was put until the server's order agrees ([OverviewState.orderHold]).
@@ -1553,7 +1665,11 @@ internal fun TabStage(
             .then(if (overview.wheel) Modifier else Modifier.pointerInput(overview, conn) {
                 // The gestures end only when they are cut off (the wheel takes the stage, or it leaves the screen):
                 // a pinch then has no end of its own, and its pane draws its text at the size it has (#334).
-                try { stageGestures(overview, conn, finger, gestureEnds, paneMoves) } finally { conn.settleScales() }
+                // A fast pinch's preview goes with nothing sent ([OverviewState.dropPreview]).
+                try { stageGestures(overview, conn, finger, gestureEnds, paneMoves) } finally {
+                    overview.dropPreview()
+                    conn.settleScales()
+                }
             })
             .onGloballyPositioned { overview.stageBox = it },
     ) {
@@ -1760,8 +1876,26 @@ internal fun TabStage(
         }
         // The cards that ride over the others ([zIndex]): the dragged one, and the grid's cards aside.
         fun rides(id: String) = id == drag?.id || overview.aside(id)
+        // A fast pinch's preview (#140): the pane's outline on its way to its other place, and the rest of the pane area
+        // dimmed. Drawn in the window over the panes' surfaces, which lie behind it, so no pane is laid out or scaled for it.
+        fun DrawScope.layoutPreview(look: LayoutPreview) {
+            val share = overview.previewShare
+            if (share <= 0f) return
+            val window = state.windows.firstOrNull { it.id == look.tab } ?: return
+            val split = splitPlace(window, look.block, stage.width, stage.height, gap.toPx(), rtl) ?: return
+            val reach = overview.previewReach * share
+            val box = previewBox(look.toward, split, stage.width, stage.height, reach)
+            val corner = CornerRadius(radius.toPx())
+            val outline = Path().apply { addRoundRect(RoundRect(box.left, box.top, box.right, box.bottom, corner)) }
+            clipPath(outline, ClipOp.Difference) { drawRect(scrim.copy(alpha = scrim.alpha * previewDim(reach))) }
+            val width = sizes.paneFocus.toPx()
+            drawRoundRect(previewEdge.copy(alpha = previewEdge.alpha * share), Offset(box.left + width / 2, box.top + width / 2),
+                Size(box.right - box.left - width, box.bottom - box.top - width), CornerRadius(radius.toPx() - width / 2), Stroke(width))
+        }
         Box(Modifier.fillMaxSize().drawBehind {
             val p = overview.progress
+            // Only the tab in the workspace takes a step of the ladder.
+            if (p == 0f) overview.preview?.takeIf { it.tab == selected.id }?.let { layoutPreview(it) }
             // The cards that ride over this layer have their edges drawn over them, below.
             // The drum's cards lean: a flat edge would not follow them.
             if (p > 0f && stage.drum == null) for ((index, id) in row.withIndex()) if (!rides(id)) cardEdge(index, id)
@@ -1957,6 +2091,13 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
         var blockScale = 1f
         // The pinch's last step, to feel the places it passes ([pinchFeel]).
         var lastPinch = PinchStep(1f, 0f)
+        // The step of the ladder the pinch can take, in which tab, its intent and speed, and whether a finger lifted,
+        // which decides it (#140).
+        var toward: LayoutPinch? = null
+        var tab: String? = null
+        var intent = LayoutIntent()
+        var pinchSpeed = PinchSpeed()
+        var decided = false
         var down = Offset.Zero
         var time = 0L
         var speed = ReleaseSpeed()
@@ -1975,11 +2116,28 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
         var downTime = 0L
         var at = Offset.Zero
         var held = false
+        // The touch was cancelled (the system took it): what the fingers did is not let go.
+        var cancelled = false
         finger[0] = null
 
-        fun endPinch() {
+        // [cut]: the pinch became another gesture, or the touch was cancelled; it takes no step of the ladder.
+        fun endPinch(cut: Boolean) {
             val pane = block ?: return
-            if (moving) overview.pinchEnd(pane, blockScale, speed.perSecond(time))
+            if (!moving) return
+            if (toward != null) overview.endPreview(blockScale, liftOp(toward, intent, conn.connected, cut))
+            overview.pinchEnd(pane, blockScale, speed.perSecond(time))
+        }
+
+        // The ladder's intent at [time] ([layoutIntent]), felt as it turns on and off, and the pinch's step with it.
+        fun intend(pane: String, step: PinchStep) {
+            val way = toward ?: return
+            val ln = ln(ratio)
+            if (!decided) {
+                val next = layoutIntent(intent, way, ln, pinchSpeed.perSecond(time), time)
+                layoutIntentFeel(intent, next)?.let(ends.feel)
+                intent = next
+            }
+            overview.pinchToward(tab ?: return, pane, way, blockScale, step, intent.on, previewReach(way, ln))
         }
 
         // The card under the first finger where the row stands now, and whether it can be lifted or picked up.
@@ -2004,10 +2162,18 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
             // A finger alone and still on a card that can move waits for the long press: when no event comes before it has
             // passed, the card is picked up. Any event in time is the gesture as before.
             val pressLeft = longPressLeft(longPress, time - downTime, mode == Touch.Row && canPick, held, most, decided = lifting != null || moving || spreading)
+            // Fingers resting in a fast pinch send no event, yet they slow it: its intent is looked at again in time.
+            val intentLeft = if (mode == Touch.Pinch && moving && toward != null && !decided) layoutIntentWait(intent, time) else null
+            val wait = pressLeft ?: intentLeft
             val event = when {
-                pressLeft == null -> awaitPointerEvent(PointerEventPass.Initial)
-                pressLeft > 0 -> withTimeoutOrNull(pressLeft) { awaitPointerEvent(PointerEventPass.Initial) }
+                wait == null -> awaitPointerEvent(PointerEventPass.Initial)
+                wait > 0 -> withTimeoutOrNull(wait) { awaitPointerEvent(PointerEventPass.Initial) }
                 else -> null
+            }
+            if (event == null && pressLeft == null) {
+                time = SystemClock.uptimeMillis()
+                block?.let { intend(it, lastPinch) }
+                continue
             }
             if (event == null) {
                 held = true
@@ -2027,6 +2193,8 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
             event.changes.firstOrNull()?.let { time = it.uptimeMillis }
             if (event.changes.any { it.previousPressed && !it.pressed }) speed.lift(time)
             if (pressed.isEmpty()) {
+                // A cancelled touch lifts every finger with the lift already consumed: a pinch then takes no step.
+                if (event.changes.any { it.previousPressed && !it.pressed && it.isConsumed }) cancelled = true
                 // A handle's long press gave this gesture to the move, though its finger lifted before it moved.
                 if (overview.paneMove != null && most > 0) mode = Touch.PaneDrag
                 if (mode != null && mode != Touch.Pane) event.changes.forEach(PointerInputChange::consume)
@@ -2045,7 +2213,7 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
                     caught = overview.stage?.let { catchesScroll(it, overview.rowMoving) } == true
                     if (caught) overview.holdRow()
                 }
-                if (mode == Touch.Pinch) endPinch()
+                if (mode == Touch.Pinch) endPinch(cut = true)
                 // A pane move takes the gesture from a dragged card: the card goes back with nothing sent.
                 if (mode == Touch.TabDrag) overview.cancelTabDrag()
                 // Three fingers take over: the lifted card goes back.
@@ -2062,6 +2230,13 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
                     block = finger[0] ?: conn.state.focused
                     blockScale = block?.let(conn::scaleOf) ?: 1f
                     lastPinch = PinchStep(blockScale, 0f)
+                    val window = block?.let { b -> conn.state.windows.firstOrNull { b in tabBlocks(it) } }
+                    tab = window?.id
+                    toward = block?.let { layoutPinch(window, it, conn.connected) }
+                    overview.dropPreview()
+                    intent = LayoutIntent()
+                    pinchSpeed = PinchSpeed()
+                    decided = false
                 }
                 // Where the move's press began decides what it does ([PaneMoves.press]).
                 if (next == Touch.PaneDrag) moves.press(pressed.first().position)
@@ -2116,10 +2291,17 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
                         ratio = 1f
                     }
                     if (moving) {
-                        val step = pinchStep(blockScale, ratio)
-                        pinchFeel(lastPinch, step)?.let(ends.feel)
+                        val step = ladderStep(blockScale, ratio, toward)
+                        // While the intent is on the text goes back to its size from before: the fingers reach no end of it.
+                        if (!intent.on) pinchFeel(lastPinch, step)?.let(ends.feel)
                         lastPinch = step
-                        overview.pinchBy(pane, blockScale, step)
+                        // The first finger to lift decides the step: the one left moves no distance, nor any intent.
+                        if (pressed.size < 2) decided = true
+                        if (toward == null) overview.pinchBy(pane, blockScale, step)
+                        else {
+                            if (moved && !decided) pinchSpeed.add(time, ln(ratio))
+                            intend(pane, step)
+                        }
                         if (moved) speed.add(time, step.progress)
                     }
                 }
@@ -2200,7 +2382,7 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
                     overview.pageGeneration == pageGeneration -> overview.stage?.let { overview.releasePage(velocity, it) }
                 }
             }
-            Touch.Pinch -> endPinch()
+            Touch.Pinch -> endPinch(cut = cancelled)
             Touch.Row -> when {
                 lifting != null -> {
                     if (overview.letGo(lifting, speed.perSecond(time), ends.dismiss)) ends.flies()
