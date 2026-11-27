@@ -34,7 +34,7 @@ import java.io.File
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], application = Application::class)
+@Config(sdk = [34], application = Application::class, shadows = [ShadowVeloCore::class], instrumentedPackages = [CorePackage])
 class FidelityCaptureTest(private val capture: Capture) {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)

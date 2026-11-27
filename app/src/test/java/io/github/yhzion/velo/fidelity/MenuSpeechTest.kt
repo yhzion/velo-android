@@ -1,6 +1,8 @@
 package io.github.yhzion.velo.fidelity
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
@@ -41,6 +45,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -52,8 +57,11 @@ import org.robolectric.annotation.GraphicsMode
  *
  * A menu is opened by its button ([Openers]): a menu button (each SelectMenu: the tap-gesture,
  * Minimized windows, sound and channel menus), a sidebar session's or remote's More button, a saved
- * remote's Actions, an imported SSH key's row, and a long press on a tab's row (the VeloMenus). The
- * scenes are drawn over an overlay layer, so a menu opens in the same window and its nodes are read.
+ * remote's Actions, an imported SSH key's row, and a long press on a tab's row (the VeloMenus). From
+ * #174 also the rail's connection mark (its popover) and Pane menu (the focused pane's menu), the
+ * pane menu's Paste of two lines (its question), Compose's attach control, and a long press on a
+ * chip of the overview's session strip. The scenes are drawn over an overlay layer, so a menu opens
+ * in the same window and its nodes are read.
  *
  * Each test runs at each [ScanWidth] (#175); its name says which. Unfolded, the scenes draw their wide
  * layouts, with openers of their own ([OnlyUnfolded]); a scene that draws a menu open there draws it
@@ -62,28 +70,69 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], application = Application::class)
+@Config(sdk = [34], application = Application::class, shadows = [ShadowVeloCore::class], instrumentedPackages = [CorePackage])
 class MenuSpeechTest(private val width: ScanWidth) {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
 
     @Before fun drawAtTheWidth() = width.apply()
 
-    /** A kind of button that opens a menu: the nodes it finds, and how it opens one. */
-    private class Opener(val name: String, val finds: SemanticsMatcher, val open: (SemanticsNodeInteraction) -> Unit)
+    /**
+     * A kind of button that opens a menu: the nodes it finds, the name a menu it opens goes by ([label]
+     * of the button's tag, or the kind's name), and how it opens one: false when it has nothing to
+     * open there (a button two kinds find is still checked by the other).
+     */
+    private class Opener(
+        val name: String, val finds: SemanticsMatcher, val label: (String?) -> String = { it ?: name },
+        val open: (SemanticsNodeInteraction) -> Boolean,
+    )
 
-    private val tap: (SemanticsNodeInteraction) -> Unit = { it.performClick() }
+    private val tap: (SemanticsNodeInteraction) -> Boolean = { it.performClick(); true }
 
     private val Openers = listOf(
-        Opener("menu button", SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList), tap),
-        Opener("More or Actions button", tagMatches(Regex("(session|remote|saved-remote)-menu-.+")), tap),
+        Opener("menu button", SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList), open = tap),
+        Opener("More or Actions button", tagMatches(Regex("(session|remote|saved-remote)-menu-.+")), open = tap),
         Opener("imported key row", SemanticsMatcher("opens Copy or share") {
             it.config.getOrNull(SemanticsActions.OnClick)?.label?.startsWith("Copy or share") == true
-        }, tap),
+        }, open = tap),
         Opener("long press on a tab row", tagMatches(Regex("tab-row-.+")) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick)) {
             it.performSemanticsAction(SemanticsActions.OnLongClick)
+            true
+        },
+        // The rail (#174): the connection mark's popover, and Pane menu, the focused pane's menu.
+        Opener("rail button", tagMatches(Regex("rail-(connection|pane-menu)")), open = tap),
+        // The pane menu's Paste of a clip of two lines, which asks first: its question takes the menu's place.
+        Opener("paste prompt", tagMatches(Regex("rail-pane-menu")), label = { "paste prompt of $it" }, open = ::askToPaste),
+        // The Compose dialog's attach control: "Attach…", or the attached file's name.
+        Opener("attach control", SemanticsMatcher("attaches a file") {
+            SemanticsActions.OnClick in it.config && (it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == "Attach…" } == true ||
+                it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> d.startsWith("Attachment ") } == true)
+        }, open = tap),
+        // A chip of the overview's session strip.
+        Opener("long press on a session chip", SemanticsMatcher("opens the session's menu") {
+            it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Show session menu"
+        }) {
+            it.performSemanticsAction(SemanticsActions.OnLongClick)
+            true
         },
     )
+
+    /**
+     * Opens the pane menu by its [button], then taps its Paste with two lines on the clipboard; false
+     * when there is no Paste to tap: the menu did not open (its own opener says so), or Paste is off
+     * because the remote is down, which pastes nothing and so asks nothing.
+     */
+    private fun askToPaste(button: SemanticsNodeInteraction): Boolean {
+        button.performClick()
+        compose.waitForIdle()
+        // Each button is used on a fresh draw of its scene, so a menu left open here is gone for the next.
+        val paste = hasText("Paste") and hasClickAction() and isEnabled()
+        if (compose.onAllNodes(paste).fetchSemanticsNodes().isEmpty()) return false
+        val clipboard = RuntimeEnvironment.getApplication().getSystemService(ClipboardManager::class.java)
+        clipboard.setPrimaryClip(ClipData.newPlainText("Velo", "make\nmake test"))
+        compose.onNode(paste).performClick()
+        return true
+    }
 
     /** Whether [node] sits in a list that scrolls, so it can be scrolled into view. */
     private fun inScroll(node: SemanticsNodeInteraction): Boolean =
@@ -101,8 +150,18 @@ class MenuSpeechTest(private val width: ScanWidth) {
     private val Required = listOf("keyboard-double-tap-menu", "keyboard-triple-tap-menu", "appearance-minimized-menu", "alert-needs-response-sound-menu",
         "updates-channel-menu", "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row")
 
-    /** Openers each width draws in one scene: the sidebar scene shows the remote's More button, as the docked one does. */
-    private val InScene = listOf("workspace-sidebar" to "remote-menu-", "workspace-docked" to "remote-menu-")
+    /** The scenes that draw the rail: each opens its popover and the pane menu, and the connected ones the paste prompt (#174). */
+    private val RailScenes = listOf("workspace-terminal", "workspace-sidebar", "workspace-docked", "workspace-panes", "workspace-pane-menu", "workspace-offline")
+
+    /**
+     * Openers each width draws in one scene: the sidebar scene shows the remote's More button, as the
+     * docked one does; the rail's scenes their rail; the Compose dialog, and the draft with a file,
+     * the attach control; and the session strip its chips (#174).
+     */
+    private val InScene = listOf("workspace-sidebar" to "remote-menu-", "workspace-docked" to "remote-menu-") +
+        RailScenes.flatMap { listOf(it to "rail-connection", it to "rail-pane-menu") } +
+        RailScenes.filter { it != "workspace-offline" }.map { it to "paste prompt of rail-pane-menu" } +
+        listOf("workspace-compose" to "attach control", "compose-attachment" to "attach control", "session-strip" to "long press on a session chip")
 
     /**
      * Openers only the unfolded width draws, by scene and kind: settings' home shows Appearance beside
@@ -176,14 +235,14 @@ class MenuSpeechTest(private val width: ScanWidth) {
                     // Scrolled first, so the nodes the menu adds are its own and none the scroll brought in.
                     if (inScroll(button)) button.performScrollTo()
                     compose.waitForIdle()
-                    val label = button.fetchSemanticsNode().config.getOrNull(SemanticsProperties.TestTag) ?: opener.name
+                    val label = opener.label(button.fetchSemanticsNode().config.getOrNull(SemanticsProperties.TestTag))
                     val before = compose.runOnIdle { Speech.focusableNodes(view).map { Speech.virtualId(it.first) }.toSet() }
-                    opener.open(button)
+                    if (!opener.open(button)) continue
                     compose.waitForIdle()
                     // A node new since the tap is the menu's: a row's words may change meanwhile ("2s since report").
                     val added = compose.runOnIdle { Speech.focusableNodes(view) }
                         .filter { Speech.virtualId(it.first) !in before && it.second.isNotEmpty() }.map { it.second }
-                    opened += Opened(name, label, if (label == opener.name) label else "$label (${opener.name})", added)
+                    opened += Opened(name, label, if (label.startsWith(opener.name)) label else "$label (${opener.name})", added)
                 }
             }
         }

@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.fidelity
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -12,7 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -31,32 +38,52 @@ import io.github.yhzion.velo.PaneAddress
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.BlockInfo
+import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.SessionInfo
 import io.github.yhzion.velo.core.TabInfo
 import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.ActivityReadState
+import io.github.yhzion.velo.ui.AttachControl
 import io.github.yhzion.velo.ui.BatteryState
+import io.github.yhzion.velo.ui.ComposerAttachment
+import io.github.yhzion.velo.ui.ComposerDialog
+import io.github.yhzion.velo.ui.ComposerDraft
+import io.github.yhzion.velo.ui.ComposerTarget
 import io.github.yhzion.velo.ui.DeviceNetwork
 import io.github.yhzion.velo.ui.deviceRow
 import io.github.yhzion.velo.ui.KeyBar
+import io.github.yhzion.velo.ui.OverviewCarry
 import io.github.yhzion.velo.ui.PaneCaption
+import io.github.yhzion.velo.ui.PaneMenu
 import io.github.yhzion.velo.ui.RailColumn
 import io.github.yhzion.velo.ui.RailPage
+import io.github.yhzion.velo.ui.SessionStrip
 import io.github.yhzion.velo.ui.Sidebar
 import io.github.yhzion.velo.ui.SidebarActions
 import io.github.yhzion.velo.ui.SidebarHost
 import io.github.yhzion.velo.ui.SidebarPlace
 import io.github.yhzion.velo.ui.SidebarState
+import io.github.yhzion.velo.ui.StripRemote
+import io.github.yhzion.velo.ui.StripSource
 import io.github.yhzion.velo.ui.captionSlot
+import io.github.yhzion.velo.ui.composerTargetLabel
 import io.github.yhzion.velo.ui.connectionMark
 import io.github.yhzion.velo.ui.keyBarSlot
 import io.github.yhzion.velo.ui.paneColumnSlot
 import io.github.yhzion.velo.ui.paneFrame
+import io.github.yhzion.velo.ui.rememberOverviewState
+import io.github.yhzion.velo.ui.sessionChips
 import io.github.yhzion.velo.ui.sidebarSlot
+import io.github.yhzion.velo.ui.stripRemotes
 import io.github.yhzion.velo.ui.tabOf
+import io.github.yhzion.velo.ui.theme.OverlayLayer
+import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import io.github.yhzion.velo.ui.wantsAttention
+import kotlinx.coroutines.flow.first
 
 // The workspace boards of page "3 작업 공간" (WsBarTerminal, WsBarSidebar, WsClosedTerminal,
 // WsClosedSidebar, WsOpenDocked, WsOpenPanes), drawn from the boards' sample sessions without a
@@ -64,6 +91,12 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 // the key bar from the default keys (a tap sends nothing), and each pane as its card with the
 // Pane board's sample text where the terminal would draw. The parts are placed with the
 // workspace's own slots (Workspace.kt), at the Medium size the boards are drawn at.
+//
+// The rail's buttons open what they open in the app (#174): the connection mark its popover, and
+// Pane menu the focused pane's menu (PaneMenu) over a real HostConnection on the fake core
+// (FakeCore.kt), whose Paste asks its question and whose Compose opens the Compose dialog. The
+// scenes after the boards' draw what no board does: that menu open, the remote down, the Compose
+// dialog, the attach control of a draft with a file, and the overview's session strip.
 
 /** The workspace boards' screens, for [FidelityScenes]. */
 val WorkspaceScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
@@ -71,6 +104,14 @@ val WorkspaceScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "workspace-sidebar" to { WorkspaceScene(sidebar = SidebarPlace.Covers) },
     "workspace-docked" to { WorkspaceScene(sidebar = SidebarPlace.Beside) },
     "workspace-panes" to { WorkspaceScene(sidebar = null) },
+    // No board draws these: the rail's pane menu open (shut while MenuSpeechTest opens it), the remote
+    // down with a failure that has a fix, the Compose dialog and the attach control of a draft with a
+    // file, and the overview's session strip.
+    "workspace-pane-menu" to { WorkspaceScene(sidebar = null, paneMenu = !LocalMenusShut.current) },
+    "workspace-offline" to { WorkspaceScene(sidebar = null, down = true) },
+    "workspace-compose" to { ComposeScene() },
+    "compose-attachment" to { AttachmentScene() },
+    "session-strip" to { SessionStripScene() },
 )
 
 /** The device shape a capture is drawn for, told by its width (393, 475, 821 dp). */
@@ -111,14 +152,33 @@ private fun sampleState(shown: String, devRows: Int, now: Long): UiState {
         session = Agents, window = shown)
 }
 
+/**
+ * A workspace board's screen. [paneMenu]: the rail's pane menu is open; [down]: the remote is down
+ * with a failure that has a one-line fix, so the rail's popover offers Reconnect and Copy command.
+ */
 @Composable
-private fun WorkspaceScene(sidebar: SidebarPlace?) = VeloTheme(UiSize.Medium) {
+private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, down: Boolean = false) {
+    val layer = remember { OverlayLayer() }
+    // Its own layer, as the settings scenes have: a menu or dialog opens in this window, where the scans read it.
+    OverlayLayerBox(layer, Modifier.fillMaxSize()) { WorkspaceBoard(sidebar, paneMenu, down) }
+}
+
+/** What [WorkspaceScene] draws over its layer. */
+@Composable
+private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Boolean) = VeloTheme(UiSize.Medium) {
     val shape = shape()
     // The bar phone's and the docked boards show the Codex tab, the other two the Claude tab with three panes.
     val threePanes = shape != Shape.Bar && sidebar == null
     val shown = if (threePanes) "review-release-notes" else "port-parser-tests"
     val now = remember { System.currentTimeMillis() }
     val state = remember(shape, shown) { sampleState(shown, devRows = if (shape == Shape.Bar) 2 else 4, now) }
+    // The core's state of the same sessions, with the shown tab's panes as the scene splits them.
+    val panes = remember(state, threePanes) { withPanes(state, if (threePanes) 3 else 2) }
+    val conn = rememberFakeConnection(if (down) panes.copy(status = "error") else panes)
+    var menuOpen by remember { mutableStateOf(false) }
+    // Opened once the core's state is in, as in the app: a menu open before it would keep the items it drew then.
+    if (paneMenu) LaunchedEffect(conn) { snapshotFlow { conn.connected }.first { it }; menuOpen = true }
+    var composer by remember { mutableStateOf<ComposerTarget?>(null) }
     val readState = remember(state) {
         ActivityReadState().apply {
             // The waiting tab's report has been seen: its row says it waits, its tile has no dot (Sidebar board).
@@ -137,15 +197,104 @@ private fun WorkspaceScene(sidebar: SidebarPlace?) = VeloTheme(UiSize.Medium) {
         }
         if (sidebar != SidebarPlace.Covers) Column(paneColumnSlot()) {
             ScenePanes(shape, threePanes, sidebar == SidebarPlace.Beside)
-            PaneCaption(tabOf(state, Agents, shown), connected = true, readState, host = Host, modifier = captionSlot(gap))
+            PaneCaption(tabOf(state, Agents, shown), connected = !down, readState, host = Host, modifier = captionSlot(gap))
             KeyBar(Settings.DEFAULT_KEY_BAR.split(','), emptySet(), keyBarSlot(gap)) { _, _ -> }
         }
         Spacer(Modifier.width(gap))
+        val window = panes.windows.single()
+        val focused = window.layout!!.blocks().first()
         RailColumn("9:41", BatteryState(80, charging = true, powerSave = false), DeviceNetwork.Wifi,
-            connectionMark("connected", removed = false), Host, failure = null, keyboard = false, onReconnect = {}, menuEnabled = true,
-            fix = null, onCopyCommand = {}, overviewOpen = false, sidebarOpen = sidebar != null, keepScreenOn = false, onKeepScreenOn = {},
-            keyboardAvailable = true, onMenu = {}, onKeyboard = {}, onSidebar = {}, onOverview = {}, menu = {},
+            connectionMark(if (down) "error" else "connected", removed = false), Host,
+            failure = if (down) DownFailure else null, keyboard = false, onReconnect = {}, menuEnabled = true,
+            fix = if (down) DownFix else null, onCopyCommand = {}, overviewOpen = false, sidebarOpen = sidebar != null, keepScreenOn = false, onKeepScreenOn = {},
+            keyboardAvailable = true, onMenu = { menuOpen = true }, onKeyboard = {}, onSidebar = {}, onOverview = {},
+            // The focused pane's menu, as the workspace hands the rail: its Compose opens the dialog below.
+            menu = {
+                PaneMenu(window, focused, onDismiss = { menuOpen = false }, conn = conn, onAutoSplit = {}, onFind = {}, onNotifications = {},
+                    onClose = {}, onCompose = { session, block -> composer = ComposerTarget(conn, session, block, 1L, composerTargetLabel(Host, panes)) },
+                    showing = { it }, expanded = menuOpen, onMoveToTab = {}, onMoveToNewTab = {})
+            },
             page = RailPage(if (threePanes) 2 else 1, 4), strip = { Spacer(Modifier.weight(1f)) })
+    }
+    composer?.let { target -> ComposerDialog(target, notificationPending = false, isCurrent = { true }, onClose = { composer = null }) }
+}
+
+/** The failure the down remote's rail says, and its one-line fix (the SSH pool's kind). */
+private const val DownFailure = "The SSH agent offers no key that studio-mac accepts."
+private const val DownFix = "ssh-add ~/.ssh/id_ed25519"
+
+/**
+ * [state] as the core publishes it, with the shown tab's [count] panes laid out as the scenes split
+ * them: the first, the tab's own block, is focused; a third goes under the second.
+ */
+private fun withPanes(state: UiState, count: Int): UiState {
+    val shown = checkNotNull(state.window)
+    val blocks = (1..count).map { if (it == 1) "block:$shown" else "block:$shown-$it" }
+    fun leaf(i: Int) = LayoutNode(block = blocks[i])
+    val layout = when (count) {
+        2 -> LayoutNode(dir = "column", first = leaf(0), second = leaf(1))
+        else -> LayoutNode(dir = "row", first = leaf(0), second = LayoutNode(dir = "column", first = leaf(1), second = leaf(2)))
+    }
+    return state.copy(windows = listOf(WindowInfo(shown, label = tabOf(state, Agents, shown)?.name.orEmpty(), layout = layout)), focused = blocks.first())
+}
+
+/**
+ * The Compose dialog of the Codex tab's pane, as its pane menu opens it ([ComposerDialog]), over the
+ * backdrop: the workspace under its scrim is drawn by the scenes before. The fake core never changes
+ * the pane, so the draft stays current.
+ */
+@Composable
+private fun ComposeScene() = VeloTheme(UiSize.Medium) {
+    val now = remember { System.currentTimeMillis() }
+    val panes = remember { withPanes(sampleState("port-parser-tests", devRows = 2, now), 2) }
+    val conn = rememberFakeConnection(panes)
+    val target = remember(conn) { ComposerTarget(conn, Agents, panes.focused!!, 1L, composerTargetLabel(Host, panes)) }
+    val layer = remember { OverlayLayer() }
+    OverlayLayerBox(layer, Modifier.testTag("screen-compose").fillMaxSize().background(VeloTheme.colors.backdrop.surface)) {
+        ComposerDialog(target, notificationPending = false, isCurrent = { true }, onClose = {})
+    }
+}
+
+/**
+ * The attach control of a draft with a file attached ([AttachControl]), whose menu also offers
+ * Remove. The dialog cannot be given a file without the document picker, so the control is drawn
+ * alone, as ReadOnceTest draws it.
+ */
+@Composable
+private fun AttachmentScene() = VeloTheme(UiSize.Medium) {
+    val draft = remember { ComposerDraft().apply { attachment = ComposerAttachment("report.pdf", byteArrayOf(1)) } }
+    val layer = remember { OverlayLayer() }
+    OverlayLayerBox(layer, Modifier.testTag("screen-compose-attachment").fillMaxSize().background(VeloTheme.colors.backdrop.surface)) {
+        Box(Modifier.fillMaxSize().padding(VeloTheme.sizes.overlayMargin), contentAlignment = Alignment.Center) {
+            AttachControl(draft, enabled = true) {}
+        }
+    }
+}
+
+/**
+ * The overview's session strip ([SessionStrip]) with the overview open: studio-mac's sessions, the
+ * agents session shown, then build-server's, which is connected too, under its name. A long press
+ * on a chip opens the session's menu.
+ */
+@Composable
+private fun SessionStripScene() = VeloTheme(UiSize.Medium) {
+    val now = remember { System.currentTimeMillis() }
+    val state = remember { sampleState("port-parser-tests", devRows = 4, now) }
+    val conn = rememberFakeConnection(state)
+    val overview = rememberOverviewState(conn, remember { OverviewCarry() }) {}
+    LaunchedEffect(overview) { overview.open() }
+    val readState = remember { ActivityReadState() }
+    val build = UiState(status = "connected", server = "build-server", sessions = listOf(SessionInfo("session:main", "main",
+        listOf(TabInfo("make", label = "make release", panes = 1, program = "make", cwd = "~/src/velo", block = "block:make", active = true)))),
+        session = "session:main", window = "make")
+    val remotes = listOf(
+        StripRemote("remote:studio", Host, active = true, connected = true, chips = sessionChips(state) { wantsAttention(readState.activity(it, true)) }),
+        StripRemote("remote:build", "build-server", active = false, connected = true, chips = sessionChips(build) { false }),
+    )
+    val strip = remember { StripSource(remotes = { stripRemotes(remotes) }, showElsewhere = { _, _ -> }, rename = { _, _ -> }, close = { _, _ -> }) }
+    val layer = remember { OverlayLayer() }
+    OverlayLayerBox(layer, Modifier.testTag("screen-session-strip").fillMaxSize().background(VeloTheme.colors.backdrop.surface)) {
+        Box(Modifier.fillMaxSize()) { SessionStrip(strip, overview, Modifier.align(Alignment.TopCenter)) }
     }
 }
 
