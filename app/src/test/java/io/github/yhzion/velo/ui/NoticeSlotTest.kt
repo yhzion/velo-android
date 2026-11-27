@@ -5,16 +5,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.fidelity.HostActivityRule
 import io.github.yhzion.velo.ui.theme.Status
@@ -28,12 +33,14 @@ import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Where the notices are drawn (#165): the sidebar's slot under its Filter field while it covers the panes, and
  * [PaneNotices] over the pane column, which measures them at their own height and keeps them inside the column.
  */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi")
 class NoticeSlotTest {
     private val compose = createComposeRule()
@@ -60,7 +67,7 @@ class NoticeSlotTest {
         compose.setContent {
             VeloTheme {
                 Box(Modifier.width(380.dp).height(800.dp)) {
-                    PaneNotices({ pane }, padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                    PaneNotices({ pane }, keyBar = { null }, padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                         ToastSurface("Uploading x…")
                     }
                 }
@@ -83,7 +90,7 @@ class NoticeSlotTest {
             VeloTheme {
                 Box(Modifier.width(380.dp).height(200.dp)) {
                     Box(Modifier.testTag("column").width(380.dp).height(130.dp)) {
-                        PaneNotices({ Rect(0f, 0f, 1000f, 88f) }, padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                        PaneNotices({ Rect(0f, 0f, 1000f, 88f) }, keyBar = { null }, padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                             ToastSurface("Moved")
                             ToastSurface("Uploading x…")
                         }
@@ -95,6 +102,83 @@ class NoticeSlotTest {
         val last = compose.onAllNodesWithTag("toast")[1].getBoundsInRoot()
         assertTrue("last toast $last ends 16 dp inside the column $column", last.bottom <= column.bottom - 16.dp + 0.5.dp)
         assertTrue("first toast still in the column", compose.onAllNodesWithTag("toast")[0].getBoundsInRoot().top >= column.top - 0.5.dp)
+    }
+
+    // #169: the Velvet's pane column in landscape with the keyboard up, in dp: 786 wide and 137 tall, the pane one
+    // line (32 dp) at its top and the key bar from 83 dp. A notice is 48 dp, so two stacked would run into it.
+    private fun shortColumn(vararg notices: @Composable () -> Unit) {
+        compose.setContent {
+            VeloTheme {
+                val px = LocalDensity.current.density
+                Box(Modifier.testTag("column").width(786.dp).height(137.dp)) {
+                    PaneNotices({ Rect(0f, 0f, 786 * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, 786 * px, 120 * px) },
+                        padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                        notices.forEach { it() }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun assertOneRowAboveTheKeyBar(nodes: List<DpRect>) {
+        val keyBarTop = 83.dp
+        nodes.forEach { n ->
+            assertTrue("notice $n ends above the key bar ($keyBarTop)", n.bottom <= keyBarTop + 0.5.dp)
+            assertTrue("notice $n starts in the column", n.top >= (-0.5).dp)
+            assertTrue("notice $n has a control's height", n.bottom - n.top >= 48.dp - 0.5.dp)
+            assertTrue("notice $n inside the column's padding", n.left >= 16.dp - 0.5.dp && n.right <= 786.dp - 16.dp + 0.5.dp)
+        }
+        nodes.zipWithNext { a, b -> assertTrue("$a then $b, side by side in order", b.left >= a.right + 8.dp - 0.5.dp) }
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
+    @Test fun twoNoticesUnderAOneLinePaneLieSideBySideAboveTheKeyBar() {
+        shortColumn({ ToastSurface("Uploading 17957913871976106988482846832927.png…") }, { ToastSurface("Another send is still in progress.") })
+        val toasts = compose.onAllNodesWithTag("toast").fetchSemanticsNodes().indices.map { compose.onAllNodesWithTag("toast")[it].getBoundsInRoot() }
+        assertEquals(2, toasts.size)
+        assertOneRowAboveTheKeyBar(toasts)
+        // Each shows its whole line: the error's text is one line (about 40 dp with its padding), not cut or wrapped.
+        compose.onAllNodesWithTag("toast-message")[1].getBoundsInRoot().let { assertTrue("one line $it", it.bottom - it.top < 48.dp) }
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
+    @Test fun threeNoticesUnderAOneLinePaneLieSideBySideAboveTheKeyBar() {
+        shortColumn({ ToastSurface("Moved Pane 1", actionLabel = "Undo", onAction = {}) },
+            { ToastSurface("Uploading 17957915015754169069198214825020.png…") },
+            { Snackbar(Modifier.testTag("snackbar")) { Text("Another send is still in progress.") } })
+        val nodes = listOf(compose.onAllNodesWithTag("toast")[0], compose.onAllNodesWithTag("toast")[1], compose.onNodeWithTag("snackbar"))
+            .map { it.getBoundsInRoot() }
+        assertOneRowAboveTheKeyBar(nodes)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
+    @Test fun oneNoticeUnderAOneLinePaneKeepsItsPlace() {
+        // #165's place: from the pane's top down, padding below the column's top, over the caption.
+        shortColumn({ ToastSurface("Uploading x…") })
+        val toast = compose.onNodeWithTag("toast").getBoundsInRoot()
+        assertEquals(16f, toast.top.value, 0.5f)
+        assertEquals(786f, (toast.left + toast.right).value, 1f)
+    }
+
+    @Test fun twoNoticesThatFitAboveTheKeyBarStayStackedAboveIt() {
+        // A short pane under a search bar (from 20 dp), the key bar from 130 dp: two toasts (104 dp with the gap) fit
+        // above it from the column's top, but not from the pane's top and its padding.
+        compose.setContent {
+            VeloTheme {
+                val px = LocalDensity.current.density
+                Box(Modifier.width(380.dp).height(200.dp)) {
+                    PaneNotices({ Rect(0f, 20 * px, 380 * px, 52 * px) }, keyBar = { Rect(0f, 130 * px, 380 * px, 170 * px) },
+                        padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                        ToastSurface("Moved")
+                        ToastSurface("Uploading x…")
+                    }
+                }
+            }
+        }
+        val first = compose.onAllNodesWithTag("toast")[0].getBoundsInRoot()
+        val last = compose.onAllNodesWithTag("toast")[1].getBoundsInRoot()
+        assertTrue("stacked: $first over $last", last.top >= first.bottom)
+        assertTrue("last toast $last ends 16 dp above the key bar", last.bottom <= 130.dp - 16.dp + 0.5.dp)
     }
 
     private fun actions() = SidebarActions(

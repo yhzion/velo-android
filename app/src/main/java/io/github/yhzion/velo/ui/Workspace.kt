@@ -712,6 +712,9 @@ internal fun Workspace(
         if (!panesHidden) Box(paneColumnSlot()) {
             // The pane area's box in the column, which places the notices ([PaneNotices]). Read only to place them.
             val paneBox = remember { mutableStateOf<Rect?>(null) }
+            // And the key bar's, which two or more notices over a short pane area stay above (#169).
+            val keyBarBox = remember { mutableStateOf<Rect?>(null) }
+            val keyBarShown = keyboard || s.keyBar.isNotEmpty() && focused != null
             // The minimized floating windows, at the chosen corner. Not in the overview, which has no panes to bring one back to.
             // Their capsules are named by their titles: read only where there are some.
             val capsuleBlocks = if (window?.minimizedLayers.isNullOrEmpty()) state.blocks else conn.state.blocks
@@ -853,8 +856,8 @@ internal fun Workspace(
                 // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
                 val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
                 ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle, notification = notification)
-                if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
-                    KeyBar(s.keyBar, armed, keyBarSlot(gap),
+                if (keyBarShown) {
+                    KeyBar(s.keyBar, armed, keyBarSlot(gap).onPlaced { keyBarBox.value = it.boundsInParent() },
                         enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
                         // A modifier is felt turning on or off, any other key as a key (#309).
                         if (!repeated) haptic(barKeyFeel(k, armed))
@@ -875,8 +878,9 @@ internal fun Workspace(
             }
             // Over the whole column, so that a pane area too short for them (landscape with the keyboard up) does not
             // cut them: they go over its caption then ([noticeTop]). The column is inside the safe-drawing insets, so
-            // they stay clear of the soft keyboard. Last, so they cover the pause layer.
-            PaneNotices({ paneBox.value }, sizes.overlayPadding, sizes.gap,
+            // they stay clear of the soft keyboard. Two or more go side by side there, above the key bar. Last, so
+            // they cover the pause layer.
+            PaneNotices({ paneBox.value }, { if (keyBarShown) keyBarBox.value else null }, sizes.overlayPadding, sizes.gap,
                 lift = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap), modifier = Modifier.matchParentSize()) {
                 UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
                 UploadToast(conn)
