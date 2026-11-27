@@ -3,6 +3,8 @@ package io.github.yhzion.velo.ui
 import android.app.Application
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -82,7 +84,8 @@ class ZoomMinimapUiTest {
     private lateinit var view: View
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
-    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true) = compose.setContent {
+    // [low]: the caption at the screen's bottom, under the panes, as in the app; else at its top, as over the keyboard.
+    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true, low: Boolean = false) = compose.setContent {
         val window = WindowInfo(tab, layout = layout, zoomed = zoomed, floating = floating)
         val state = UiState(
             status = "connected", session = "s", window = tab, windows = listOf(window),
@@ -97,8 +100,11 @@ class ZoomMinimapUiTest {
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
             VeloTheme(size) {
                 val caption = @Composable {
-                    PaneCaption(row, connected, ActivityReadState(), host = "studio", compact = compact, zoom = map,
-                        paneName = { zoomPaneName(state, window, it) }, onZoom = { zoomedTo += it })
+                    Column(Modifier.fillMaxSize()) {
+                        if (low) Spacer(Modifier.weight(1f))
+                        PaneCaption(row, connected, ActivityReadState(), host = "studio", compact = compact, zoom = map,
+                            paneName = { zoomPaneName(state, window, it) }, onZoom = { zoomedTo += it })
+                    }
                 }
                 if (layered) OverlayLayerBox(layer, Modifier.fillMaxSize()) { caption() } else caption()
             }
@@ -428,6 +434,43 @@ class ZoomMinimapUiTest {
         scrollTo("p8", 0f, 100f)
         compose.onNodeWithTag("minimap-picker-cell-p8").assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
         assertEquals(listOf("p8"), zoomedTo)
+    }
+
+    /** Six panes one over another, the floating one over the top two, the second full screen: a tall map and a row. */
+    private fun stackedUnderAFloatingPane() {
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 1f / 3))
+        zoomed = "p1"
+        show(line(6, "column"), low = true)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-420dpi")
+    @Test fun aPickerTallerThanTheRoomAboveTheCaptionLeavesTheCaptionClear() {
+        // A phone held sideways (#182): the picker is higher than the room above the caption. It fits that room, and
+        // the map scrolls in it, instead of being moved down over the caption and the minimap it came from.
+        stackedUnderAFloatingPane()
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val root = compose.onRoot().getBoundsInRoot()
+        val caption = compose.onNodeWithTag("pane-caption").getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertTrue("the picker ${picker.top}..${picker.bottom} above the caption from ${caption.top}",
+            picker.top >= root.top && picker.bottom <= caption.top)
+        // The row under the map stays in view: the full screen pane is in it, and the other pane it holds takes a tap.
+        compose.onNodeWithTag("minimap-picker-covered-p1").assertIsDisplayed()
+        compose.onNodeWithTag("minimap-picker-covered-p0").assertIsDisplayed().performClick()
+        assertEquals(listOf("p0"), zoomedTo)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-420dpi")
+    @Test fun aPickerOverACaptionHighOnTheScreenOpensUnderIt() {
+        // The caption high on the screen, as over the keyboard: more room below it, where the picker opens.
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 0.5f))
+        zoomed = "p1"
+        show(line(4, "column"))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val mini = compose.onNodeWithTag("caption-minimap").getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertTrue("the picker from ${picker.top} under the minimap to ${mini.bottom}", picker.top >= mini.bottom)
+        assertTrue("the picker to ${picker.bottom} on the screen", picker.bottom <= compose.onRoot().getBoundsInRoot().bottom)
     }
 
     @Test fun withoutTheServerTheMinimapSendsNothing() {

@@ -356,19 +356,20 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
     val least = TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value
     val (mapW, mapH) = zoomPickerSize(map, VeloTheme.medium(PickerWidth.dp).value, VeloTheme.medium(PickerHeight.dp).value, least)
     val padding = VeloTheme.sizes.overlayPadding
-    // Above the caption, its end at the minimap's end: an anchor that reaches the screen's bottom leaves no room under it.
+    // Its end at the minimap's end, above the caption: below it only where there is more room there, as over the
+    // keyboard. It never covers the minimap it came from (#182): no higher than the room, the map scrolls in it.
     val most = VeloTheme.sizes.dialogWidth
     val anchor = {
         at?.let { mini ->
             // No wider than the popover, which scrolls a wider map: its end stays at the minimap's.
             val width = with(density) { minOf(mapW.dp + padding * 2, most).roundToPx() }
             val left = if (rtl) mini.left else mini.right - width
-            IntRect(left, mini.top, left + width, Int.MAX_VALUE / 2)
+            IntRect(left, mini.top, left + width, mini.bottom)
         }
     }
     // It edits no text: the keyboard stays up for the full screen pane, which keeps its size.
     VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"),
-        anchor = anchor, keepImeTarget = true) {
+        anchor = anchor, keepImeTarget = true, keepsAnchorClear = true) {
         ZoomPicker(map, mapW, mapH, least, name) { block ->
             openFor = null
             if (block != map.zoomed) zoom(block)

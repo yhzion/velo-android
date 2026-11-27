@@ -120,6 +120,26 @@ fun menuPosition(anchor: IntRect, menu: IntSize, window: IntSize, margin: Int): 
     return IntOffset(x, y)
 }
 
+/** The side of its anchor a popover that leaves the anchor in view opens on ([above] or below it), and the [room] there. */
+data class ClearPlace(val above: Boolean, val room: Int)
+
+/**
+ * Where a popover opens that must not cover its [anchor] (in the pixels of a window of size [window]): above it,
+ * unless there is more room below. The popover is then no higher than the [ClearPlace.room] of that side, [margin]
+ * from the anchor and from the window's edge, and scrolls what does not fit (#182).
+ */
+fun clearPlace(anchor: IntRect, window: IntSize, margin: Int): ClearPlace {
+    val above = anchor.top - 2 * margin
+    val below = window.height - anchor.bottom - 2 * margin
+    return if (above >= below) ClearPlace(true, maxOf(0, above)) else ClearPlace(false, maxOf(0, below))
+}
+
+/** Where a popover of size [menu] opens on the side [place] gives it: from the anchor's left edge, as [menuPosition]. */
+fun clearPosition(anchor: IntRect, menu: IntSize, window: IntSize, margin: Int, place: ClearPlace): IntOffset {
+    val x = anchor.left.coerceIn(margin, maxOf(margin, window.width - margin - menu.width))
+    return IntOffset(x, if (place.above) anchor.top - margin - menu.height else anchor.bottom + margin)
+}
+
 private fun View.onScreen(): IntRect {
     val at = IntArray(2)
     getLocationOnScreen(at)
