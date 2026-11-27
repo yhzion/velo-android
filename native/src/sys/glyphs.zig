@@ -12,9 +12,14 @@ const gpa = std.heap.c_allocator;
 /// Holds each render thread's pixel buffer; the destructor frees it when the thread exits.
 var buffer_key: std.c.pthread_key_t = undefined;
 
+/// What the app's rasterizer drew, for every core's panes: the app has one rasterizer and one
+/// font, whatever remote a core shows. Lives as long as the library.
+var shared: pane.GlyphCache = undefined;
+
 /// Call once from `JNI_OnLoad`, before any pane exists.
 pub fn init() void {
     _ = std.c.pthread_key_create(&buffer_key, freeThreadBuffer);
+    shared = .init(gpa, pane.GlyphCache.default_cap);
 }
 
 fn freeThreadBuffer(value: *anyopaque) callconv(.c) void {
@@ -40,7 +45,7 @@ pub const Glyphs = struct {
     rasterize_glyph: c.jmethodID,
 
     pub fn source(self: *Glyphs) pane.GlyphSource {
-        return .{ .ctx = self, .rasterize = rasterize };
+        return .{ .ctx = self, .rasterize = rasterize, .cache = &shared };
     }
 
     /// Runs on a pane's render thread, on atlas misses only. The returned pixels stay

@@ -174,6 +174,8 @@ const R = struct {
     /// The glyphs the frame lacks, each once, their atlas keys in `missing_keys`.
     missing: std.ArrayList(Missing) = .empty,
     missing_keys: std.ArrayList(u8) = .empty,
+    /// A glyph copied out of the glyph source's cache (`drawMissing`).
+    shared_px: std.ArrayList(u8) = .empty,
     /// By the index of `rows`: the rows that lack a glyph, built again once it is drawn.
     waiting: std.ArrayList(bool) = .empty,
     /// The index in `rows` of the row being built; null while the frame is assembled.
@@ -279,7 +281,8 @@ fn completeFrame(r: *R) !void {
     try buildWaiting(r);
 }
 
-/// The render thread's own work: the atlas is its, and the glyph source needs no lock.
+/// The render thread's own work: the atlas is its, and the glyph source needs no lock. A glyph
+/// another pane's render thread drew already comes from the source's cache.
 fn drawMissing(r: *R) void {
     Trace.begin("Renderer.drawMissing");
     defer Trace.end();
@@ -287,9 +290,21 @@ fn drawMissing(r: *R) void {
     for (r.missing.items) |m| {
         const key = r.missing_keys.items[m.start..][0..m.len];
         const utf8 = key[0 .. key.len - 1];
+        if (g.cache) |cache| {
+            Trace.begin("Renderer.findGlyph");
+            defer Trace.end();
+            if (cache.find(key, r.glyph_w, r.glyph_h, m.columns, r.gpa, &r.shared_px)) |size| {
+                _ = r.atlas.put(key, r.shared_px.items, size.w, size.h) catch {};
+                continue;
+            }
+        }
+        const epoch = if (g.cache) |cache| cache.epochNow() else 0;
         Trace.begin("Renderer.rasterizeGlyph");
         const bm = g.rasterize(g.ctx, utf8, m.bold, m.italic, r.glyph_w, r.glyph_h, m.columns);
         Trace.end();
+        // Only what was drawn is shared: a glyph the font lacks now may come with a font file
+        // read later, so the atlas alone remembers it is missing.
+        if (bm) |b| if (g.cache) |cache| cache.keep(epoch, key, r.glyph_w, r.glyph_h, m.columns, b.pixels, b.w, b.h);
         // A glyph the atlas cannot take is looked for again by the next frame.
         _ = (if (bm) |b| r.atlas.put(key, b.pixels, b.w, b.h) else r.atlas.put(key, null, 0, 0)) catch {};
     }
@@ -601,6 +616,7 @@ fn teardown(r: *R) void {
     r.missing.deinit(r.gpa);
     r.missing_keys.deinit(r.gpa);
     r.waiting.deinit(r.gpa);
+    r.shared_px.deinit(r.gpa);
     r.scratch.deinit(r.gpa);
     r.atlas.deinit();
 }
@@ -1646,6 +1662,7 @@ const TestRenderer = struct {
         t.r.missing.deinit(gpa);
         t.r.missing_keys.deinit(gpa);
         t.r.waiting.deinit(gpa);
+        t.r.shared_px.deinit(gpa);
     }
 
     /// One frame without a window, as `buildFrame` makes it when the buffer does not answer:
@@ -1805,6 +1822,64 @@ test "missing glyphs are drawn after the build, once each, without the pane lock
     // Drawn once: the next frame finds them all.
     p.write("\xea\xb0\x80");
     try t.build();
+    try std.testing.expectEqual(@as(usize, 4), source.calls);
+}
+
+test "a glyph drawn for one window is not drawn again for another: the panes share it" {
+    var source: LockWatchingSource = .{};
+    var cache: PaneMod.GlyphCache = .init(std.testing.allocator, PaneMod.GlyphCache.default_cap);
+    defer cache.deinit();
+    const glyphs: PaneMod.GlyphSource = .{ .ctx = &source, .rasterize = LockWatchingSource.raster, .cache = &cache };
+    const a = try Pane.create(std.testing.allocator, glyphs);
+    defer a.destroy();
+    const b = try Pane.create(std.testing.allocator, glyphs);
+    defer b.destroy();
+    for ([_]*Pane{ a, b }) |p| {
+        p.setFontSizePx(10);
+        p.write("\xea\xb0\x80\xeb\x82\x98ab");
+    }
+    var ta = try TestRenderer.init(a);
+    defer ta.deinit();
+    try ta.build();
+    try std.testing.expectEqual(@as(usize, 4), source.calls);
+
+    // A pane that gets a window anew starts with an empty atlas: it takes the glyphs drawn.
+    var tb = try TestRenderer.init(b);
+    defer tb.deinit();
+    try tb.build();
+    try std.testing.expectEqual(@as(usize, 4), source.calls);
+    try std.testing.expectEqual(@as(usize, 4), rowAt(&tb.r, 0).?.fg.items.len);
+    try std.testing.expectEqualDeep(ta.glyph(0), tb.glyph(0));
+
+    // At another size they are drawn again.
+    b.setFontSizePx(14);
+    try tb.build();
+    try std.testing.expectEqual(@as(usize, 8), source.calls);
+}
+
+test "another font drops the glyphs every pane shares" {
+    var source: LockWatchingSource = .{};
+    var cache: PaneMod.GlyphCache = .init(std.testing.allocator, PaneMod.GlyphCache.default_cap);
+    defer cache.deinit();
+    const glyphs: PaneMod.GlyphSource = .{ .ctx = &source, .rasterize = LockWatchingSource.raster, .cache = &cache };
+    const a = try Pane.create(std.testing.allocator, glyphs);
+    defer a.destroy();
+    const b = try Pane.create(std.testing.allocator, glyphs);
+    defer b.destroy();
+    for ([_]*Pane{ a, b }) |p| {
+        p.setFontSizePx(10);
+        p.write("ab");
+    }
+    var ta = try TestRenderer.init(a);
+    defer ta.deinit();
+    try ta.build();
+    try std.testing.expectEqual(@as(usize, 2), source.calls);
+    // The glyph source draws another font, with the line height the panes have (the cells keep
+    // their size): the panes are told, one after another.
+    a.setFont(1.2);
+    var tb = try TestRenderer.init(b);
+    defer tb.deinit();
+    try tb.build();
     try std.testing.expectEqual(@as(usize, 4), source.calls);
 }
 

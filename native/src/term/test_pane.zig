@@ -1415,6 +1415,7 @@ test {
     // The renderer's own tests (its GL-free part).
     _ = Renderer;
     _ = @import("Trace.zig");
+    _ = @import("GlyphCache.zig");
 }
 
 /// A 20×3 grid of 6×12 px cells. `tapCell` taps the middle of a cell.

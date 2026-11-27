@@ -48,6 +48,7 @@ Each scene starts from a cold start of the app, so the glyph atlases start empty
 | `title` | 30 title changes a second for 8 s | state delivery and Compose |
 | `overview` | the tab overview, four swipes each way | the overview's frames |
 | `overview-out` | the overview open while every tab prints | one atlas per preview |
+| `tabs` | every tab holds its own Korean text; tabs 2, 3, 4, 5 and 1 shown in turn | the atlas a window starts with |
 
 `prose` prints `load.py prose` (words of 380 syllables, the common ones often) unless
 `VELO_PERF_TEXT` names a text file. In `title`, the first tab's label (`t1`) names it, so the
@@ -70,6 +71,7 @@ uv run --with perfetto python tools/perf/analyze.py build/perf/traces/new-title.
 | `cpuplace.py` | the cost of one glyph by core kind and clock |
 | `compare.py TRACE...` | one line per trace for an A/B table: swaps, CPU per thread, recomposition, missed frames |
 | `composables.py TRACE` | which composables a composition-traced run composed, how often and for how long |
+| `firstframe.py TRACE...` | each atlas fill (`Renderer.drawMissing`): how long, glyphs drawn, glyphs from the shared cache |
 
 ### Composition tracing
 
@@ -102,6 +104,11 @@ slower than a release build: compare counts, and times only with each other.
   Check it with `apksigner verify`.
 - A change that removes work from one thread can make others slower: the cores of a cluster
   share one clock, which drops with the cluster's load. Compare CPU cycles, not only time.
+- In `overview` and `overview-out`, the overview's cards draw no glyphs at present (each card
+  shows its cursor only), so these scenes do not show what a card's atlas costs.
+- A tab next to the one shown has a window of its own already: in `tabs`, the windows that
+  start inside the trace depend on when the cold start's tabs got theirs. Compare a scene's
+  fills one by one, and its totals only between runs with the same fills.
 
 ## Results
 
@@ -190,4 +197,28 @@ Same commit with and without the change, two runs each (`prose`: one):
   the frame is shown, so that no cell shows empty.
 - The main thread waits less for the panes: frames over 16.7 ms in `overview-out` 9 and 6 → 4
   and 3, the longest main-thread frame in `textsize` 98 → 84 to 86 ms.
+
+### 2026-11-27: the panes share the glyphs drawn
+
+A render thread starts with an empty atlas whenever its pane gets a window: a tab shown, the
+tab next to it, an overview card, the app back on the screen. It asked the app's rasterizer
+again for every glyph it showed, though another pane had it drawn a moment before. The
+rasterizer's bitmaps are now kept for the process (`GlyphCache`, 8 MiB at most), under the
+atlas key and the size they were drawn at; a render thread copies what it finds into its own
+atlas and asks the rasterizer only for the rest. Another font empties the cache.
+
+`tabs`, same commit with and without the change, two runs each. A fill is one window's atlas
+being filled (`firstframe.py`).
+
+| | Default | Big cores off |
+|---|---|---|
+| Back to tab 1: each window's fill | 48 to 80 → 1.4 to 4.2 ms | 90 to 114 → 2.4 to 5.7 ms |
+| Back to tab 1: glyphs drawn again | 177 and 194 → 0 | 177 and 194 → 0 |
+| A switch that fills four windows at once: each fill | 120 to 152 → 7 to 66 ms | 166 to 330 → 28 to 110 ms |
+| The scene's glyphs drawn | 1158 → 134 and 184 | 1158 → 180 and 181 |
+
+- Windows that fill at the same moment still draw some glyphs twice: each misses what the
+  others have not kept yet. The fills of the first run at default clocks came apart, the
+  second run's did not (7 to 14 ms against 48 to 66 ms).
+- `ko2350` shows one window, which shares nothing: its misses, builds and frames are as before.
 

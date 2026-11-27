@@ -13,6 +13,7 @@ pub const BoxDraw = @import("BoxDraw.zig");
 pub const Links = @import("Links.zig");
 pub const LinkKind = Links.Kind;
 pub const Atlas = @import("Atlas.zig");
+pub const GlyphCache = @import("GlyphCache.zig");
 /// Trace sections and thread names, for the core outside this module too.
 pub const Trace = @import("Trace.zig");
 
@@ -24,12 +25,15 @@ pub const GlyphBitmap = struct {
 };
 
 /// Implemented by Core (calls CoreListener.rasterizeGlyph over JNI). Called only from
-/// the pane's render thread, only on atlas misses, after the frame's build and without
-/// the pane lock (`Renderer.completeFrame`). Returned memory is valid until the next call
-/// on the same thread.
+/// the pane's render thread, only on atlas misses that `cache` does not have, after the
+/// frame's build and without the pane lock (`Renderer.completeFrame`). Returned memory is
+/// valid until the next call on the same thread.
 pub const GlyphSource = struct {
     ctx: *anyopaque,
     rasterize: *const fn (ctx: *anyopaque, utf8: []const u8, bold: bool, italic: bool, cell_w: u32, cell_h: u32, columns: u32) ?GlyphBitmap,
+    /// What this source drew, for every pane that has the source. Null: each render thread
+    /// asks for what its own atlas lacks.
+    cache: ?*GlyphCache = null,
 };
 
 pub const Theme = struct {
@@ -774,6 +778,9 @@ pub const Pane = struct {
 
     /// The glyph source now draws another font with this line height in em.
     pub fn setFont(self: *Pane, line_height: f32) void {
+        // Before the renderer sees `glyphs_stale`: the atlas it empties then must not take back
+        // a glyph of the old font from the cache.
+        if (self.glyphs.cache) |cache| cache.invalidate();
         self.lock.lock();
         defer self.lock.unlock();
         self.line_height = std.math.clamp(line_height, 1, 2);
