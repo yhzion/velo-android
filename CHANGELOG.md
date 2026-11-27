@@ -14,10 +14,10 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - The key bar's keys are now rounded keys of one width that share the bar's whole width, as on a touch bar; a key turns a step lighter while you hold it.
 
 ### Fixed
-- A screen reader gives each key one name on the key bar and in Keyboard settings, in full words: Control, Escape, Page Up, Page Down, Minus, Pipe, Slash and Tilde.
+- A screen reader names the keys on the key bar and the Keyboard settings chips in full words: Control, Escape, Page Up, Page Down, Minus, Pipe, Slash and Tilde.
 - The This Device dot in the sidebar tells a screen reader the Tailscale settings page's word for the node's state, such as Connected, instead of Node Running.
 - The This Device dot also turns orange and says Paused while Android holds the network back, and is blue, not orange, while the node starts, as on the Tailscale settings page.
-- The tap gesture menus in Keyboard settings also say Escape, not Esc, to a screen reader.
+- The tap gesture menus in Keyboard settings now also say Escape to a screen reader, as the key bar does.
 - The Tailscale dot in Remotes settings has the Tailscale settings page's colour in every state, such as blue while the node starts, as the sidebar's dot does.
 - While Android holds the network back, the line under This Device in the sidebar says Paused, as its dot does, instead of Running.
 - A screen reader says the state of This Device in the sidebar once, in its dot's word, such as Connected, instead of twice.
