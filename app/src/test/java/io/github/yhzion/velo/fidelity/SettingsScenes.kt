@@ -31,6 +31,7 @@ import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.SshSecrets
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.TerminalFont
+import io.github.yhzion.velo.openSshPem
 import io.github.yhzion.velo.core.ForwardInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.readNotice
@@ -200,7 +201,7 @@ internal val SettingsScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "settings-ssh" to {
         SettingsScene(SettingsRoute(SettingsCategory.Remotes, SettingsLevel.SshKey)) {
             sshSecrets.publicLine()
-            sshSecrets.importKey(keyTool.fake.imported.first, null)
+            sshSecrets.importKey(BoardImportedKey, null)
         }
     },
     "settings-about" to { SettingsScene(SettingsRoute(SettingsCategory.About)) },
@@ -260,3 +261,6 @@ internal class BoardKeys(val fake: FakeKeys = FakeKeys()) : SshKeyTool by fake {
 
 // The board's line without its ellipsis, so that it is a key with a fingerprint.
 private const val BoardPhoneKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK7v1Qm3xR9tY2b velo-phone"
+
+/** The SetSsh block's imported key: an rsa key without a comment. Its digest is the scene's own (tools/fidelity/known-text.json). */
+private val BoardImportedKey = openSshPem("ssh-rsa", ByteArray(32) { (it * 7).toByte() }).first
