@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- While a pane is full screen, a minimap at the end of the caption shows the tab's panes and which have news. Tap it to pick another pane, or swipe across it for the next one.
+
 ### Changed
 - The key bar's keys are now rounded keys of one width that share the bar's whole width, as on a touch bar; a key turns a step lighter while you hold it.
 

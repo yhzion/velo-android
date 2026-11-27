@@ -1142,7 +1142,20 @@ private fun ShownCaption(conn: HostConnection, connected: Boolean, host: String,
     val row by remember(conn) {
         derivedStateOf { conn.state.let { shownWindow(it)?.row(it, it.session.orEmpty(), true) } }
     }
-    PaneCaption(row, connected, conn.activityReadState, host = host, modifier = modifier, compact = compact)
+    // The zoomed tab's minimap (#141). One `zoom` switches: the server focuses the pane, which ends the old zoom,
+    // and zooms it in the same call, so the split tab is never shown between them.
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val zoom by remember(conn, connected, rtl) {
+        derivedStateOf {
+            conn.state.let { s ->
+                shownWindow(s)?.let { w ->
+                    zoomMap(s, w, rtl) { block -> conn.activityReadState.activity(w.paneRow(s, s.session.orEmpty(), block), connected).badge }
+                }
+            }
+        }
+    }
+    PaneCaption(row, connected, conn.activityReadState, host = host, modifier = modifier, compact = compact,
+        zoom = zoom, onZoom = { conn.op("zoom", "block" to it) })
 }
 
 @Composable

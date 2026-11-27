@@ -168,6 +168,20 @@ internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): Ta
         .row(session, shown)
 }
 
+/**
+ * [block] of [this] tab as a row of its own, as if it were the tab's only pane: named, marked and read by its own
+ * program, title and report, with no label of the tab's. The caption's minimap names and marks a hidden pane so.
+ */
+internal fun WindowInfo.paneRow(state: UiState, session: String, block: String): TabRow {
+    val info = state.blocks[block]
+    return TabInfo(id, icon = info?.icon, block = block, terminalBlocks = listOf(block),
+        program = info?.program.orEmpty(), title = info?.title.orEmpty(), cwd = info?.cwd.orEmpty(),
+        activity = info?.activity ?: "idle", since = info?.since, statusTitle = info?.statusTitle.orEmpty(),
+        kind = info?.kind, reportedIdle = info?.reportedIdle == true, titleIsLabel = info?.titleIsLabel == true,
+        statusSummary = info?.statusSummary.orEmpty())
+        .row(session, shown = false)
+}
+
 /** The name the sidebar shows for [this] tab of [session]: never the server's ID-made label. */
 internal fun TabInfo.displayName(session: String): String = row(session, shown = false).name
 
