@@ -56,8 +56,8 @@ def analyze(path):
         by.setdefault(s.name, []).append(s)
 
     print(" core sections (Zig, ATrace):")
-    for name in ("Renderer.buildFrame", "Renderer.present", "Renderer.unchanged", "Renderer.rasterizeGlyph",
-                 "Core.stateSnapshot", "Core.publishState"):
+    for name in ("Renderer.buildFrame", "Renderer.present", "Renderer.drawMissing", "Renderer.unchanged",
+                 "Renderer.rasterizeGlyph", "DataStream.feed", "Core.stateSnapshot", "Core.publishState"):
         row(name, [s.dur for s in by.get(name, [])])
 
     # A present with a Renderer.unchanged inside drew nothing: the window kept its frame.
@@ -65,7 +65,9 @@ def analyze(path):
     drawn = [s for s in by.get("Renderer.present", []) if s.id not in skipped]
     row("present that drew (swapped)", [s.dur for s in drawn])
 
-    # Glyph misses inside each buildFrame (the pane lock is held for the whole buildFrame).
+    # Glyph misses inside each frame: in buildFrame, with the pane lock held, before the misses
+    # were drawn after it (Renderer.drawMissing inside Renderer.present); in present after.
+    frame_slice = "Renderer.present" if by.get("Renderer.drawMissing") else "Renderer.buildFrame"
     per = q(
         f"""select b.id, b.dur, t.name as tname,
                    (select count(*) from slice r where r.track_id = b.track_id and r.ts >= b.ts
@@ -73,17 +75,18 @@ def analyze(path):
                    (select ifnull(sum(r.dur), 0) from slice r where r.track_id = b.track_id and r.ts >= b.ts
                       and r.ts < b.ts + b.dur and r.name = 'Renderer.rasterizeGlyph') as rdur
             from slice b join thread_track tt on b.track_id = tt.id join thread t using(utid)
-            where t.upid in ({upids}) and b.name = 'Renderer.buildFrame'"""
+            where t.upid in ({upids}) and b.name = '{frame_slice}'"""
     )
     with_miss = [p for p in per if p.misses > 0]
     if per:
         print(
-            f"  buildFrame with misses: {len(with_miss)}/{len(per)}; misses total={sum(p.misses for p in per)}; "
+            f"  {frame_slice} with misses: {len(with_miss)}/{len(per)}; misses total={sum(p.misses for p in per)}; "
             f"rasterize share of those frames={100 * sum(p.rdur for p in with_miss) / max(1, sum(p.dur for p in with_miss)):.0f}%"
         )
         for p in sorted(per, key=lambda p: -p.dur)[:5]:
-            print(f"    worst buildFrame {ms(p.dur):7.2f}ms  misses={p.misses:<4} rasterize={ms(p.rdur):7.2f}ms  [{p.tname}]")
-        print(f"  buildFrame > 16.7ms (pane lock held a whole vsync): {sum(1 for p in per if p.dur > VSYNC)}")
+            print(f"    worst {frame_slice} {ms(p.dur):7.2f}ms  misses={p.misses:<4} rasterize={ms(p.rdur):7.2f}ms  [{p.tname}]")
+    builds = [s.dur for s in by.get("Renderer.buildFrame", [])]
+    print(f"  buildFrame > 16.7ms (pane lock held a whole vsync): {sum(1 for d in builds if d > VSYNC)}")
 
     # Swap intervals per draw thread: the pacing of the terminal surfaces.
     swaps = {}

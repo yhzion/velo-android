@@ -14,7 +14,8 @@
 #
 # The perf session needs five tabs (`setup.sh`), shown by the device's Velo. The taps are for
 # the LG Velvet in landscape (2460 x 1080 px, 95 columns); set the PERF_* variables below for
-# another screen.
+# another screen. The rail's Overview button moves with the buttons above it: unless
+# PERF_TAP_OVERVIEW is set, the scenes that open the overview find it on the screen first.
 set -euo pipefail
 source "$(dirname "$0")/perf.env"
 : "${PERF_COLS:=95}"
@@ -22,7 +23,7 @@ source "$(dirname "$0")/perf.env"
 : "${PERF_SWIPE_MENU:=2160 1000 2160 200 400}"
 : "${PERF_TAP_LARGER:=2140 278}"
 : "${PERF_TAP_RESET:=2140 542}"
-: "${PERF_TAP_OVERVIEW:=2361 959}"
+PERF_TAP_OVERVIEW_SET=${PERF_TAP_OVERVIEW:-}
 : "${PERF_TAP_CARD:=1181 475}"
 : "${PERF_SWIPE_NEXT:=1900 450 1100 450 250}"
 : "${PERF_SWIPE_BACK:=600 450 1400 450 250}"
@@ -30,7 +31,7 @@ export PERF_COLS PERF_TAP_PANE_MENU PERF_SWIPE_MENU PERF_TAP_LARGER PERF_TAP_RES
   PERF_TAP_OVERVIEW PERF_TAP_CARD PERF_SWIPE_NEXT PERF_SWIPE_BACK PERF_DIR ADB
 export -f perf_send
 
-[ $# -ge 1 ] || { sed -n '2,17p' "$0"; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,18p' "$0"; exit 2; }
 PREFIX=$1
 shift
 SCENES=("$@")
@@ -44,6 +45,28 @@ prose() {
 
 send1() { perf_send 1 "$1"; }
 export -f send1
+
+# The centre of the control a screen reader calls $1, from a dump of the screen; nothing when
+# the screen has none.
+desc_center() {
+  "$PERF_DIR/ui.sh" >/dev/null
+  python3 - "$VELO_PERF_OUT/ui.xml" "$1" <<'PY'
+import re, sys
+x = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r'content-desc="%s"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"' % re.escape(sys.argv[2]), x)
+if m:
+    a, b, c, d = map(int, m.groups())
+    print((a + c) // 2, (b + d) // 2)
+PY
+}
+
+# Before a scene that opens the overview: where its button is now.
+find_overview() {
+  [ -n "$PERF_TAP_OVERVIEW_SET" ] && return
+  PERF_TAP_OVERVIEW=$(desc_center Overview)
+  [ -n "$PERF_TAP_OVERVIEW" ] || { echo "no Overview button on the screen" >&2; exit 1; }
+  export PERF_TAP_OVERVIEW
+}
 
 menu() {
   "$ADB" shell "input tap $PERF_TAP_PANE_MENU; sleep 0.9; input swipe $PERF_SWIPE_MENU; sleep 0.9; input tap $1"
@@ -88,8 +111,8 @@ for scene in "${SCENES[@]}"; do
       "$PERF_DIR/trace.sh" "$PREFIX-$scene" 14 textsize_steps
       ;;
     title) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 11 send1 "$LOAD title 8 30" ;;
-    overview) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 16 overview_steps ;;
-    overview-out) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 12 overview_out_steps ;;
+    overview) find_overview; "$PERF_DIR/trace.sh" "$PREFIX-$scene" 16 overview_steps ;;
+    overview-out) find_overview; "$PERF_DIR/trace.sh" "$PREFIX-$scene" 12 overview_out_steps ;;
     *) echo "unknown scene: $scene" >&2; exit 2 ;;
   esac
 done
