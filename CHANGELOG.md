@@ -14,7 +14,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Fixed
 - A tab whose report names an agent keeps that agent's tile after you have seen the report. Only its dot goes away, so a Claude tab no longer turns back into node once you have looked at it.
-- A tab running Gemini CLI now shows Gemini's tile and name across the workspace instead of node and matches Gemini in sidebar search.
+- A tab running Gemini CLI now shows Gemini's tile instead of node's, and a search for Gemini in the sidebar finds it.
 
 ## 2.12.3 - 2026-11-27
 

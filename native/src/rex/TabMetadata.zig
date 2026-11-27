@@ -123,6 +123,8 @@ test "agent identity uses a launcher name or installed package, never a version 
         .{ "{\"name\":\"gemini-cli\",\"path\":\"/bin/node\"}", "gemini" },
         .{ "{\"name\":\"2.1.329\",\"path\":\"/bin/2.1.329\"}", null },
         .{ "{\"name\":\"node\",\"cwd\":\"/work/codex\",\"path\":\"/bin/node\"}", null },
+        .{ "{\"name\":\"node\",\"argv0\":\"node\",\"script\":\"/work/gemini/index.js\"}", null },
+        .{ "{\"name\":\"python3\",\"script\":\"/home/u/bin/pi.py\"}", null },
     }) |case| {
         const proc = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), case[0], .{});
         try std.testing.expectEqualStrings(case[1] orelse "", processAgent(proc) orelse "");
