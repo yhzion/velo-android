@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
 import io.github.yhzion.velo.ui.theme.Feel
 import io.github.yhzion.velo.ui.theme.KeyCap
+import io.github.yhzion.velo.ui.theme.KeyLegendPadding
 import io.github.yhzion.velo.ui.theme.KeyStrip
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
@@ -106,15 +107,16 @@ internal fun moveKey(saved: List<String>, key: String, delta: Int): List<String>
 /**
  * The caps' widths on a bar with [available] room inside it, [gap] between two caps (#142): a touch
  * bar's keys, every cap the same width and all of them across the bar. A cap needs the room in
- * [need] (its label and padding) and at least [floor]. When the bar's share is less than the widest
- * need, every cap takes that need instead and the bar scrolls. A pixel the share cannot split goes
- * to the first caps.
+ * [need] (its label and padding) and at least [floor]; before the bar scrolls, its label gives up
+ * up to [give] of that padding, as on the folded Fold8. When the bar's share is less even then,
+ * every cap takes the widest need and the bar scrolls. A pixel the share cannot split goes to the
+ * first caps.
  */
-internal fun keyCapWidths(need: List<Int>, floor: Int, gap: Int, available: Int): List<Int> {
+internal fun keyCapWidths(need: List<Int>, floor: Int, gap: Int, available: Int, give: Int = 0): List<Int> {
     if (need.isEmpty()) return emptyList()
     val least = maxOf(floor, need.max())
     val room = available - gap * need.lastIndex
-    if (room < least * need.size) return List(need.size) { least }
+    if (room < maxOf(floor, need.max() - give) * need.size) return List(need.size) { least }
     val share = room / need.size
     val left = room % need.size
     return List(need.size) { share + if (it < left) 1 else 0 }
@@ -141,6 +143,8 @@ internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, 
     // Half the gap on each side between two caps, in whole pixels: the gap is two of them.
     val half = with(LocalDensity.current) { (sizes.keyGap / 2).roundToPx() }
     val halfDp = with(LocalDensity.current) { half.toDp() }
+    // The room on each side of a label that the cap can give up before the bar scrolls.
+    val legendPadding = with(LocalDensity.current) { VeloTheme.medium(KeyLegendPadding).roundToPx() }
     KeyStrip(modifier.testTag("key-bar")) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val viewport = constraints.maxWidth
@@ -161,7 +165,7 @@ internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, 
             ) { buttons, limits ->
                 fun inset(i: Int) = (if (i > 0) half else 0) + (if (i < buttons.lastIndex) half else 0)
                 val need = buttons.mapIndexed { i, button -> button.maxIntrinsicWidth(limits.maxHeight) - inset(i) }
-                val caps = keyCapWidths(need, sizes.key.roundToPx(), half * 2, viewport)
+                val caps = keyCapWidths(need, sizes.key.roundToPx(), half * 2, viewport, give = legendPadding * 2)
                 val children = buttons.mapIndexed { i, button ->
                     val cell = caps[i] + inset(i)
                     button.measure(Constraints(minWidth = cell, maxWidth = cell, maxHeight = limits.maxHeight))

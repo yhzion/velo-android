@@ -271,12 +271,12 @@ fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = 
  * A key on the key bar (KeyBar board), as a touch bar draws it (#142). [label] names the key, not
  * the glyph drawn on it. The key takes the taps in all the room its bar gives it; its cap stands in
  * that room inside [capInsets]: a rounded rectangle of the glass, `sizes.keyCap` high, at least
- * `sizes.key` wide and as wide as its label with 4 on each side. On its own the key is as wide as
- * that cap. The cap is a step lighter while a finger holds it, and filled with the accent while
- * [armed] (a modifier the next key takes). [capModifier] goes on the cap. A key that is not
- * [enabled] keeps its glass, draws its label in the disabled colour and takes no tap. With
- * [holdRepeat], a hold sends [onClick] at the long-press timeout, then [onRepeat] until release or
- * cancellation.
+ * `sizes.key` wide and as wide as its label with [KeyLegendPadding] on each side. On its own the
+ * key is as wide as that cap. The cap is a step lighter while a finger holds it, and filled with
+ * the accent while [armed] (a modifier the next key takes). [capModifier] goes on the cap. A key
+ * that is not [enabled] keeps its glass, draws its label in the disabled colour and takes no tap.
+ * With [holdRepeat], a hold sends [onClick] at the long-press timeout, then [onRepeat] until
+ * release or cancellation.
  */
 @Composable
 fun KeyCap(
@@ -310,10 +310,13 @@ fun KeyCap(
             contentAlignment = Alignment.Center,
         ) {
             // A cap the bar narrowed below its label's room keeps the label whole: it takes the padding.
-            KeyLegend(label, color, Modifier.wrapContentWidth(unbounded = true).padding(horizontal = VeloTheme.medium(4.dp)))
+            KeyLegend(label, color, Modifier.wrapContentWidth(unbounded = true).padding(horizontal = VeloTheme.medium(KeyLegendPadding)))
         }
     }
 }
+
+/** The room on each side of a key's label inside its cap, at Medium; the key bar takes it back before it scrolls. */
+internal val KeyLegendPadding = 4.dp
 
 private const val KeyRepeatIntervalMillis = 60L
 

@@ -94,6 +94,16 @@ class KeyBarTest {
         assertEquals(listOf(32, 32), keyCapWidths(listOf(20, 20), floor = 32, gap = 5, available = 60))
     }
 
+    @Test fun aLabelGivesUpItsPaddingBeforeTheBarScrolls() {
+        // The folded Fold8: CTRL needs 39 with 4 on each side; nine caps get 37 each, and CTRL keeps its 31.
+        val need = listOf(32, 39, 32, 32, 32, 32, 32, 32, 32)
+        assertEquals(List(9) { 37 }, keyCapWidths(need, floor = 32, gap = 5, available = 9 * 37 + 8 * 5, give = 8))
+        // Below the least, the padding does not help: every cap at CTRL's whole need, and the bar scrolls.
+        assertEquals(List(9) { 39 }, keyCapWidths(need, floor = 32, gap = 5, available = 9 * 32 + 8 * 5 - 1, give = 8))
+        // Without the padding to give, the same bar scrolls.
+        assertEquals(List(9) { 39 }, keyCapWidths(need, floor = 32, gap = 5, available = 9 * 37 + 8 * 5))
+    }
+
     @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {
         assertEquals(listOf("key-slash", "key-ctrl", "key-esc", "key-tab", "key-left", "key-down", "key-up", "key-right", "key-backspace"),
             Settings.DEFAULT_KEY_BAR.split(',').map(::keyTestTag))
