@@ -5,13 +5,12 @@
 #   changelog.sh body VERSION CODE the head of the release body: the version-code marker and the
 #                                  <!-- velo-changes --> block the app shows before updating
 #   changelog.sh pr-check [--skip-entry] BASE HEAD
-#                                  fail when an item under "## Unreleased" is over 200 code points,
-#                                  or (unless --skip-entry is given) when app/ or native/ changed
-#                                  from the merge base of BASE and HEAD to HEAD without changing the
-#                                  items under "## Unreleased"
+#                                  fail when an item under "## Unreleased" is over 200 UTF-16 code
+#                                  units, or (unless --skip-entry is given) when app/ or native/
+#                                  changed from the merge base of BASE and HEAD to HEAD without
+#                                  changing the items under "## Unreleased"
 #
 # CHANGELOG overrides the file for section and body; pr-check reads CHANGELOG.md from git.
-# CHANGELOG_LOCALE (for tests) sets the locale pr-check counts code points under.
 set -euo pipefail
 export LC_ALL=C
 die() { echo "changelog.sh: $1" >&2; exit 1; }
@@ -71,21 +70,19 @@ body() {
   printf '<!-- android-version-code: %d -->\n<!-- velo-changes -->\n%s\n<!-- /velo-changes -->\n' "$code" "$items"
 }
 
-# Fail if any "- " item under "## Unreleased" is over max_item_length code points (after "- ").
+# Count UTF-16 code units, matching Kotlin's String.length (a character above U+FFFF counts 2).
+utf16_length() {
+  local bytes
+  bytes=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | wc -c) || return 1
+  printf '%d\n' "$((bytes / 2))"
+}
+
+# Fail if any "- " item under "## Unreleased" is over max_item_length UTF-16 units (after "- ").
 # Released sections are not checked.
-check_unreleased_lengths() (
-  local lineno=0 inside=0 line heading item len bad=0 probe='…' locale
-  # Count Unicode code points, not UTF-8 bytes (ChangeNotes.kt's MAX_CHANGE_LENGTH counts UTF-16
-  # code units, which matches on the BMP).
-  if [[ -n ${CHANGELOG_LOCALE+x} ]]; then
-    { export LC_ALL=$CHANGELOG_LOCALE; } 2>/dev/null || true
-  else
-    for locale in C.UTF-8 en_US.UTF-8 UTF-8; do
-      { export LC_ALL=$locale; } 2>/dev/null || true
-      (( ${#probe} == 1 )) && break
-    done
-  fi
-  (( ${#probe} == 1 )) || die "cannot count Unicode code points under locale '${LC_ALL:-}'"
+check_unreleased_lengths() {
+  local lineno=0 inside=0 line heading item len bad=0 probe
+  # Verify iconv encodes BMP as 1 UTF-16 unit and U+10000+ as 2, without a BOM.
+  probe=$(utf16_length '…😀') && [[ $probe == 3 ]] || die 'cannot count UTF-16 code units with iconv'
   while IFS= read -r line || [[ -n $line ]]; do
     lineno=$((lineno + 1))
     if [[ $line == '## '* ]]; then
@@ -100,7 +97,7 @@ check_unreleased_lengths() (
     (( inside )) || continue
     [[ $line == '- '* ]] || continue
     item=${line#'- '}
-    len=${#item}
+    len=$(utf16_length "$item") || die "CHANGELOG.md:$lineno is not valid UTF-8"
     if (( len > max_item_length )); then
       if (( bad == 0 )); then
         echo "Items under \"## Unreleased\" in CHANGELOG.md must be at most $max_item_length characters (after \"- \"):" >&2
@@ -113,7 +110,7 @@ check_unreleased_lengths() (
     echo "Shorten each item so Velo does not cut it off in What's new. See docs/releasing.md." >&2
     exit 1
   fi
-)
+}
 
 pr_check() {
   local skip_entry=0

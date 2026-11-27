@@ -147,9 +147,13 @@ pr_check "$later_main" "$with_entry"
 c200=$(printf 'a%.0s' {1..200})
 c201="${c200}b"
 c250=$(printf 'r%.0s' {1..250})
-# 199 ASCII + ellipsis (U+2026, 3 UTF-8 bytes) = 200 characters, 202 bytes.
+# 199 ASCII + ellipsis (U+2026, 3 UTF-8 bytes, 1 UTF-16 unit) = 200 UTF-16 units, 202 bytes.
 u200="$(printf 'a%.0s' {1..199})…"
 u201="${u200}b"
+# 198 ASCII + emoji (U+1F600, 4 UTF-8 bytes, 2 UTF-16 units) = 200 UTF-16 units.
+# 199 ASCII + emoji = 200 code points, 201 UTF-16 units (Kotlin String.length cuts it).
+e200="$(printf 'a%.0s' {1..198})😀"
+e201="$(printf 'a%.0s' {1..199})😀"
 
 echo c >> "$tmp/repo/app/a.kt"
 printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
@@ -179,6 +183,20 @@ if out=$(pr_check "$base" "$utf8_201" 2>&1); then
 fi
 [[ $out == *'201'* ]] || fail "Expected character length 201 for UTF-8 item, got:"$'\n'"$out"
 
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$e200" "$c250" > "$tmp/repo/CHANGELOG.md"
+emoji_200=$(commit emoji-200)
+pr_check "$base" "$emoji_200"
+
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$e201" "$c250" > "$tmp/repo/CHANGELOG.md"
+emoji_201=$(commit emoji-201)
+if out=$(pr_check "$base" "$emoji_201" 2>&1); then
+  fail "Unexpectedly accepted 201 UTF-16 unit emoji Unreleased item"
+fi
+[[ $out == *'CHANGELOG.md:6'* && $out == *'201'* && $out == *"- $e201"* ]] ||
+  fail "Expected line number, length 201, and line text for emoji item, got:"$'\n'"$out"
+
 # Even without app/ or native/ changes, a >200-char item under ## Unreleased fails.
 "${git[@]}" checkout -q -b changelog-only "$base"
 printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- First.\n' \
@@ -198,15 +216,21 @@ reject pr_check --skip-entry "$base" "$changelog_only_long"
 reject pr_check --skip-entry "$base"
 reject pr_check --skip-entry "$base" not-a-commit
 
-# Without a UTF-8 locale to count code points, pr-check must fail loudly instead of counting bytes.
-if out=$(CHANGELOG_LOCALE=C pr_check "$base" "$exact_200" 2>&1); then
-  fail "Unexpectedly succeeded when locale cannot count code points"
+# UTF-16 counting does not depend on the host locale, and invalid UTF-8 fails loudly.
+LC_ALL=C pr_check "$base" "$utf8_200"
+LC_ALL=C pr_check "$base" "$emoji_200"
+if out=$(LC_ALL=C pr_check "$base" "$emoji_201" 2>&1); then
+  fail "Unexpectedly accepted 201 UTF-16 unit emoji item under LC_ALL=C"
 fi
-[[ $out == *'code points'* ]] || fail "Expected locale self-check error, got:"$'\n'"$out"
-if out=$(CHANGELOG_LOCALE=no_such_locale_xyz pr_check "$base" "$exact_200" 2>&1); then
-  fail "Unexpectedly succeeded with invalid locale"
+[[ $out == *'201'* ]] || fail "Expected length 201 under LC_ALL=C, got:"$'\n'"$out"
+
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- \xff\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- First.\n' \
+  > "$tmp/repo/CHANGELOG.md"
+bad_utf8=$(commit bad-utf8)
+if out=$(pr_check "$base" "$bad_utf8" 2>&1); then
+  fail "Unexpectedly accepted invalid UTF-8 in Unreleased item"
 fi
-[[ $out == *'code points'* ]] || fail "Expected locale self-check error for invalid locale, got:"$'\n'"$out"
+[[ $out == *'valid UTF-8'* ]] || fail "Expected invalid UTF-8 error, got:"$'\n'"$out"
 
 reject pr_check "$base"
 reject pr_check "$base" not-a-commit

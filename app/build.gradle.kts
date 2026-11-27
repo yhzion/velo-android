@@ -119,7 +119,12 @@ dependencies {
 // The fidelity capture (FidelityCaptureTest) draws every app scene at each redesign board's size,
 // which takes minutes, so it runs only when asked: -Pvelo.fidelity.out=<dir> (tools/fidelity/fidelity.py).
 val fidelityOut = providers.gradleProperty("velo.fidelity.out").orNull
+val changelogScript = rootProject.layout.projectDirectory.file(".github/scripts/changelog.sh")
 tasks.withType<Test>().configureEach {
+    // ChangeNotesTest reads max_item_length from changelog.sh, so editing the script alone must rerun tests.
+    inputs.file(changelogScript)
+        .withPropertyName("changelogScript")
+        .withPathSensitivity(PathSensitivity.NONE)
     if (fidelityOut == null) {
         exclude("**/fidelity/FidelityCaptureTest*")
     } else {
