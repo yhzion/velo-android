@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.12.5 - 2026-11-27
+
 ### Added
 - A tab running OpenCode now shows OpenCode's tile in the sidebar, under the panes, in the overview and on the rail's wheel.
 
