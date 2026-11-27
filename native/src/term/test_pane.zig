@@ -1354,6 +1354,12 @@ fn detachStuck(p: *Pane, stuck: *StuckDraw) !i128 {
 
 const ms_ns = std.time.ns_per_ms;
 
+/// No give-up of late (`P.give_up_until_ns`): a test that gives a thread up clears it before and
+/// after, so that its give-up shortens no other test's wait.
+fn noBurst() void {
+    P.give_up_until_ns.store(0, .monotonic);
+}
+
 /// A test's allocator whose every allocation has pages of its own, unmapped when freed: a use
 /// after free faults at once (the test allocator unmaps only large ones). It counts what is
 /// still allocated, so a leak shows too.
@@ -1389,27 +1395,108 @@ const Unmapping = struct {
     }
 };
 
+fn sleepNs(ns: u64) void {
+    var ts: std.c.timespec = .{ .sec = @intCast(ns / std.time.ns_per_s), .nsec = @intCast(ns % std.time.ns_per_s) };
+    _ = std.c.nanosleep(&ts, null);
+}
+
+test "Lock.waitUntil: the deadline is a time on the monotonic clock" {
+    // #159: the wait for a render thread must not grow when the wall clock steps back. A wait
+    // that read the deadline on the wall clock would find it long past, and return at once.
+    var l: P.Lock = .{};
+    l.lock();
+    defer l.unlock();
+    const start = P.monoNow();
+    while (!l.waitUntil(start + 50 * ms_ns)) {} // nothing signals: only a spurious wake comes back
+    try std.testing.expect(P.monoNow() - start >= 50 * ms_ns);
+    // A deadline already past returns at once.
+    const past = P.monoNow();
+    try std.testing.expect(l.waitUntil(past - ms_ns));
+    try std.testing.expect(P.monoNow() - past < 50 * ms_ns);
+}
+
+/// Counts the lines a pane's wait writes when its thread is late to leave (`P.host_late_leave`),
+/// and when the last came. The wait runs on the test's thread.
+const LateLeave = struct {
+    var lines: usize = 0;
+    var at: i128 = 0;
+
+    fn count(_: *anyopaque) void {
+        lines += 1;
+        at = P.monoNow();
+    }
+    fn watch() void {
+        lines = 0;
+        at = 0;
+        P.host_late_leave = count;
+    }
+};
+
+/// The thread's side of a link for the tests below. It is inside the pane from the start (the
+/// test enters for it), leaves after `inside_ns` and says when, then ends once the test is done
+/// with the link, or 1 s after it left: a wait that misses the leave then ends, and the test fails
+/// instead of hanging. Given up, it frees the link as it ends.
+const Leaver = struct {
+    link: *P.RenderLink,
+    inside_ns: u64,
+    /// When it left (`monoNow`); 0 while it is inside.
+    left: std.atomic.Value(i64) = .init(0),
+    looked: std.atomic.Value(bool) = .init(false),
+
+    fn run(v: *Leaver) void {
+        sleepNs(v.inside_ns);
+        const left = P.monoNow();
+        v.left.store(@intCast(left), .release);
+        v.link.leave();
+        while (!v.looked.load(.acquire) and P.monoNow() < left + std.time.ns_per_s) sleepNs(ms_ns);
+        v.link.end();
+    }
+};
+
 test "render link: a thread inside the pane when the wait runs out is given up only once it leaves" {
     // #159: a pane freed under a thread that reads it would be a use after free. A thread in the
-    // pane waits for nothing but the pane's lock there, so the wait for it to leave is short.
-    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    // pane waits there for the pane's lock and the build, so the wait for it to leave is short.
+    LateLeave.watch();
+    defer P.host_late_leave = null;
+    const link = try P.RenderLink.create(std.testing.allocator, &window_a);
     try std.testing.expect(link.enter());
-    const Leaver = struct {
-        fn run(l: *P.RenderLink) void {
-            var ts: std.c.timespec = .{ .sec = 0, .nsec = 150 * ms_ns };
-            _ = std.c.nanosleep(&ts, null);
-            l.leave();
-        }
-    };
-    const thread = try std.Thread.spawn(.{}, Leaver.run, .{&link});
-    const start = P.monoNow();
+    var leaver: Leaver = .{ .link = link, .inside_ns = 100 * ms_ns };
+    const thread = try std.Thread.spawn(.{}, Leaver.run, .{&leaver});
     const ended = link.waitEnd(20 * ms_ns);
-    const waited = P.monoNow() - start;
-    thread.join();
-    try std.testing.expect(!ended);
-    try std.testing.expect(waited >= 100 * ms_ns); // not at 20 ms, while it was inside
+    const returned = P.monoNow();
+    const left = leaver.left.load(.acquire);
     // Given up, it never enters again.
-    try std.testing.expect(!link.enter());
+    const entered = left != 0 and link.enter();
+    leaver.looked.store(true, .release);
+    thread.join();
+    if (ended) link.destroy(); // not given up: the link is the test's
+    try std.testing.expect(!ended);
+    try std.testing.expect(left != 0 and returned >= left); // not at 20 ms, while it was inside
+    try std.testing.expect(returned - left < 250 * ms_ns); // its leave wakes the wait
+    try std.testing.expect(!entered);
+    try std.testing.expectEqual(@as(usize, 0), LateLeave.lines);
+}
+
+test "render link: a wait for a thread long to leave the pane says so once, while it is inside" {
+    // #159: past the bound, the wait for a thread inside the pane has no end of its own. One that
+    // goes on shows in the log, before the thread leaves.
+    LateLeave.watch();
+    defer P.host_late_leave = null;
+    const link = try P.RenderLink.create(std.testing.allocator, &window_a);
+    try std.testing.expect(link.enter());
+    const bound = 20 * ms_ns;
+    var leaver: Leaver = .{ .link = link, .inside_ns = bound + P.leave_late_ns + 400 * ms_ns };
+    const start = P.monoNow();
+    const thread = try std.Thread.spawn(.{}, Leaver.run, .{&leaver});
+    const ended = link.waitEnd(bound);
+    const left = leaver.left.load(.acquire);
+    leaver.looked.store(true, .release);
+    thread.join();
+    if (ended) link.destroy();
+    try std.testing.expect(!ended);
+    try std.testing.expectEqual(@as(usize, 1), LateLeave.lines);
+    try std.testing.expect(LateLeave.at >= start + bound + P.leave_late_ns); // not before
+    try std.testing.expect(LateLeave.at < left); // while it was still inside
 }
 
 test "render link: a thread that ends within the wait is not given up" {
@@ -1456,6 +1543,8 @@ test "a render thread stuck in the platform is given up after the bound, and its
     // when the server closes a pane. A thread stuck in a swap (#117) must stop neither for good.
     Released.watch();
     defer P.host_release = null;
+    noBurst();
+    defer noBurst();
     var unmapping: Unmapping = .{};
     const p = try Pane.create(unmapping.allocator(), .{ .ctx = &dummy, .rasterize = noGlyph });
     var freed = false;
@@ -1485,9 +1574,47 @@ test "a render thread stuck in the platform is given up after the bound, and its
     try std.testing.expectEqual(@as(usize, 0), unmapping.live.load(.monotonic));
 }
 
+test "render threads stuck at once cost one bound and a short wait for each pane stopped after" {
+    // #159: `HostConnection.destroy` and Core's sweep of closed panes stop the panes one after
+    // another, and #117's sync of the whole window can leave several threads stuck at once. A
+    // bound for each would add up to an ANR (5 s): after a give-up, a stop waits briefly.
+    Released.watch();
+    defer P.host_release = null;
+    noBurst();
+    defer noBurst();
+    var stuck: [3]StuckDraw = @splat(.{});
+    var panes: [3]*Pane = undefined;
+    var made: usize = 0;
+    var started: usize = 0;
+    defer for (panes[0..made]) |p| p.destroy();
+    defer for (stuck[0..started]) |*s| s.finish();
+    for (&panes, &stuck) |*p, *s| {
+        p.* = try newPane();
+        made += 1;
+        try p.*.startThread(&window_a, 300, 200, drawMain(StuckDraw), .{s});
+        started += 1;
+        try s.waitStuck();
+    }
+
+    var waited: [3]i128 = undefined;
+    for (panes, &stuck, &waited) |p, *s, *w| w.* = try detachStuck(p, s);
+    // The first is given up after the bound, as a pane alone.
+    try std.testing.expect(waited[0] >= P.stop_wait_ns);
+    // Each one after it still has its chance to end, a short one.
+    for (waited[1..]) |w| {
+        try std.testing.expect(w >= P.burst_wait_ns);
+        try std.testing.expect(w < P.burst_wait_ns + 300 * ms_ns);
+    }
+    try std.testing.expect(waited[0] + waited[1] + waited[2] < P.stop_wait_ns + 3 * P.burst_wait_ns + 500 * ms_ns);
+    // Each thread keeps its window's reference until it ends.
+    try Released.expect(0, 0);
+}
+
 test "after giving a render thread up, a pane starts and stops the next one as usual, untouched by it" {
     Released.watch();
     defer P.host_release = null;
+    noBurst();
+    defer noBurst();
     const p = try newPane();
     defer p.destroy();
     var stuck: StuckDraw = .{};

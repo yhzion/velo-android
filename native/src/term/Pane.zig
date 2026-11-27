@@ -71,7 +71,17 @@ pub const Lock = struct {
         ts.nsec = @intCast(total % std.time.ns_per_s);
         return std.c.pthread_cond_timedwait(&l.cv, &l.m, &ts) == .TIMEDOUT;
     }
+    /// Waits as `wait`, until `deadline_ns` on the monotonic clock (`monoNow`), which a step of
+    /// the wall clock does not move. True when the deadline passed without a signal.
+    pub fn waitUntil(l: *Lock, deadline_ns: i128) bool {
+        const at = @max(deadline_ns, 0);
+        const ts: std.c.timespec = .{ .sec = @intCast(@divFloor(at, std.time.ns_per_s)), .nsec = @intCast(@mod(at, std.time.ns_per_s)) };
+        return pthread_cond_clockwait(&l.cv, &l.m, .MONOTONIC, &ts) == .TIMEDOUT;
+    }
 };
+
+/// Bionic from API 30 (Velo's minSdk), glibc from 2.30. Zig's `std.c` does not declare it.
+extern "c" fn pthread_cond_clockwait(noalias cond: *std.c.pthread_cond_t, noalias mutex: *std.c.pthread_mutex_t, clock: std.c.clockid_t, noalias abstime: *const std.c.timespec) std.c.E;
 
 fn rgb(v: [3]u8) c.GhosttyColorRgb {
     return .{ .r = v[0], .g = v[1], .b = v[2] };
@@ -151,6 +161,38 @@ fn logGivenUp(pane: *Pane, window: *anyopaque, waited_ns: i128) void {
 /// its EGL teardown, tens of milliseconds.
 pub const stop_wait_ns: u64 = 2 * std.time.ns_per_s;
 
+/// How long a stop waits instead, when a pane gave its thread up less than `stop_wait_ns` ago
+/// (`give_up_until_ns`). The stops come one after another: `HostConnection.destroy` detaches
+/// every pane, a `surfaceDestroyed` suspends every pane of the view, and Core's sweep removes
+/// each closed pane, while main waits for `Core.lock`. #117's trigger is a sync of the whole
+/// window, so several threads can be stuck at once, and a bound for each would add up to an ANR.
+/// With one shared bound, k stuck threads cost 2 s + k × 0.2 s. A thread that is not stuck ends
+/// within tens of milliseconds, so it is still joined. One that is only slow and is given up
+/// frees itself when it ends, as a stuck one would.
+pub const burst_wait_ns: u64 = 200 * std.time.ns_per_ms;
+
+/// Until when (`monoNow`) a stop waits `burst_wait_ns` and not `stop_wait_ns`: `stop_wait_ns`
+/// past the last give-up, in any pane of any core. Main and `velo-control` both stop panes.
+pub var give_up_until_ns: std.atomic.Value(i64) = .init(0);
+
+/// How long past its bound a pane waits for a thread inside it to leave before it says so in
+/// the log, once (`RenderLink.waitEnd`). That wait has no end of its own: a call inside the pane
+/// that does not return keeps main waiting there, and the line shows it.
+pub const leave_late_ns: u64 = 500 * std.time.ns_per_ms;
+
+/// One line when a pane's thread is `leave_late_ns` past the bound and still inside the pane.
+fn logLateLeave(window: *anyopaque, late_ns: i128) void {
+    if (is_android) Renderer.logLateLeave(window, late_ns) else if (host_late_leave) |f| f(window);
+}
+
+/// Host tests only: called for every line `logLateLeave` writes.
+pub var host_late_leave: ?*const fn (window: *anyopaque) void = null;
+
+/// How long a stop that starts at `now` waits for its thread.
+fn stopBound(now: i128) u64 {
+    return if (now < give_up_until_ns.load(.monotonic)) burst_wait_ns else stop_wait_ns;
+}
+
 /// What a render thread shares with its pane, kept apart from the pane (#159). A pane waits for
 /// its thread to end at most `stop_wait_ns` and then gives it up: a thread stuck in the platform
 /// (#117) would otherwise stop main or `velo-control` for good. The pane may then be freed, or
@@ -227,21 +269,32 @@ pub const RenderLink = struct {
 
     /// The pane's side, once it asked the thread to quit: wait for the thread to end, at most
     /// `bound_ns`, then give it up. A thread inside the pane then is waited for until it
-    /// leaves, which it does soon (`enter`). True: the thread has ended; join it, then
-    /// `destroy` the link. False: it is given up; detach it, and touch the link no more.
+    /// leaves, which it does soon (`enter`); `leave_late_ns` past the bound, one line says it
+    /// has not. True: the thread has ended; join it, then `destroy` the link. False: it is
+    /// given up; detach it, and touch the link no more. The times are on the monotonic clock.
     pub fn waitEnd(l: *RenderLink, bound_ns: u64) bool {
         const deadline = monoNow() + bound_ns;
+        const late = deadline + leave_late_ns;
+        var said = false;
         l.lock.lock();
         defer l.lock.unlock();
         while (!l.done) {
-            const left = deadline - monoNow();
-            if (left > 0) {
-                _ = l.lock.timedWait(@intCast(left));
-            } else if (l.in_pane) {
-                l.lock.wait();
-            } else {
+            const now = monoNow();
+            if (now < deadline) {
+                _ = l.lock.waitUntil(deadline);
+            } else if (!l.in_pane) {
                 l.given_up = true;
                 return false;
+            } else if (said) {
+                l.lock.wait();
+            } else if (now < late) {
+                _ = l.lock.waitUntil(late);
+            } else {
+                said = true;
+                // Not under the link's lock, which the thread takes to leave.
+                l.lock.unlock();
+                logLateLeave(l.window, now - deadline);
+                l.lock.lock();
             }
         }
         return true;
@@ -871,12 +924,15 @@ pub const Pane = struct {
             self.lock.signal();
             self.lock.unlock();
             const start = monoNow();
-            if (link.waitEnd(stop_wait_ns)) {
+            if (link.waitEnd(stopBound(start))) {
                 t.join();
                 link.destroy();
             } else {
                 t.detach();
-                logGivenUp(self, window, monoNow() - start);
+                const now = monoNow();
+                // The stops that follow soon wait briefly (`burst_wait_ns`).
+                _ = give_up_until_ns.fetchMax(@intCast(now + stop_wait_ns), .monotonic);
+                logGivenUp(self, window, now - start);
                 ended = false;
             }
             self.thread = null;

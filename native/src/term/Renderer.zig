@@ -444,6 +444,16 @@ pub fn logGivenUp(pane: *Pane, window: *anyopaque, waited_ns: i128) void {
     _ = gl.__android_log_write(gl.ANDROID_LOG_WARN, "VeloTerm", msg);
 }
 
+/// One line when a pane has waited `Pane.leave_late_ns` past its bound for its render thread to
+/// leave the pane (#159): a call inside the pane (the build's `eglQuerySurface` or GL texture
+/// calls) has not returned, and main waits for it with no bound.
+pub fn logLateLeave(window: *anyopaque, late_ns: i128) void {
+    var buf: [128]u8 = undefined;
+    const late_ms = @divTrunc(late_ns, std.time.ns_per_ms);
+    const msg = std.mem.printSentinel(&buf, "renderer still in its pane {d} ms past the bound window={x}", .{ late_ms, @intFromPtr(window) }, 0) catch return;
+    _ = gl.__android_log_write(gl.ANDROID_LOG_WARN, "VeloTerm", msg);
+}
+
 /// One line per renderer start and end: an attach in place writes none.
 fn logLife(what: []const u8, pane: *Pane, window: ?*anyopaque) void {
     var buf: [96]u8 = undefined;
