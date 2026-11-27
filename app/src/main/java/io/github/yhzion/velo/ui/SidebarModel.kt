@@ -97,6 +97,9 @@ private val CodexActionPrefix = Regex("""^(● )?\[ [.!] ] Action Required(?=\s|
 // icon of the task, as in "π ⠼ <icon> ISSUE: ...". The sidebar draws omp's mark and the activity
 // in their own places, and the app's text font has no Nerd Font icons.
 private val OmpTitlePrefix = Regex("""^π\s+(?:[\u2800-\u28ff⁝⋮:>]\s+)?[\x{E000}-\x{F8FF}\x{F0000}-\x{10FFFD}]?\s*""")
+// OpenCode titles a session "OC | <session title>" and a plugin's screen "OC | <id>"; its home
+// screen is "OpenCode", which the program-name check already skips.
+private val OpenCodeTitlePrefix = Regex("""^OC \| """)
 private val VersionName = Regex("""v?\d+(?:\.\d+)+(?:[-+][\w.-]+)?""")
 private val TitleBreak = Regex("""[\p{Cc}\p{Zl}\p{Zp}]+""")
 private val BidiControl = Regex("""[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]""")
@@ -122,6 +125,7 @@ private fun TabInfo.row(session: String, shown: Boolean): TabRow {
             stable.replaceFirst(CodexActionPrefix, "$1[ ! ] Action Required")
         }
         TabAgent.Omp -> osc.replaceFirst(OmpTitlePrefix, "")
+        TabAgent.OpenCode -> osc.replaceFirst(OpenCodeTitlePrefix, "")
         else -> osc
     }
     val own = ownTabLabel(label)

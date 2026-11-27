@@ -49,6 +49,20 @@ class TabMarksTest {
     }
 
     @Test
+    fun openCodeTitlesLoseTheirOcPrefix() {
+        // OpenCode 1.19.6 titles: "OpenCode" on its home screen, "OC | <session title>" in a session
+        // (cut to 37 characters and an ellipsis past 40), "OC | <id>" on a plugin's screen.
+        val tab = TabInfo("w", icon = "opencode", program = "opencode.exe")
+        for ((title, name) in listOf(
+            "OpenCode" to "OpenCode",
+            "OC | Greeting and title probe" to "Greeting and title probe",
+            "OC | Refactor the session list into two…" to "Refactor the session list into two…",
+            "OC | OpenCode" to "OpenCode",
+        )) assertEquals(name, row(tab.copy(title = title)).name)
+        assertEquals("OC | topic", row(TabInfo("w", program = "bash", title = "OC | topic")).name)
+    }
+
+    @Test
     fun codexTitleFramesShareOneTitleAndOneAccessibleStatus() {
         val tab = TabInfo("w", program = "codex", title = "⠋ QA64 Local thread · qaagents")
         for (frame in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {

@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- A tab running OpenCode is named after its conversation, without the "OC | " that OpenCode puts before the title.
+
 ## 2.12.5 - 2026-11-27
 
 ### Added
