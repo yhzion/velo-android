@@ -160,14 +160,13 @@ class NoticeSlotTest {
         assertEquals(786f, (toast.left + toast.right).value, 1f)
     }
 
-    @Test fun twoNoticesThatFitAboveTheKeyBarStayStackedAboveIt() {
-        // A short pane under a search bar (from 20 dp), the key bar from 130 dp: two toasts (104 dp with the gap) fit
-        // above it from the column's top, but not from the pane's top and its padding.
+    /** Two toasts (104 dp with the gap) over a short pane under a search bar (from 20 dp to 52), the key bar from [keyBarTop] dp. */
+    private fun underTheSearchBar(keyBarTop: Int): Pair<DpRect, DpRect> {
         compose.setContent {
             VeloTheme {
                 val px = LocalDensity.current.density
                 Box(Modifier.width(380.dp).height(200.dp)) {
-                    PaneNotices({ Rect(0f, 20 * px, 380 * px, 52 * px) }, keyBar = { Rect(0f, 130 * px, 380 * px, 170 * px) },
+                    PaneNotices({ Rect(0f, 20 * px, 380 * px, 52 * px) }, keyBar = { Rect(0f, keyBarTop * px, 380 * px, (keyBarTop + 40) * px) },
                         padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                         ToastSurface("Moved")
                         ToastSurface("Uploading x…")
@@ -175,10 +174,24 @@ class NoticeSlotTest {
                 }
             }
         }
-        val first = compose.onAllNodesWithTag("toast")[0].getBoundsInRoot()
-        val last = compose.onAllNodesWithTag("toast")[1].getBoundsInRoot()
+        return compose.onAllNodesWithTag("toast")[0].getBoundsInRoot() to compose.onAllNodesWithTag("toast")[1].getBoundsInRoot()
+    }
+
+    @Test fun twoNoticesThatFitAboveTheKeyBarFromThePanesTopStayStackedAboveIt() {
+        val (first, last) = underTheSearchBar(keyBarTop = 150)
         assertTrue("stacked: $first over $last", last.top >= first.bottom)
-        assertTrue("last toast $last ends 16 dp above the key bar", last.bottom <= 130.dp - 16.dp + 0.5.dp)
+        assertTrue("last toast $last ends 16 dp above the key bar", last.bottom <= 150.dp - 16.dp + 0.5.dp)
+        assertTrue("first toast $first under the search bar", first.top >= 20.dp - 0.5.dp)
+    }
+
+    @Test fun twoNoticesThatWouldStackOverTheSearchBarGoSideBySide() {
+        // From the column's top they would fit above the key bar, but only over the search field (#169 review, N3).
+        val (first, last) = underTheSearchBar(keyBarTop = 130)
+        listOf(first, last).forEach {
+            assertTrue("toast $it under the search bar", it.top >= 20.dp - 0.5.dp)
+            assertTrue("toast $it ends above the key bar", it.bottom <= 130.dp + 0.5.dp)
+        }
+        assertTrue("side by side: $first then $last", last.left >= first.right)
     }
 
     private fun actions() = SidebarActions(

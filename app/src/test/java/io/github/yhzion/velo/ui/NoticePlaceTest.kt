@@ -65,51 +65,60 @@ class NoticePlaceTest {
     @Test
     fun twoOrThreeNoticesUnderAOneLinePaneGoSideBySide() {
         // Two (282) and three (about 440) stacked would run into the key bar, even from the column's top.
-        assertTrue(noticesSideBySide(paneTop = 0, paneBottom = 88, keyBarTop = keyBar, stack = 130 * 2 + 22, count = 2, padding = padding, lift = 0))
-        assertTrue(noticesSideBySide(0, 88, keyBar, 125 + 130 * 2 + 22 * 2, 3, padding, 0))
+        assertEquals(NoticeArrangement.Row, noticeArrangement(paneTop = 0, paneBottom = 88, keyBarTop = keyBar, stack = 130 * 2 + 22, count = 2, padding = padding, lift = 0))
+        assertEquals(NoticeArrangement.Row, noticeArrangement(0, 88, keyBar, 125 + 130 * 2 + 22 * 2, 3, padding, 0))
     }
 
     @Test
     fun oneNoticeNeverGoesSideBySide() {
-        // However tall: one notice keeps the #165 place.
-        assertFalse(noticesSideBySide(0, 88, keyBar, 130, 1, padding, 0))
-        assertFalse(noticesSideBySide(0, 88, keyBar, 400, 1, padding, 0))
+        // However tall: one notice keeps the #165 place, from the pane's top down to the column's bottom.
+        assertEquals(NoticeArrangement.Stack, noticeArrangement(0, 88, keyBar, 130, 1, padding, 0))
+        assertEquals(NoticeArrangement.Stack, noticeArrangement(0, 88, keyBar, 400, 1, padding, 0))
     }
 
     @Test
     fun noticesThatAPaneHoldsStayStacked() {
         // Portrait, with or without the keyboard: the pane holds the stack at its lower edge.
-        assertFalse(noticesSideBySide(0, 1900, 2000, 125 + 130 * 2 + 22 * 2, 3, padding, lift))
+        assertEquals(NoticeArrangement.Stack, noticeArrangement(0, 1900, 2000, 125 + 130 * 2 + 22 * 2, 3, padding, lift))
     }
 
     @Test
-    fun aStackThatEndsAboveTheKeyBarStaysStacked() {
-        // A short pane, but the stack ends padding above the key bar when it starts at the column's top.
-        assertFalse(noticesSideBySide(0, 88, keyBarTop = 282 + padding, stack = 282, count = 2, padding = padding, lift = 0))
-        assertTrue(noticesSideBySide(0, 88, keyBarTop = 282 + padding - 1, stack = 282, count = 2, padding = padding, lift = 0))
+    fun aStackThatEndsAboveTheKeyBarFromThePanesTopStaysStackedAboveIt() {
+        // A short pane, but the stack ends padding above the key bar when it starts at the pane's top.
+        assertEquals(NoticeArrangement.AboveKeyBar, noticeArrangement(0, 88, keyBarTop = 282 + padding, stack = 282, count = 2, padding = padding, lift = 0))
+        assertEquals(NoticeArrangement.Row, noticeArrangement(0, 88, keyBarTop = 282 + padding - 1, stack = 282, count = 2, padding = padding, lift = 0))
+    }
+
+    @Test
+    fun aStackAboveTheKeyBarNeverGoesOverTheSearchBar() {
+        // A short pane under the search bar (from 55 px): the stack would fit from the column's top, but not from the
+        // pane's. Stacked above the key bar it would start over the search field, so the notices go side by side.
+        assertEquals(NoticeArrangement.Row, noticeArrangement(paneTop = 55, paneBottom = 143, keyBarTop = 282 + padding, stack = 282, count = 2, padding = padding, lift = 0))
+        assertEquals(NoticeArrangement.AboveKeyBar, noticeArrangement(55, 143, 55 + 282 + padding, 282, 2, padding, 0))
     }
 
     @Test
     fun aRowThatHoldsTheNoticesKeepsTheirOwnWidths() {
-        assertEquals(listOf(495, 975), rowWidths(own = listOf(495, 975), space = 2075, gap = 22, least = 440))
+        assertEquals(listOf(495, 975), noticeRowWidths(own = listOf(495, 975), space = 2075, gap = 22, least = 440))
         // Exactly the room: own widths still.
-        assertEquals(listOf(500, 500), rowWidths(listOf(500, 500), 1022, 22, 440))
+        assertEquals(listOf(500, 500), noticeRowWidths(listOf(500, 500), 1022, 22, 440))
     }
 
     @Test
     fun aRowTooNarrowCutsTheWidestToAnEqualShare() {
-        // Undo, toast and error notice: 2085 of own width in 2031 of room. The toast alone is cut.
-        val widths = rowWidths(listOf(495, 975, 615), 2075, 22, 440)!!
-        assertEquals(listOf(495, 921, 615), widths)
+        // The Velvet's own widths in landscape with the keyboard up: Undo 486, toast 976 and error notice 611 px
+        // (its text and the Snackbar's padding), 2073 of own width in 2031 of room. The toast alone is cut.
+        val widths = noticeRowWidths(listOf(486, 976, 611), 2075, 22, 440)!!
+        assertEquals(listOf(486, 934, 611), widths)
         // Two wide ones share what the narrow one leaves.
-        assertEquals(listOf(300, 840, 840), rowWidths(listOf(300, 1500, 1200), 2024, 22, 200))
+        assertEquals(listOf(300, 840, 840), noticeRowWidths(listOf(300, 1500, 1200), 2024, 22, 200))
         assertTrue(widths.sum() + 22 * 2 <= 2075)
     }
 
     @Test
     fun aColumnWithoutRoomForAShareEachHasNoRow() {
         // Three shares of 440 need 1364 with the gaps.
-        assertNull(rowWidths(listOf(600, 600, 600), 1363, 22, 440))
-        assertEquals(listOf(440, 440, 440), rowWidths(listOf(600, 600, 600), 1364, 22, 440))
+        assertNull(noticeRowWidths(listOf(600, 600, 600), 1363, 22, 440))
+        assertEquals(listOf(440, 440, 440), noticeRowWidths(listOf(600, 600, 600), 1364, 22, 440))
     }
 }
