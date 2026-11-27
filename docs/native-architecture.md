@@ -172,7 +172,9 @@ The file goes to the focused pane: a Paste from another pane's menu focuses that
 and gives up when the core has not shown it focused within 2 seconds. A focus, tab or
 connection change during the read refuses the send, and a read that takes over 60 seconds
 ends with an error. A toast shows while the upload runs, and failures appear in the
-connection's error notice. The keyboard's own clipboard is not covered.
+connection's error notice. An image that the keyboard inserts (#160), for example from Gboard's
+clipboard strip, goes the same way: the editor declares `image/*` and common image types in
+`EditorInfo.contentMimeTypes`, takes `commitContent`, and holds the read grant until the read ends.
 
 ## Port forwards
 
