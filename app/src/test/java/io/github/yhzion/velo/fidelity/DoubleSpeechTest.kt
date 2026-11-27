@@ -67,12 +67,12 @@ class DoubleSpeechTest {
     }
 
     @Test fun theCheckFindsADescriptionOverItsText() {
-        assertTrue(twice(listOf("Sound, Attention", "Attention")))
+        assertTrue(twice(listOf("Sound: Attention", "Attention")))
         assertTrue(twice(listOf("Tab", "TAB")))
         assertTrue(twice(listOf("Attachment report.pdf", "report.pdf")))
         assertTrue(twice(listOf("Copy this phone's key", "Copy")))
         assertTrue(!twice(listOf("This Device, velo-phone, 100.101.12.7 · Connected")))
-        assertTrue(!twice(listOf("Sound, Attention")))
+        assertTrue(!twice(listOf("Sound: Attention")))
         // A name said again in another case inside a longer word is not the same words: "NOTICE", "Full notice".
         assertTrue(!twice(listOf("NOTICE", "Full notice for this build", "Text")))
         assertTrue(!twice(listOf("Tailscale", "tailscale.com 1.104.1", "BSD-3-Clause")))

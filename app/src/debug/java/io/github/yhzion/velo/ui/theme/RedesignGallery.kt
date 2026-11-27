@@ -169,7 +169,7 @@ private fun Selection() {
     Label("Menu button and slider")
     Row(horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s16), verticalAlignment = Alignment.CenterVertically) {
         Box {
-            MenuButton(channel, { menu = true }, Modifier.testTag("sample-menu-button"), contentDescription = "Channel, $channel")
+            MenuButton(channel, { menu = true }, Modifier.testTag("sample-menu-button"), contentDescription = "Channel: $channel")
             SelectMenu(menu, { menu = false }, listOf("Stable", "Beta"), channel, { it }, { channel = it }, Modifier.testTag("sample-select-menu"))
         }
         VeloSlider(level, { level = it }, Modifier.weight(1f).testTag("sample-slider"))

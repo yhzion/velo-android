@@ -133,7 +133,7 @@ internal fun AppUpdateSettings(host: SettingsHost) {
             var choosing by remember { mutableStateOf(false) }
             SettingRow("Channel", tag = "updates-channel", labelFills = false) {
                 Box {
-                    MenuButton(channel.name, { choosing = true }, contentDescription = "Channel, ${channel.name}", tag = "updates-channel-menu")
+                    MenuButton(channel.name, { choosing = true }, contentDescription = "Channel: ${channel.name}", tag = "updates-channel-menu")
                     SelectMenu(choosing, { choosing = false }, UpdateChannel.entries, channel, { it.name }, onPick = { next ->
                         if (next != channel) { UpdateSettings.select(ctx, next); channel = next }
                     })

@@ -574,8 +574,8 @@ fun Modifier.saidBy(description: String?): Modifier = if (description == null) t
 /**
  * A button that opens a menu of choices ([SelectMenu]) and shows the current one: a glass pill
  * with a chevron (Controls board, sample-menu-button: 44 high, kept at the least touch target).
- * [contentDescription] says what the choice is for, as "Sound, Attention"; a screen reader says it
- * in place of the shown choice.
+ * [contentDescription] says what the choice is for and the choice, as "Sound: Attention" (#151); a
+ * screen reader says it in place of the shown choice.
  */
 @Composable
 fun MenuButton(

@@ -109,8 +109,16 @@ class ReadOnceTest {
 
     @Test fun anAlertsSoundMenuSaysItsDescriptionOnce() {
         scene("settings-notif")
-        assertEquals(listOf("Sound, Attention"), said("alert-needs-response-sound-menu"))
-        assertEquals(listOf("Sound, Success"), said("alert-work-completed-sound-menu"))
+        assertEquals(listOf("Sound: Attention"), said("alert-needs-response-sound-menu"))
+        assertEquals(listOf("Sound: Success"), said("alert-work-completed-sound-menu"))
+    }
+
+    // #151: every menu says "<label>: <value>", as the keyboard's and Minimized windows' do.
+
+    @Test fun theUpdatesChannelMenuSaysItsDescriptionOnce() {
+        scene("settings-updates")
+        assertEquals(listOf("Channel: Stable"), said("updates-channel-menu"))
+        assertStillActs("updates-channel-menu", Role.DropdownList)
     }
 
     // #149: the rows.

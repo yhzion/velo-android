@@ -168,7 +168,7 @@ private fun AlertSettings(host: SettingsHost, kind: PaneAlertKind) {
                 var choosing by remember { mutableStateOf(false) }
                 val sound = settings.soundFor(kind)
                 Box {
-                    MenuButton(sound.name, { choosing = true }, contentDescription = "Sound, ${sound.name}", tag = "alert-$id-sound-menu", small = true)
+                    MenuButton(sound.name, { choosing = true }, contentDescription = "Sound: ${sound.name}", tag = "alert-$id-sound-menu", small = true)
                     SelectMenu(choosing, { choosing = false }, ActivitySound.entries, sound, { it.name }, onPick = {
                         settings.saveSound(kind, it)
                         if (settings.activitySounds) host.notifications.play(kind, it, settings.activityVolume)

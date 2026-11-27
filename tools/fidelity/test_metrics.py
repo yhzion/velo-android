@@ -97,7 +97,7 @@ class PairingTest(unittest.TestCase):
             # Compose often puts a button's description on a child node: a board label alone is not compared.
             ({"name": "back", "label": "Back"}, {"tag": "back"}),
             # The app labels a row the board draws as text: an app label alone is not compared either.
-            ({"name": "row", "label": None}, {"tag": "row", "label": "Channel, Stable"}),
+            ({"name": "row", "label": None}, {"tag": "row", "label": "Channel: Stable"}),
             ({"name": "dot", "label": "Waiting  for an answer"}, {"tag": "dot", "label": "Waiting for an answer"}),
             ({"name": "chip", "label": "Control"}, {"tag": "chip", "label": "Ctrl"}),
             # A blank label (aria-label="" or an empty contentDescription) counts as no label.
