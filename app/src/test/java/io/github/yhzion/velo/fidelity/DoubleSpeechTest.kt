@@ -150,6 +150,9 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         // The pane under a floating one is said in the row under the picker's map, by its capsule.
         MustHear("workspace-zoom-covered", "a covered pane's capsule") { it.node.startsWith("minimap-picker-covered-") && it.parts.isNotEmpty() },
         MustHear("workspace-pane-picker", "the picker's focused pane") { it.parts.size == 1 && it.parts[0].contains(" (focused)") },
+        // A pane with a title is named by its place and its title, joined by " · "; neither is pinned. The picker's items
+        // have no tag, as the caption's title has ("pane-caption-title"), which joins its host and tab the same way.
+        MustHear("workspace-pane-picker", "a pane named with its title") { it.node.startsWith("node at ") && it.parts.size == 1 && it.parts[0].contains(" · ") },
     )
 
     /** The scenes whose state a tap opens ([Taps]), by the tag tapped: the minimap's picker over the covered pane's row (#188). */

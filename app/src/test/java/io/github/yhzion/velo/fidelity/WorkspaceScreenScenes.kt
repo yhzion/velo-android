@@ -124,8 +124,8 @@ private enum class SceneView {
 }
 
 /**
- * A screen no board draws (#174), with every tab of the agents session a window: the pane column shows [view], and the
- * rail's strip is the window wheel as the workspace draws it.
+ * A screen no board draws (#174), or another state of one (#188), with every tab of the agents session a window: the
+ * pane column shows [view], and the rail's strip is the window wheel as the workspace draws it.
  */
 @Composable
 private fun ScreenScene(view: SceneView) = SceneLayer {
@@ -133,7 +133,13 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
         val basis = rememberSceneBasis(sidebar = null)
         val shown = basis.shown
         val panes = remember(basis, view) {
-            val tabs = withTabs(basis.state, basis.count, basis.now).let { if (view == SceneView.Covered) withFloating(it, basis.count) else it }
+            val tabs = withTabs(basis.state, basis.count, basis.now).let {
+                when (view) {
+                    SceneView.Covered -> withFloating(it, basis.count)
+                    SceneView.Picker -> withTitle(it)
+                    else -> it
+                }
+            }
             if (!view.zoomed) tabs else tabs.copy(windows = tabs.windows.map { if (it.id == shown) it.copy(zoomed = tabs.focused) else it })
         }
         val conn = rememberFakeConnection(panes)
@@ -185,7 +191,8 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
                     onPick = { overview.pickWheel(it, select = false) }, onSelect = {}, modifier = Modifier.weight(1f))
             })
         if (picking) {
-            // As the workspace opens it: the shown tab's panes, the focused one marked, each named with its title.
+            // As the workspace opens it: the shown tab's panes, each named by its place, the focused one marked, and the
+            // one with a title ([withTitle]) named with it too.
             val blocks = tabBlocks(panes.windows.single { it.id == shown })
             KeyboardPanePicker(blocks, blocks, conn.state.focused, conn.state.blocks, onDismiss = { picking = false }) {}
         }
@@ -262,6 +269,16 @@ private fun withFloating(state: UiState, count: Int): UiState {
     val over = if (count >= 3) FloatingLayer(block, 0f, 0f, 0.5f, 1f) else FloatingLayer(block, 0f, 0f, 1f, 0.5f)
     return state.copy(windows = state.windows.map { if (it.id == shown) it.copy(floating = listOf(over)) else it },
         blocks = state.blocks + (block to BlockInfo(program = "zsh", cwd = "~")))
+}
+
+/**
+ * [state] with a title on the shown tab's second pane, as a program sets its terminal's title: the hardware keys' pane
+ * picker ([KeyboardPanePicker]) names that pane by its place and its title.
+ */
+private fun withTitle(state: UiState): UiState {
+    val shown = checkNotNull(state.window)
+    val block = checkNotNull(state.windows.single { it.id == shown }.layout).blocks()[1]
+    return state.copy(blocks = state.blocks + (block to checkNotNull(state.blocks[block]).copy(title = "tail -f build.log")))
 }
 
 /**
