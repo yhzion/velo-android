@@ -246,20 +246,17 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier, onClick: (() -> U
 /** What a [StatusMark] says. */
 enum class Status { Ok, Warning, Danger, Active, Off }
 
+/** The colour a [StatusMark] of [status] is drawn in. */
+@Composable
+fun statusColor(status: Status): Color = statusColor(status, VeloTheme.surface)
+
 /**
  * A state, shown and not tappable: a dot, or [icon] in the state's colour. [contentDescription]
  * says the state in words ("Connected"); it is all a screen reader gets.
  */
 @Composable
 fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = Modifier, icon: ImageVector? = null) {
-    val c = VeloTheme.surface
-    val color = when (status) {
-        Status.Ok -> c.ok
-        Status.Warning -> c.warning
-        Status.Danger -> c.danger
-        Status.Active -> c.accent
-        Status.Off -> c.secondary
-    }
+    val color = statusColor(status)
     if (icon != null) Icon(icon, contentDescription, modifier.size(VeloTheme.sizes.iconSmall), tint = color)
     else Box(modifier.size(VeloTheme.sizes.mark).clip(Capsule).background(color).semantics { this.contentDescription = contentDescription })
 }

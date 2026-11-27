@@ -9,6 +9,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - The This Device dot in the sidebar tells a screen reader the Tailscale settings page's word for the node's state, such as Connected, instead of Node Running.
 - The This Device dot also turns orange and says Paused while Android holds the network back, and is blue, not orange, while the node starts, as on the Tailscale settings page.
 - The tap gesture menus in Keyboard settings also say Escape, not Esc, to a screen reader.
+- The Tailscale dot in Remotes settings has the Tailscale settings page's colour in every state, such as blue while the node starts, as the sidebar's dot does.
 - While Android holds the network back, the line under This Device in the sidebar says Paused, as its dot does, instead of Running.
 
 ## 2.13.0 - 2026-11-27

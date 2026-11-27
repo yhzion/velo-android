@@ -220,6 +220,21 @@ class HostDialogsTest {
     }
 
     @Test
+    fun theRemotesDotHasTheTailscalePagesColourAndNoneWhileOff() {
+        // The Remotes page's dot, the sidebar's and the Tailscale page's chip agree in every state (#126).
+        for (state in listOf(
+            TailnetState.Starting, TailnetState.NeedsLogin("https://login.example/abc"), TailnetState.LoggedOut,
+            TailnetState.Error("the node is stopped"), TailnetState.Running("velo", listOf("192.0.2.40")),
+        )) for (paused in listOf(false, true)) {
+            assertEquals("$state paused=$paused", tailnetChip(state, paused).status, remotesDotStatus(state, paused))
+            assertEquals("$state paused=$paused", deviceRow(state, paused).chip.status, remotesDotStatus(state, paused))
+        }
+        assertEquals(Status.Active, remotesDotStatus(TailnetState.Starting, paused = false))
+        assertEquals(Status.Off, remotesDotStatus(TailnetState.LoggedOut, paused = false))
+        for (paused in listOf(false, true)) assertNull(remotesDotStatus(TailnetState.Off, paused))
+    }
+
+    @Test
     fun theDeviceDotWhileStartingHasTheTailscalePagesColour() {
         assertEquals(TailnetChip("Starting", Status.Active), deviceRow(TailnetState.Starting, paused = false).chip)
     }

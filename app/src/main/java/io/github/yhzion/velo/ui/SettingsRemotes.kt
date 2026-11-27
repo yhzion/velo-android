@@ -54,10 +54,12 @@ import io.github.yhzion.velo.ui.theme.GroupHeader
 import io.github.yhzion.velo.ui.theme.MenuDivider
 import io.github.yhzion.velo.ui.theme.MenuItem
 import io.github.yhzion.velo.ui.theme.RowIconButton
+import io.github.yhzion.velo.ui.theme.Status
 import io.github.yhzion.velo.ui.theme.VeloMenu
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.statusColor
 import kotlinx.coroutines.withContext
 
 /** What the Remotes row of the phone key says while the keys are [list]: nothing while they load. */
@@ -94,18 +96,12 @@ fun cardFingerprint(key: SshKey): String {
     return if (print.length <= 17) key.fingerprint else "SHA256:${print.take(12)}…${print.takeLast(5)}"
 }
 
-/** The colour of the Tailscale row's dot: green while the node runs, amber while it waits, red on an error; none while off. */
-@Composable
-private fun tailnetDot(state: TailnetState, paused: Boolean): Color? {
-    val c = VeloTheme.surface
-    return when {
-        state == TailnetState.Off -> null
-        paused || state == TailnetState.Starting || state is TailnetState.NeedsLogin || state == TailnetState.LoggedOut -> c.warning
-        state is TailnetState.Running -> c.ok
-        state is TailnetState.Error -> c.danger
-        else -> null
-    }
-}
+/**
+ * The Tailscale row's dot: the Tailscale page's chip ([tailnetChip]), as the sidebar's This Device
+ * dot is, so the three agree in every state; none while the node is off.
+ */
+internal fun remotesDotStatus(state: TailnetState, paused: Boolean): Status? =
+    if (state == TailnetState.Off) null else tailnetChip(state, paused).status
 
 /**
  * Remotes (canvas SetRemotes block): This Device's Tailscale node and the phone's SSH key, each a
@@ -138,7 +134,9 @@ internal fun RemoteSettings(host: SettingsHost, openDevice: () -> Unit, openSshK
                 "remotes-tailscale", "Tailscale", tailnetStatusLine(state, host.tailnetPaused),
                 painterResource(R.drawable.ic_brand_tailscale), c.text, openDevice,
             ) {
-                tailnetDot(state, host.tailnetPaused)?.let { Box(Modifier.testTag("remotes-tailscale-dot").size(VeloTheme.space.s8).clip(Capsule).background(it)) }
+                remotesDotStatus(state, host.tailnetPaused)?.let {
+                    Box(Modifier.testTag("remotes-tailscale-dot").size(VeloTheme.space.s8).clip(Capsule).background(statusColor(it)))
+                }
             }
         }
         // The key ssh:// logins offer first: one for the phone, whatever remote it logs in to.
