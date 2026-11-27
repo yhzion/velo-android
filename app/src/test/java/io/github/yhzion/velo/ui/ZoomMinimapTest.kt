@@ -167,9 +167,19 @@ class ZoomMinimapTest {
         assertEquals(PickerBox(142f, 76f, 52f, 52f), box)
         // A tiled cell is its rectangle scaled.
         assertEquals(PickerBox(0f, 0f, 194f * 0.56f, 128f), zoomPickerBox(map.cells[0], 194f, 128f, 52f))
+        // Grown about its middle, so its RTL box is still the mirror of its LTR one.
+        val small = tab.copy(floating = listOf(FloatingLayer("f", x = 0.25f, y = 0.25f, w = 0.125f, h = 0.5f)))
+        val ltr = zoomPickerBox(zoomMap(small, false) { null }!!.cells.last(), 194f, 128f, 52f)
+        val rtl = zoomPickerBox(zoomMap(small, true) { null }!!.cells.last(), 194f, 128f, 52f)
+        assertEquals(52f, ltr.width, 0.001f)
+        assertEquals(194f - ltr.left - ltr.width, rtl.left, 0.001f)
         // A floating box larger than the least keeps its size and place.
         val wide = zoomMap(tab.copy(floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.25f, w = 0.5f, h = 0.5f))), false) { null }!!
-        assertEquals(PickerBox(19.4f, 32f, 97f, 64f), zoomPickerBox(wide.cells.last(), 194f, 128f, 52f))
+        val kept = zoomPickerBox(wide.cells.last(), 194f, 128f, 52f)
+        assertEquals(19.4f, kept.left, 0.001f)
+        assertEquals(32f, kept.top, 0.001f)
+        assertEquals(97f, kept.width, 0.001f)
+        assertEquals(64f, kept.height, 0.001f)
     }
 
     @Test

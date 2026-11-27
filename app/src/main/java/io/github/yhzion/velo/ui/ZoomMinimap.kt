@@ -174,14 +174,17 @@ internal fun zoomPickerSize(map: ZoomMap, width: Float, height: Float, least: Fl
 
 /**
  * Where [cell] lies in the picker's map [width] by [height]: its rectangle scaled to it. A floating cell is at least
- * [least] across, as the tiled ones are made, and kept inside the map: the map was not grown for it.
+ * [least] across, as the tiled ones are made, grown about its middle so that RTL still mirrors it, and kept inside
+ * the map: the map was not grown for it.
  */
 internal fun zoomPickerBox(cell: ZoomCell, width: Float, height: Float, least: Float): PickerBox {
     val r = cell.rect
     if (!cell.floating) return PickerBox(width * r.left, height * r.top, width * r.width, height * r.height)
     val w = max(width * r.width, least).coerceAtMost(width)
     val h = max(height * r.height, least).coerceAtMost(height)
-    return PickerBox((width * r.left).coerceIn(0f, width - w), (height * r.top).coerceIn(0f, height - h), w, h)
+    val left = width * (r.left + r.width / 2) - w / 2
+    val top = height * (r.top + r.height / 2) - h / 2
+    return PickerBox(left.coerceIn(0f, width - w), top.coerceIn(0f, height - h), w, h)
 }
 
 /** The minimap's board size: 46 by 30 (`.mini`), its cells 4 inside its edge. */
@@ -338,14 +341,17 @@ private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, nam
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val density = LocalDensity.current
     // The zoomed cell in the middle of what shows, without a slide; again when another device zooms another pane.
+    // The map can change while the effect waits for the viewports: it reads the one shown then.
+    val shown by rememberUpdatedState(Triple(map, mapW, mapH))
     LaunchedEffect(map.zoomed) {
-        val cell = map.cells.firstOrNull { it.block == map.zoomed } ?: return@LaunchedEffect
         snapshotFlow { across.viewportSize > 0 && down.viewportSize > 0 }.first { it }
-        val box = zoomPickerBox(cell, mapW, mapH, least)
+        val (now, nowW, nowH) = shown
+        val cell = now.cells.firstOrNull { it.block == now.zoomed } ?: return@LaunchedEffect
+        val box = zoomPickerBox(cell, nowW, nowH, least)
         with(density) {
             val middle = (box.left + box.width / 2).dp.toPx()
             // In RTL the scroll starts at the map's right edge.
-            val x = if (rtl) width.toPx() - middle else middle
+            val x = if (rtl) nowW.dp.toPx() - middle else middle
             across.scrollTo((x - across.viewportSize / 2f).roundToInt())
             down.scrollTo(((box.top + box.height / 2).dp.toPx() - down.viewportSize / 2f).roundToInt())
         }
