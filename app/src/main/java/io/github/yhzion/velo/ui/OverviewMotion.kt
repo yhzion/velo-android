@@ -883,10 +883,10 @@ enum class LayoutPinch(
 }
 
 /**
- * The step a pinch on [block] of [window] can take. A full screen pane goes back to the split tab; a tiled pane of a tab
- * with more than one tiled pane goes full screen, as the menu's Zoom offers. A floating pane is not on the ladder, and a tab
- * with one tiled pane has no full screen: there the pinch only does what it did before. Without the [connected] server
- * nothing could be sent, so no step either.
+ * The step a pinch on [block] of [window] can take. A full screen pane goes back to its place, a floating one that the
+ * menu made full screen too ([splitPlace]); a tiled pane of a tab with more than one tiled pane goes full screen, as the
+ * menu's Zoom offers. A pinch takes no floating pane full screen, and a tab with one tiled pane has no full screen: there
+ * the pinch only does what it did before. Without the [connected] server nothing could be sent, so no step either.
  */
 fun layoutPinch(window: WindowInfo?, block: String, connected: Boolean): LayoutPinch? {
     if (window == null || !connected) return null

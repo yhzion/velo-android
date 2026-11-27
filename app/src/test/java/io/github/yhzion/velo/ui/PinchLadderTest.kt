@@ -175,6 +175,8 @@ class PinchLadderTest {
         assertNull(layoutPinch(withFloat, "f", connected = true))
         // A floating pane over a full screen one: not the full screen pane's step either.
         assertNull(layoutPinch(withFloat.copy(zoomed = "a"), "f", connected = true))
+        // A floating pane the menu made full screen goes back to its own place, as the preview draws it ([splitPlace]).
+        assertEquals(LayoutPinch.Unzoom, layoutPinch(withFloat.copy(zoomed = "f"), "f", connected = true))
     }
 
     @Test fun thePreviewWaitsOnlyUntilTheTabsFullScreenChanges() {
