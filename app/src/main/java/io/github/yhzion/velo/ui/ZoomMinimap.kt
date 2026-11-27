@@ -105,6 +105,9 @@ internal data class ZoomMap(val tab: String, val zoomed: String, val cells: List
      * end the previous. The start is on the left, on the right in [rtl], where the layout is drawn mirrored.
      */
     fun swiped(dx: Float, rtl: Boolean): String = step(if ((dx < 0f) != rtl) 1 else -1)
+
+    /** The cells as the minimap draws them: in layout order, the floating ones over the tiled ones, the zoomed one last. */
+    val drawOrder: List<ZoomCell> get() = cells.sortedBy { it.block == zoomed }
 }
 
 /**
@@ -321,7 +324,9 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
                 val edge = 1.dp.toPx()
                 val corner = CornerRadius(2.dp.toPx())
                 val dot = unit.toPx() * 5f
-                for (cell in map.cells) {
+                // The zoomed cell last, over the floating ones too (#183): its pane is the one on screen, and a floating
+                // cell over it would leave the minimap without the filled cell that says which.
+                for (cell in map.drawOrder) {
                     val r = cell.rect
                     val topLeft = Offset(r.left * size.width + edge, r.top * size.height + edge)
                     val box = Size(r.width * size.width - 2 * edge, r.height * size.height - 2 * edge)

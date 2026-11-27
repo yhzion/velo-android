@@ -15,6 +15,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A floating pane made full screen from the menu now shows Full Screen and the minimap in the caption. The minimap draws floating panes over the tab's layout, so you can pick them or swipe to them too.
 - With seven or more panes side by side, the full screen minimap's picker no longer cuts off the last ones. It scrolls instead, keeps each pane big enough to tap, and opens on the full screen pane.
 - In the full screen minimap's picker, a pane that a floating pane covers, or leaves too narrow to tap, now also shows in a row under the map, where you can tap it.
+- The full screen minimap shows which pane is full screen even when a floating pane lies over it.
 - A pane no longer stays blank, and Velo no longer stops responding, after you come back to it from another app while the keyboard was up.
 - The front of a tab's tile in the sidebar shows the program of the pane you have selected, such as zsh beside a Claude Code pane. A report from another pane still puts its dot on the tile.
 - A screen reader says each menu button in settings once, such as Sound: Attention, instead of also saying the choice shown.

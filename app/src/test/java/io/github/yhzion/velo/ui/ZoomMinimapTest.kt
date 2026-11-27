@@ -53,6 +53,17 @@ class ZoomMinimapTest {
     }
 
     @Test
+    fun `the zoomed cell is drawn last, over a floating cell too`() {
+        // A floating pane over the zoomed one (#183): the zoomed cell's fill goes over it, the others keep their order.
+        val window = tab.copy(floating = listOf(FloatingLayer("f", x = 0.5f, y = 0f, w = 0.5f, h = 1f)))
+        val map = zoomMap(window, false) { null }!!
+        assertEquals(listOf("a", "b", "c", "f"), map.cells.map { it.block })
+        assertEquals(listOf("a", "c", "f", "b"), map.drawOrder.map { it.block })
+        // A floating pane made full screen is last already.
+        assertEquals(listOf("a", "b", "c", "f"), zoomMap(window.copy(zoomed = "f"), false) { null }!!.drawOrder.map { it.block })
+    }
+
+    @Test
     fun `a tab without a zoom on one of its panes has no minimap`() {
         assertNull(zoomMap(tab.copy(zoomed = null), false) { null })
         assertNull("a pane the tab does not have", zoomMap(tab.copy(zoomed = "x"), false) { null })

@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
@@ -28,6 +29,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -58,6 +60,7 @@ import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 /** The caption of a zoomed tab shows its minimap (#141); the picker and a swipe zoom another pane. */
@@ -129,6 +132,24 @@ class ZoomMinimapUiTest {
             .assertContentDescriptionEquals("Pane 4 of 4, htop")
         compose.onNodeWithTag("minimap-picker-cell-a").performClick()
         assertEquals(listOf("a"), zoomedTo)
+    }
+
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun aFullScreenPaneUnderAFloatingOneStaysFilled() {
+        // Four side by side, a floating pane over the left half, the second full screen (#183): its cell is still filled.
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.5f, h = 1f))
+        zoomed = "p1"
+        show(line(4))
+        compose.onNodeWithTag("caption-minimap").assertContentDescriptionEquals("Full screen, pane 2 of 5. Show panes")
+        fun board() = compose.onNodeWithTag("caption-minimap").captureToImage().toPixelMap()
+        // The middle of the second quarter and of the first, inside the board's edge.
+        val covered = board().let { it[it.width * 3 / 8, it.height / 2] to it[it.width / 5, it.height / 2] }
+        floating = emptyList()
+        compose.waitForIdle()
+        val open = board().let { it[it.width * 3 / 8, it.height / 2] to it[it.width / 5, it.height / 2] }
+        // The second is filled as it is without the floating pane; the first, under it but not full screen, is not.
+        assertEquals(open.first, covered.first)
+        assertTrue("$covered", covered.second != covered.first)
     }
 
     @Test fun aFloatingCellIsTouchedOverTheTiledOne() {
