@@ -912,8 +912,8 @@ private val sshSentenceCodes = setOf(
 /**
  * What the owner of someone else's Rex server must do to let this tailnet member in. A server's tailnet node lets in
  * only the Tailscale user who signed it in, unless it allows tailnet members (`rex server tailscale on --help`), and it
- * answers every request of a caller it does not let in with 403 (llms.txt "Endpoints"). The search then lists no
- * server, and a server added by its address fails with HTTP 403 (#72).
+ * answers every request of a caller it does not let in with 403 (llms.txt "Endpoints"). A server added by its address
+ * then fails with HTTP 403 (#72); the start screen's "no computer" card says the first command in its share step.
  */
 internal const val MemberAccessHint =
     "If the computer is someone else's, its owner must run `rex server tailscale on --allow-tailnet-members`, " +

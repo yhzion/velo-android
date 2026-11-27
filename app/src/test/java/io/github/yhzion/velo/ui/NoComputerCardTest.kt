@@ -57,9 +57,10 @@ class NoComputerCardTest {
 
     /**
      * A tailnet member who is not the server node's owner gets 403 for `/llms.txt`, so the search lists no server
-     * (#72): the card says what that owner must run, beside the step about someone else's computer.
+     * (#72): the step about someone else's computer also says what its owner must run, in the same sentence, so the
+     * card gains no paragraph and Search again stays near the first screen.
      */
-    @Test fun theCardSaysWhatTheOwnerOfSomeoneElsesComputerMustRun() {
+    @Test fun theShareStepSaysWhatTheOwnerMustRun() {
         val model = StartCardModel(
             step = StartStep.Found, waitingFor = null, unopened = null, connectedAs = "Connected as velo-phone",
             found = emptyList(), note = FoundNote.NothingFound, searching = false,
@@ -70,17 +71,18 @@ class NoComputerCardTest {
         for (each in UiSize.entries) {
             size = each
             compose.waitForIdle()
-            val hint = compose.onNodeWithTag("member-access-hint").performScrollTo().assertIsDisplayed()
-            hint.assertTextEquals(
-                "If the computer is someone else's, its owner must run `rex server tailscale on --allow-tailnet-members`, " +
-                    "or start the server with `--tailscale-allow-tailnet-members`.")
+            val share = compose.onNodeWithTag("share-hint").performScrollTo().assertIsDisplayed()
+            share.assertTextEquals(
+                "Or ask the owner to share their computer with you in Tailscale and to run " +
+                    "`rex server tailscale on --allow-tailnet-members`.")
+            compose.onNodeWithTag("member-access-hint").assertDoesNotExist()
             val card = compose.onNodeWithTag("no-computer-card").getUnclippedBoundsInRoot()
-            val share = compose.onNodeWithTag("share-hint").getUnclippedBoundsInRoot()
+            val getRex = compose.onNodeWithTag("get-rex-button").getUnclippedBoundsInRoot()
             val again = compose.onNodeWithTag("search-again-button").getUnclippedBoundsInRoot()
-            val bounds = hint.getUnclippedBoundsInRoot()
+            val bounds = share.getUnclippedBoundsInRoot()
             assertTrue("$each: $bounds inside $card", bounds.top >= card.top && bounds.bottom <= card.bottom &&
                 bounds.left >= card.left && bounds.right <= card.right)
-            assertTrue("$each: after the step about sharing", bounds.top >= share.bottom)
+            assertTrue("$each: after Get Rex for Mac", bounds.top >= getRex.bottom)
             assertTrue("$each: before Search again", bounds.bottom <= again.top)
         }
     }
