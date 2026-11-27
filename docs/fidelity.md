@@ -19,7 +19,7 @@ It takes about a minute for one screen and a few minutes for the whole canvas. T
 
 | File | Content |
 |---|---|
-| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, text differences, fills |
+| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, new and known text differences, fills |
 | `report.json` | The same numbers for tools |
 | `boards/<Board>.json`, `.png` | Every `data-el` element of a board (box in dp, text, colours), its rendered text boxes, and the board's render |
 | `app/<screen>@<device>.json`, `.png` | Every testTag node of the app scene: box in dp, text; the app's screenshot |
@@ -109,11 +109,27 @@ whitespace-normalised `text` of every paired element where the app node carries 
 `FidelityCaptureTest` walks the unmerged Compose semantics tree, so layout containers and
 button/row wrappers carry no text while HTML `innerText` concatenates descendant text. Differences
 are listed per capture (`text_diffs` and `text_compared`) in `report.html` and `report.json`, and
-aggregated per screen in `report.json`, rather than failing the screen or lowering the score. Valid
-captures carry expected dynamic or fixture differences against the static canvas: the installed app
-version (`BuildConfig.VERSION_NAME`), live clock timestamps (`updates-last-checked`), generated SSH
-key fingerprints and sample addresses or status lines. Failing on copy differences would force
-those elements into `exceptions.json`, which would also drop them from geometry and fill checks.
+aggregated per screen in `report.json`, rather than failing the screen or lowering the score.
+
+**Known text.** Some differences are there by nature: the installed version, the clock time of a
+check, the digest of a sample SSH key, a sample address. `tools/fidelity/known-text.json` accepts
+such an element's text on the screens it names, with the reason:
+
+```json
+{"elements": {"updates-last-checked": {"screens": ["settings-updates"], "reason": "the clock time of the check"}}}
+```
+
+A known difference is listed apart (`text_known`, with its reason, per capture and per screen) and
+is not counted as new. Unlike `exceptions.json`, the element stays in the geometry and fill checks.
+The summary line counts the new differences and gives the known ones as a number:
+`new text differences on 0 screens (0 unique); 13 known`. Like new ones, known ones count once per
+screen and text, so a clock that turns a minute between two devices counts twice. An entry that
+matched no difference on a measured screen is printed and listed as `known_text_unused`, so a
+fixed or renamed element leaves the list.
+
+Every other difference is new and is settled by its source: when the app's string is the app's own
+copy, the canvas follows the app; when it is a scene's sample data in `FidelityScenes`, the sample
+follows the canvas. A canvas detail the app does not show at all follows the app.
 
 **Remaining blind spot and why text colour is not compared.** A change of text colour, weight, or
 within-box size inside a board text box (and copy inside a wrapper whose Compose node carries no
@@ -145,7 +161,7 @@ The report lists these apart from the scores:
   differences (whitespace-normalised) and listed in the report, without failing the verdict. Ink
   colour, weight, and within-box size differences inside a board text box remain outside the
   verdict and score (only missing tags, box shifts over 2 dp, and text spilling outside the board's
-  line box are caught; paired copy mismatches are listed, not judged).
+  line box are caught; paired copy mismatches are listed, not judged; known ones are listed apart).
 - **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
   Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
   Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.
@@ -154,7 +170,8 @@ The report lists these apart from the scores:
   Java 17.
 
 To leave an element out of the measures on purpose, name it in `tools/fidelity/exceptions.json`
-with the reason: `{"elements": {"rail-clock": "the time differs per run"}}`.
+with the reason: `{"elements": {"rail-clock": "the time differs per run"}}`. To accept only its
+text, name it in `tools/fidelity/known-text.json` instead (see Known text).
 
 ## Tests
 

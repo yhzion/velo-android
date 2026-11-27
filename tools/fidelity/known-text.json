@@ -1,0 +1,44 @@
+{
+  "elements": {
+    "about-app-version": {
+      "screens": ["settings-about"],
+      "reason": "the installed version (versionName and versionCode of the build), which changes with every release"
+    },
+    "settings-nav-about-summary": {
+      "screens": ["settings-home"],
+      "reason": "starts with the installed version, which changes with every release"
+    },
+    "updates-installed-value": {
+      "screens": ["settings-updates"],
+      "reason": "the installed version (versionName and versionCode of the build), which changes with every release"
+    },
+    "new-version-meta": {
+      "screens": ["settings-updates"],
+      "reason": "names the installed version, which changes with every release"
+    },
+    "updates-last-checked": {
+      "screens": ["settings-updates"],
+      "reason": "the clock time of the scene's update check, which is when the capture runs"
+    },
+    "remotes-ssh-key-fingerprint": {
+      "screens": ["settings-remotes", "settings-add-remote"],
+      "reason": "the digest of the scene's phone key; no key has the board's made-up digest"
+    },
+    "ssh-phone-key-fingerprint": {
+      "screens": ["settings-ssh"],
+      "reason": "the digest of the scene's phone key; no key has the board's made-up digest"
+    },
+    "ssh-imported-key-name-2": {
+      "screens": ["settings-ssh"],
+      "reason": "a key without a comment is named by the first 8 characters of its digest (#284), and no key has the board's made-up digest"
+    },
+    "ssh-imported-key-fingerprint-2": {
+      "screens": ["settings-ssh"],
+      "reason": "the digest of the scene's imported key; no key has the board's made-up digest"
+    },
+    "saved-remote-address-studio-mac": {
+      "screens": ["settings-remotes", "settings-add-remote"],
+      "reason": "sample address: the scene's studio-mac is an ssh:// remote, because the app offers the SSH items the open board's menu draws on ssh remotes only"
+    }
+  }
+}

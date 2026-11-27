@@ -87,6 +87,84 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(f.text_diff_counts(rows), (2, 3))
         self.assertEqual(f.text_diff_counts([]), (0, 0))
 
+    def test_known_text_difference_is_listed_apart_on_its_screens_only(self):
+        board, img = board_and_image()
+        board["elements"][2]["text"] = "Version 2.10.0"
+        app = app_from(board)
+        app["nodes"][2]["text"] = "Version 2.12.4"
+        known = {"label": {"screens": ["settings-about"], "reason": "the installed version"}}
+        r, _, _ = f.compare({"screen": "settings-about"}, board, app, img, img.copy(), {}, DSF, known)
+        self.assertEqual(r["text_diffs"], [])
+        self.assertEqual(r["text_known"], [{"name": "label", "board": "Version 2.10.0", "app": "Version 2.12.4",
+                                            "reason": "the installed version"}])
+        # The same difference on a screen the entry does not name is new.
+        r, _, _ = f.compare({"screen": "settings-home"}, board, app, img, img.copy(), {}, DSF, known)
+        self.assertEqual([d["name"] for d in r["text_diffs"]], ["label"])
+        self.assertEqual(r["text_known"], [])
+        # A known text difference keeps the element in geometry and fills, unlike exceptions.json.
+        self.assertEqual((r["elements"], r["geometry"]), (3, 1.0))
+
+    def test_load_known_text_needs_screens_and_a_reason(self):
+        import json
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(f.load_known_text(os.path.join(d, "none.json")), {})
+            path = os.path.join(d, "known-text.json")
+            ok = {"elements": {"x": {"screens": ["a"], "reason": "why"}}}
+            json.dump(ok, open(path, "w"))
+            self.assertEqual(f.load_known_text(path), ok["elements"])
+            for bad in ({"x": {"screens": [], "reason": "why"}}, {"x": {"screens": ["a"], "reason": " "}},
+                        {"x": {"screens": "a", "reason": "why"}}, {"x": "why"}):
+                json.dump({"elements": bad}, open(path, "w"))
+                with self.assertRaises(SystemExit):
+                    f.load_known_text(path)
+
+    def test_screen_lists_merge_devices_and_unused_known_entries_are_named(self):
+        known_diff = {"name": "v", "board": "1", "app": "2", "reason": "version"}
+        devices = {
+            "bar": {"status": "measured", "text_diffs": [{"name": "x", "board": "a", "app": "b"}], "text_known": [known_diff]},
+            "closed": {"status": "no-scene"},
+            "open": {"status": "measured", "text_diffs": [], "text_known": [known_diff]},
+        }
+        self.assertEqual(f.by_screen(devices, "text_diffs"), [{"name": "x", "board": "a", "app": "b", "devices": ["bar"]}])
+        self.assertEqual(f.by_screen(devices, "text_known"), [{**known_diff, "devices": ["bar", "open"]}])
+        rows = [{"screen": "s", "devices": devices, "text_known": f.by_screen(devices, "text_known")},
+                {"screen": "t", "devices": {"bar": {"status": "measured"}}, "text_known": []},
+                {"screen": "u", "devices": {"bar": {"status": "no-scene"}}, "text_known": []}]
+        known = {"v": {"screens": ["s", "t", "u"], "reason": "version"}, "w": {"screens": ["s"], "reason": "r"}}
+        # u is not measured, so its entry is not judged.
+        self.assertEqual(f.unused_known_text(known, rows), [{"name": "v", "screen": "t"}, {"name": "w", "screen": "s"}])
+        self.assertEqual(f.text_diff_counts(rows, "text_known"), (1, 1))
+
+    def test_report_html_lists_known_text_apart(self):
+        board, img = board_and_image()
+        board["elements"][2]["text"] = "9:41 PM"
+        app = app_from(board)
+        app["nodes"][2]["text"] = "4:53 PM"
+        known = {"label": {"screens": ["settings-test"], "reason": "the clock time of the check"}}
+        r, _, _ = f.compare({"screen": "settings-test"}, board, app, img, img.copy(), {}, DSF, known)
+        entry = {"board": "SetBarTest", "title": "t", "size": [100, 80], "status": "measured", **r, "pass": True,
+                 "reasons": [], "score": 100.0, "images": {"side": "side.png", "heat": "heat.png"}}
+        devices = {"bar": entry}
+        page = f.render_html({
+            "generated": "2026-11-27T00:00:00+00:00",
+            "thresholds": {"tokens": 1.0, "geometry": 0.95, "tolerance_dp": 2.0,
+                           "missing": 0, "delta_e_below": 3.0, "ssim": 0.92},
+            "tokens": {"rate": 1.0, "cases": 1, "failed": [], "classes": ["T"]},
+            "match_rate": 100.0, "match_rate_implemented": 100.0,
+            "screens_total": 1, "screens_implemented": 1, "screens_passed": 1,
+            "platform_exceptions": [], "known_text_unused": [{"name": "gone", "screen": "settings-test"}],
+            "screens": [{"screen": "settings-test", "implemented": True, "score": 100.0, "pass": True,
+                         "text_diffs": [], "text_known": f.by_screen(devices, "text_known"), "devices": devices}],
+        })
+        self.assertIn("text diff 0 (+1 known)", page)
+        self.assertIn("Text differences (0)", page)
+        self.assertIn("Known text differences (1)", page)
+        self.assertIn("the clock time of the check", page)
+        self.assertIn("0 new differences on 0 screens; 1 known", page)
+        self.assertIn("Known text that matched nothing", page)
+
     def test_text_box_anti_aliasing_does_not_fail_judged_ssim(self):
         board, img = board_and_image()
         board["text_boxes"] = [{"x": 14, "y": 50, "w": 40, "h": 10}]

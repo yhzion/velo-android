@@ -10,7 +10,7 @@ Steps (docs/fidelity.md):
      build/fidelity/report.json and build/fidelity/report.html.
 
 Usage: python3 tools/fidelity/fidelity.py --canvas <canvas project dir> [--screens a,b] [--skip-boards]
-       [--skip-app] [--runtime dc-runtime.js] [--token-tests PATTERN]
+       [--skip-app] [--runtime dc-runtime.js] [--token-tests PATTERN] [--known-text known-text.json]
 """
 import argparse
 import fnmatch
@@ -54,6 +54,8 @@ def parse_args():
     p.add_argument("--skip-boards", action="store_true", help="reuse the board renders in --out")
     p.add_argument("--skip-app", action="store_true", help="reuse the app captures and test results")
     p.add_argument("--exceptions", default=os.path.join(os.path.dirname(__file__), "exceptions.json"))
+    p.add_argument("--known-text", default=os.path.join(os.path.dirname(__file__), "known-text.json"),
+                   help="text differences accepted on purpose: element, screens and reason (docs/fidelity.md)")
     a = p.parse_args()
     if not a.canvas:
         p.error("--canvas (or FIDELITY_CANVAS) is required")
@@ -143,7 +145,53 @@ def load_board(path):
     return board
 
 
-def compare(capture, board, app, board_img, app_img, exceptions, dsf):
+def load_known_text(path):
+    """The known text differences: {element: {"screens": [screen id, ...], "reason": why}}. Each accepts that
+    element's text on those screens only; its geometry and fill are still measured. A missing file is no list."""
+    if not os.path.exists(path):
+        return {}
+    with open(path) as fp:
+        known = json.load(fp).get("elements", {})
+    for name, k in known.items():
+        screens = k.get("screens") if isinstance(k, dict) else None
+        if not screens or not isinstance(screens, list) or not str(k.get("reason", "")).strip():
+            raise SystemExit(f"{os.path.basename(path)}: {name} needs a list of screens and a reason")
+    return known
+
+
+def split_known_text(diffs, screen, known):
+    """Splits a capture's text differences into new ones and known ones (each with its reason)."""
+    new, accepted = [], []
+    for d in diffs:
+        k = known.get(d["name"])
+        if k and screen in k["screens"]:
+            accepted.append({**d, "reason": k["reason"]})
+        else:
+            new.append(d)
+    return new, accepted
+
+
+def unused_known_text(known, rows):
+    """Known entries that matched no difference on a measured screen they name: fixed, renamed or stale."""
+    seen = {(r["screen"], d["name"]) for r in rows for d in r.get("text_known", [])}
+    measured = {r["screen"] for r in rows if any(d["status"] == "measured" for d in r["devices"].values())}
+    return [{"name": name, "screen": s} for name, k in known.items() for s in k["screens"]
+            if s in measured and (s, name) not in seen]
+
+
+def by_screen(devices, key):
+    """One entry per difference of a screen, with the devices it was seen on (DEVICE_ORDER)."""
+    merged = {}
+    for dev in DEVICE_ORDER:
+        d = devices.get(dev)
+        if not d or d["status"] != "measured":
+            continue
+        for td in d.get(key, []):
+            merged.setdefault((td["name"], td["board"], td["app"]), {**td, "devices": []})["devices"].append(dev)
+    return list(merged.values())
+
+
+def compare(capture, board, app, board_img, app_img, exceptions, dsf, known_text=None):
     excluded = set(exceptions.get("elements", {}))
     board_els = [e for e in board["elements"] if e["name"] not in excluded and e["w"] > 0 and e["h"] > 0]
     nodes = [n for n in app["nodes"] if n["tag"] not in excluded]
@@ -151,6 +199,7 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
     good = [(b, n) for b, n in pairs if m.within(b, n)]
     geometry = len(good) / len(board_els) if board_els else 1.0
     text_compared, copy_diffs = m.text_diffs(pairs)
+    copy_diffs, known_diffs = split_known_text(copy_diffs, capture.get("screen"), known_text or {})
 
     # Fills: the board elements that paint a background. Both sides are sampled from their screenshots,
     # in a band just inside the box's edges (metrics.edge_colour), so alpha and drawing order count the same way.
@@ -185,7 +234,7 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
                      "dw": round(n["w"] - b["w"], 2), "dh": round(n["h"] - b["h"], 2)}
                     for b, n in pairs if not m.within(b, n)],
         "fills": fills, "colour": colour, "max_delta_e": max(compared) if compared else None,
-        "text_compared": text_compared, "text_diffs": copy_diffs,
+        "text_compared": text_compared, "text_diffs": copy_diffs, "text_known": known_diffs,
         "ssim": judged_ssim, "ssim_text": text_ssim, "ssim_raw": raw_ssim,
         "text_coverage": float(mask.mean()),
     }, smap, app_img
@@ -216,6 +265,7 @@ def main():
     plan_file = os.path.join(a.out, "plan.json")
     json.dump({"captures": plan}, open(plan_file, "w"), indent=1)
     exceptions = json.load(open(a.exceptions)) if os.path.exists(a.exceptions) else {}
+    known_text = load_known_text(a.known_text)
 
     if not a.skip_boards:
         run_boards(a, plan)
@@ -242,7 +292,7 @@ def main():
             board_img, app_img = load_png(board_file + ".png"), load_png(app_file + ".png")
             if cap.get("clip"):
                 board, board_img = m.clip_board(board, board_img, cap["clip"], cap["clip_index"], board["dsf"])
-            r, smap, app_img = compare(cap, board, app, board_img, app_img, exceptions, board["dsf"])
+            r, smap, app_img = compare(cap, board, app, board_img, app_img, exceptions, board["dsf"], known_text)
             name = f"{cap['screen']}@{cap['device']}"
             heat = heatmap(board_img, smap)
             heat.save(os.path.join(img_dir, f"{name}.heat.png"))
@@ -259,20 +309,10 @@ def main():
         measured = [d for d in devices.values() if d["status"] == "measured"]
         implemented = len(measured) == len(devices)
         score = sum(d["score"] for d in measured) / len(devices) if measured else 0.0
-        by_diff = {}
-        for dev in DEVICE_ORDER:
-            d = devices.get(dev)
-            if not d or d["status"] != "measured":
-                continue
-            for td in d.get("text_diffs", []):
-                by_diff.setdefault((td["name"], td["board"], td["app"]), []).append(dev)
-        screen_text_diffs = [
-            {"name": name, "board": bt, "app": at, "devices": devs}
-            for (name, bt, at), devs in by_diff.items()
-        ]
         rows.append({"screen": screen, "implemented": implemented, "score": score,
                      "pass": implemented and all(d["pass"] for d in measured),
-                     "text_diffs": screen_text_diffs, "devices": devices})
+                     "text_diffs": by_screen(devices, "text_diffs"), "text_known": by_screen(devices, "text_known"),
+                     "devices": devices})
     impl = [r["score"] for r in rows if r["implemented"]]
     report = {
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -284,22 +324,26 @@ def main():
         "match_rate_implemented": sum(impl) / len(impl) if impl else None,
         "screens_total": len(rows), "screens_implemented": len(impl), "screens_passed": sum(r["pass"] for r in rows),
         "platform_exceptions": platform_exceptions(index, exceptions),
+        "known_text_unused": unused_known_text(known_text, rows),
         "screens": rows,
     }
     json.dump(report, open(os.path.join(a.out, "report.json"), "w"), indent=1)
     open(os.path.join(a.out, "report.html"), "w").write(render_html(report))
     td_screens, td_unique = text_diff_counts(rows)
+    _, td_known = text_diff_counts(rows, "text_known")
     print(f"match rate {report['match_rate']:.1f} over {len(rows)} screens "
           f"({len(impl)} implemented, {report['screens_passed']} pass); tokens {fmt_rate(tokens['rate'])}; "
-          f"text differences on {td_screens} screens ({td_unique} unique)")
+          f"new text differences on {td_screens} screens ({td_unique} unique); {td_known} known")
+    for u in report["known_text_unused"]:
+        print(f"known text {u['name']} on {u['screen']} matched no difference", file=sys.stderr)
     print(os.path.join(a.out, "report.html"))
 
 
-def text_diff_counts(rows):
-    """(screens with copy differences, differences summed over screens). A screen's
-    `text_diffs` already merge one difference seen on several devices into one entry."""
-    with_diffs = [r for r in rows if r.get("text_diffs")]
-    return len(with_diffs), sum(len(r["text_diffs"]) for r in with_diffs)
+def text_diff_counts(rows, key="text_diffs"):
+    """(screens with copy differences, differences summed over screens), of the new ones (`text_diffs`) or the
+    known ones (`text_known`). A screen's list already merges one difference seen on several devices into one."""
+    with_diffs = [r for r in rows if r.get(key)]
+    return len(with_diffs), sum(len(r[key]) for r in with_diffs)
 
 
 def platform_exceptions(index, exceptions):
@@ -335,11 +379,12 @@ def render_html(r):
             else:
                 text_note = "" if c.get("ssim_text") is None else f" (text {c['ssim_text']:.3f})"
                 td_count = len(c.get("text_diffs", []))
+                tk_count = len(c.get("text_known", []))
                 cells.append(
                     f"<td class={'pass' if c['pass'] else 'fail'}><a href='#{e(s['screen'])}-{d}'><b>{c['score']:.0f}</b></a>"
                     f"<br><small>geom {fmt_rate(c['geometry'])} · ΔE {'—' if c['max_delta_e'] is None else round(c['max_delta_e'], 2)}"
                     f" · SSIM {c['ssim']:.3f}{text_note}<br>missing {len(c['missing'])} · extra {len(c['extra'])}"
-                    f" · text diff {td_count}</small></td>")
+                    f" · text diff {td_count}{f' (+{tk_count} known)' if tk_count else ''}</small></td>")
         verdict = "PASS" if s["pass"] else ("fail" if s["implemented"] else "not implemented")
         rows.append(f"<tr><th>{e(s['screen'])}</th>{''.join(cells)}<td>{s['score']:.1f}</td><td>{verdict}</td></tr>")
     details = []
@@ -357,6 +402,12 @@ def render_html(r):
                 f"<li><b>{e(td['name'])}</b>: board <code>{e(td['board'])}</code> vs app <code>{e(td['app'])}</code></li>"
                 for td in tdiffs
             )
+            tknown = c.get("text_known", [])
+            tk_items = "".join(
+                f"<li><b>{e(td['name'])}</b>: board <code>{e(td['board'])}</code> vs app <code>{e(td['app'])}</code>"
+                f" <small>({e(td['reason'])})</small></li>"
+                for td in tknown
+            )
             ssim_line = f"SSIM {c['ssim']:.3f} non-text"
             if c.get("ssim_text") is not None:
                 ssim_line += f", {c['ssim_text']:.3f} text ({c['text_coverage']:.0%} of pixels)"
@@ -366,15 +417,22 @@ def render_html(r):
 <section id="{e(s['screen'])}-{d}"><h2>{e(s['screen'])} · {d} <small>({e(c['board'])}, {c['size'][0]}×{c['size'][1]} dp)</small></h2>
 <p>Score {c['score']:.1f} — {'PASS' if c['pass'] else 'fail: ' + e('; '.join(c['reasons']))}</p>
 <p>Elements {c['elements']}, paired {c['paired']}, within ±{t['tolerance_dp']:g} dp {c['within']}
- ({fmt_rate(c['geometry'])}); {ssim_line}; colour {fmt_rate(c['colour'])}; text diffs {len(tdiffs)}/{tcompared}</p>
+ ({fmt_rate(c['geometry'])}); {ssim_line}; colour {fmt_rate(c['colour'])}; text diffs {len(tdiffs)}/{tcompared}
+ ({len(tknown)} known)</p>
 <figure><img src="{e(c['images']['side'])}" alt="board, app and SSIM heatmap"><figcaption>Board · App · SSIM loss (red)</figcaption></figure>
 <details><summary>Missing tags ({len(c['missing'])})</summary><p>{e(', '.join(c['missing']))}</p></details>
 <details><summary>Extra tags ({len(c['extra'])})</summary><p>{e(', '.join(c['extra']))}</p></details>
 <details><summary>Out of tolerance ({len(c['offsets'])})</summary><ul>{offs}</ul></details>
 <details><summary>Text differences ({len(tdiffs)})</summary><ul>{td_items}</ul></details>
+<details><summary>Known text differences ({len(tknown)})</summary><ul>{tk_items}</ul></details>
 <details><summary>Fills ({len(c['fills'])})</summary><ul>{fills}</ul></details>
 </section>""")
     exc = "".join(f"<li><b>{e(x['what'])}</b>: {e(x['note'])}</li>" for x in r["platform_exceptions"])
+    unused = r.get("known_text_unused", [])
+    unused_html = ("" if not unused else "<h2>Known text that matched nothing</h2><ul>"
+                   + "".join(f"<li><b>{e(u['name'])}</b> on {e(u['screen'])}</li>" for u in unused) + "</ul>")
+    new_screens, new_count = text_diff_counts(r["screens"])
+    _, known_count = text_diff_counts(r["screens"], "text_known")
     tok = r["tokens"]
     tok_line = (f"{fmt_rate(tok['rate'])} of {tok['cases']} token checks ({e(', '.join(tok['classes']))})"
                 + (f"; failing: {e(', '.join(tok['failed']))}" if tok["failed"] else "")
@@ -393,11 +451,13 @@ img{{max-width:100%;border:1px solid #ccc}} section{{margin:28px 0}} small{{colo
  (unimplemented screens count as 0); {r['screens_implemented']} implemented
  {'' if impl is None else f'(mean {impl:.1f})'}; {r['screens_passed']} pass.</p>
 <p>Tokens: {tok_line}.</p>
+<p>Text: {new_count} new differences on {new_screens} screens; {known_count} known (tools/fidelity/known-text.json).</p>
 <p>Pass: tokens 100%, ≥{t['geometry']:.0%} of elements within ±{t['tolerance_dp']:g} dp, no missing tags,
  fill ΔE₀₀ &lt; {t['delta_e_below']:g}, non-text SSIM ≥ {t['ssim']}. See docs/fidelity.md.</p>
 <table><tr><th>Screen</th>{''.join(f'<th>{d}</th>' for d in DEVICE_ORDER)}<th>Score</th><th>Verdict</th></tr>
 {''.join(rows)}</table>
 <h2>Platform exceptions</h2><ul>{exc}</ul>
+{unused_html}
 {''.join(details)}
 </body></html>"""
 
