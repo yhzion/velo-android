@@ -40,7 +40,7 @@ class PaneReplyTest {
             assertTrue(permission.all { it.choices == null })
         }
 
-        // A Claude question without listed choices, omp, Codex questions, pi, unknown programs.
+        // A Claude question without listed choices, omp, Codex questions, pi, Gemini, unknown programs.
         assertNull(plan("question", "claude", choices = null))
         assertNull(plan("question", "omp"))
         assertNull(plan("permission", "omp"))
