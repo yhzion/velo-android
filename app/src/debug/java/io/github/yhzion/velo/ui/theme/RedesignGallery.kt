@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -125,6 +126,7 @@ private fun Keys() {
     VeloSurface(VeloTheme.colors.chrome) {
         KeyStrip(Modifier.testTag("sample-key-strip")) {
             KeyCap("Esc", {}, Modifier.testTag("sample-key"), contentDescription = spokenKeyName("Esc"))
+            Spacer(Modifier.width(VeloTheme.sizes.keyGap))
             KeyCap("Ctrl", {}, Modifier.testTag("sample-key-latched"), armed = true, contentDescription = spokenKeyName("Ctrl"))
         }
     }

@@ -6,7 +6,6 @@ import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.ui.theme.VeloSizes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -182,7 +181,10 @@ class CompactLayoutTest {
 
     @Test fun compactBarsScrollOnlyWhenEveryKeyIsAtItsLeastWidth() {
         val least = List(8) { 32 }
-        assertEquals(least, keyCapWidths(least, 32, 8 * 32))
-        assertNull(keyCapWidths(least, 32, 8 * 32 - 1))
+        val fits = 8 * 32 + 7 * 4
+        assertEquals(least, keyCapWidths(least, 32, 4, fits))
+        // A pixel less and the caps keep the least: wider than the bar, which scrolls.
+        assertEquals(least, keyCapWidths(least, 32, 4, fits - 1))
+        assertTrue(keyCapWidths(least, 32, 4, fits - 1).sum() + 7 * 4 > fits - 1)
     }
 }

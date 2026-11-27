@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -102,71 +104,20 @@ internal fun moveKey(saved: List<String>, key: String, delta: Int): List<String>
 }
 
 /**
- * The keys' widths on a bar with [available] room inside it (KeyBar board): each key at its own
- * width ([natural]: its label and padding, at least [floor]) while they all fit. When they do not,
- * the keys wider than [floor] give up the room that is missing in proportion to their widths, none
- * below [floor], as the board's CTRL does on the bar phone. Null when the keys do not fit even at
- * [floor]: the bar scrolls.
+ * The caps' widths on a bar with [available] room inside it, [gap] between two caps (#142): a touch
+ * bar's keys, every cap the same width and all of them across the bar. A cap needs the room in
+ * [need] (its label and padding) and at least [floor]. When the bar's share is less than the widest
+ * need, every cap takes that need instead and the bar scrolls. A pixel the share cannot split goes
+ * to the first caps.
  */
-internal fun keyCapWidths(natural: List<Int>, floor: Int, available: Int): List<Int>? {
-    if (natural.sum() <= available) return natural
-    val widths = natural.map { it.toFloat() }.toMutableList()
-    val frozen = BooleanArray(natural.size) { natural[it] <= floor }
-    var missing = (natural.sum() - available).toFloat()
-    while (missing > 0.001f) {
-        val open = natural.indices.filter { !frozen[it] }
-        if (open.isEmpty()) return null
-        val basis = open.sumOf { natural[it] }.toFloat()
-        var given = 0f
-        for (i in open) {
-            val share = missing * natural[i] / basis
-            if (widths[i] - share <= floor) {
-                given += widths[i] - floor
-                widths[i] = floor.toFloat()
-                frozen[i] = true
-            } else {
-                widths[i] -= share
-                given += share
-            }
-        }
-        missing -= given
-    }
-    return roundToTotal(widths, available)
-}
-
-/** [values] rounded to whole pixels that add up to [total], the largest fractions rounded up. */
-private fun roundToTotal(values: List<Float>, total: Int): List<Int> {
-    val down = values.map { kotlin.math.floor(it).toInt() }.toMutableList()
-    var left = total - down.sum()
-    for (i in values.indices.sortedByDescending { values[it] - down[it] }) {
-        if (left <= 0) break
-        down[i]++
-        left--
-    }
-    return down
-}
-
-/**
- * The part of the bar each key takes the taps in, for keys [caps] wide on a bar with [available]
- * room. The room the keys leave goes between them in equal gaps (the board's space-between): the
- * first key starts at the bar's start, the last ends at its end. Each key takes the taps up to half
- * of the gap on each side, and the first and the last up to the bar's ends, so a tap anywhere on the
- * bar reaches the nearest key. Without room left (or while the bar scrolls) the cells are the keys.
- */
-internal fun keyCells(caps: List<Int>, available: Int): List<Int> {
-    if (caps.isEmpty()) return emptyList()
-    if (caps.size == 1) return listOf(maxOf(caps[0], available))
-    val spare = available - caps.sum()
-    if (spare <= 0) return caps
-    val gap = spare.toFloat() / caps.lastIndex
-    val edges = FloatArray(caps.size + 1)
-    var start = 0f
-    for (i in 1 until caps.size) {
-        start += caps[i - 1]
-        edges[i] = start + gap * i - gap / 2
-    }
-    edges[caps.size] = available.toFloat()
-    return caps.indices.map { Math.round(edges[it + 1]) - Math.round(edges[it]) }
+internal fun keyCapWidths(need: List<Int>, floor: Int, gap: Int, available: Int): List<Int> {
+    if (need.isEmpty()) return emptyList()
+    val least = maxOf(floor, need.max())
+    val room = available - gap * need.lastIndex
+    if (room < least * need.size) return List(need.size) { least }
+    val share = room / need.size
+    val left = room % need.size
+    return List(need.size) { share + if (it < left) 1 else 0 }
 }
 
 /** The test tag of [key]'s cap, as the KeyBar board names it: `key-slash`, `key-ctrl`, `key-left`. */
@@ -176,16 +127,20 @@ internal fun keyTestTag(key: String): String = "key-" + when (key) {
 }
 
 /**
- * The keys in the saved order (KeyBar board). Each key keeps its own width ([keyCapWidths]); the room
- * left goes between them, and each key takes the taps up to halfway to the next ([keyCells]). When
- * their labels need more than the bar has, the bar scrolls sideways and the edge with more keys
- * beyond it fades out. A sticky key in [armed] is lit until the next key uses it. While the bar is
- * not [enabled] (the panes' input is paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
+ * The keys in the saved order (KeyBar board), as a touch bar's keys (#142): caps of one width across
+ * the bar, `sizes.keyGap` between them ([keyCapWidths]). Each key takes the taps up to halfway to
+ * the next, and the first and the last up to the bar's ends. When their labels need more than the
+ * bar has, the bar scrolls sideways and the edge with more keys beyond it fades out. A sticky key in
+ * [armed] is lit until the next key uses it. While the bar is not [enabled] (the panes' input is
+ * paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
  */
 @Composable
 internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, enabled: Boolean = true, onKey: (String, Boolean) -> Unit) {
     val sizes = VeloTheme.sizes
     val scroll = rememberScrollState()
+    // Half the gap on each side between two caps, in whole pixels: the gap is two of them.
+    val half = with(LocalDensity.current) { (sizes.keyGap / 2).roundToPx() }
+    val halfDp = with(LocalDensity.current) { half.toDp() }
     KeyStrip(modifier.testTag("key-bar")) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val viewport = constraints.maxWidth
@@ -194,28 +149,24 @@ internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, 
                 content = {
                     for ((i, key) in keys.withIndex()) {
                         key(key) {
-                            // The cap stands where the board draws it inside the part of the bar it takes the taps in.
-                            val place = when {
-                                keys.size == 1 -> Alignment.Center
-                                i == 0 -> Alignment.CenterStart
-                                i == keys.lastIndex -> Alignment.CenterEnd
-                                else -> Alignment.Center
-                            }
-                            KeyCap(key, { onKey(key, false) }, armed = key in armed, latching = key in StickyKeys,
+                            // The cap stands inside the part of the bar it takes the taps in, half a gap from the next.
+                            val insets = PaddingValues(start = if (i == 0) 0.dp else halfDp, end = if (i == keys.lastIndex) 0.dp else halfDp)
+                            KeyCap(key, { onKey(key, false) }, armed = key in armed,
                                 contentDescription = spokenKeyName(key), enabled = enabled,
                                 holdRepeat = key in REPEAT_KEYS, onRepeat = { onKey(key, true) },
-                                capAlignment = place, capModifier = Modifier.testTag(keyTestTag(key)))
+                                capInsets = insets, capModifier = Modifier.testTag(keyTestTag(key)))
                         }
                     }
                 },
             ) { buttons, limits ->
-                val natural = buttons.map { it.maxIntrinsicWidth(limits.maxHeight) }
-                val caps = keyCapWidths(natural, sizes.key.roundToPx(), viewport) ?: natural
-                val cells = keyCells(caps, viewport)
+                fun inset(i: Int) = (if (i > 0) half else 0) + (if (i < buttons.lastIndex) half else 0)
+                val need = buttons.mapIndexed { i, button -> button.maxIntrinsicWidth(limits.maxHeight) - inset(i) }
+                val caps = keyCapWidths(need, sizes.key.roundToPx(), half * 2, viewport)
                 val children = buttons.mapIndexed { i, button ->
-                    button.measure(Constraints(minWidth = cells[i], maxWidth = cells[i], maxHeight = limits.maxHeight))
+                    val cell = caps[i] + inset(i)
+                    button.measure(Constraints(minWidth = cell, maxWidth = cell, maxHeight = limits.maxHeight))
                 }
-                layout(maxOf(viewport, cells.sum()), limits.maxHeight) {
+                layout(maxOf(viewport, children.sumOf { it.width }), limits.maxHeight) {
                     var x = 0
                     for (child in children) {
                         child.placeRelative(x, (limits.maxHeight - child.height) / 2)

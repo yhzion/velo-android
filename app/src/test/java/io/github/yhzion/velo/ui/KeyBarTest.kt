@@ -66,40 +66,32 @@ class KeyBarTest {
         assertEquals("Backspace", Settings.DEFAULT_KEY_BAR.substringAfterLast(','))
     }
 
-    @Test fun keysKeepTheirOwnWidthWhileTheyFit() {
-        // WsOpenPanes, in dp: 32 for a key, CTRL 47; 548 inside the bar.
-        val natural = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
-        assertEquals(natural, keyCapWidths(natural, floor = 32, available = 548))
-        assertEquals(natural, keyCapWidths(natural, floor = 32, available = natural.sum()))
+    @Test fun everyCapTakesTheSameShareOfTheBar() {
+        // WsOpenPanes, in dp: 32 for a key, CTRL 47; 548 inside the bar, 5 between two caps.
+        val need = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
+        val caps = keyCapWidths(need, floor = 32, gap = 5, available = 548)
+        // 508 for nine caps: 56 each, and the 4 left over to the first four.
+        assertEquals(listOf(57, 57, 57, 57, 56, 56, 56, 56, 56), caps)
+        assertEquals(548, caps.sum() + 5 * 8)
+        // One key takes the whole bar.
+        assertEquals(listOf(300), keyCapWidths(listOf(40), floor = 32, gap = 5, available = 300))
+        assertTrue(keyCapWidths(emptyList(), floor = 32, gap = 5, available = 100).isEmpty())
     }
 
-    @Test fun aKeyWiderThanTheLeastGivesUpRoomBeforeTheBarScrolls() {
-        // WsBarTerminal: 297 inside the bar; CTRL alone is wider than 32 and gives up the 6 that are missing.
-        val natural = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
-        assertEquals(listOf(32, 41, 32, 32, 32, 32, 32, 32, 32), keyCapWidths(natural, floor = 32, available = 297))
-        // Two wide keys share the shortage by their widths, never below the least.
-        assertEquals(listOf(32, 58, 42), keyCapWidths(listOf(32, 70, 50), floor = 32, available = 132))
-        assertEquals(listOf(32, 32, 32), keyCapWidths(listOf(32, 70, 50), floor = 32, available = 96))
-        // Fewer than the least for every key: the bar scrolls.
-        assertNull(keyCapWidths(listOf(32, 70, 50), floor = 32, available = 95))
-        assertTrue(keyCapWidths(emptyList(), floor = 32, available = 100)!!.isEmpty())
+    @Test fun capsThatExactlyFitTheWidestLabelStillShareTheBar() {
+        // Three caps of CTRL's 47 and two gaps of 5: 151.
+        assertEquals(listOf(47, 47, 47), keyCapWidths(listOf(32, 47, 32), floor = 32, gap = 5, available = 151))
+        // Without a label wider than the least, the least decides.
+        assertEquals(listOf(32, 32), keyCapWidths(listOf(20, 32), floor = 32, gap = 5, available = 69))
     }
 
-    @Test fun theRoomLeftGoesBetweenTheKeysAndEveryKeyTakesTheTapsUpToHalfway() {
-        // WsOpenPanes: nine keys, 251 left over: 31.375 between two keys. The first and the last key
-        // reach the bar's ends; each of the others half of the room on each side.
-        val caps = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
-        val cells = keyCells(caps, 548)
-        assertEquals(548, cells.sum())
-        val gap = (548 - caps.sum()) / 8f
-        assertEquals(caps.first() + gap / 2, cells.first().toFloat(), 1f)
-        assertEquals(caps.last() + gap / 2, cells.last().toFloat(), 1f)
-        for (i in 1 until caps.lastIndex) assertEquals("$i", caps[i] + gap, cells[i].toFloat(), 1f)
-        // No room left: the cells are the keys.
-        assertEquals(caps, keyCells(caps, caps.sum()))
-        // One key takes the bar.
-        assertEquals(listOf(300), keyCells(listOf(40), 300))
-        assertTrue(keyCells(emptyList(), 300).isEmpty())
+    @Test fun aBarTooNarrowForTheWidestLabelScrollsWithEveryCapAtThatLabel() {
+        // One pixel short of three CTRLs: every cap at CTRL's width, wider together than the bar.
+        val caps = keyCapWidths(listOf(32, 47, 32), floor = 32, gap = 5, available = 150)
+        assertEquals(listOf(47, 47, 47), caps)
+        assertTrue(caps.sum() + 5 * 2 > 150)
+        // A need under the least still takes the least.
+        assertEquals(listOf(32, 32), keyCapWidths(listOf(20, 20), floor = 32, gap = 5, available = 60))
     }
 
     @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {

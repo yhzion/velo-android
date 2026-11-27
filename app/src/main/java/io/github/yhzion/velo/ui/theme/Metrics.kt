@@ -67,6 +67,8 @@ class VeloRadii(
     val card: Dp = medium(16f),
     /** The key bar strip: a capsule (KeyBar board, 56 high, 28). */
     val bar: Dp = medium(28f),
+    /** A key's cap on the key bar: a touch bar's key (#142, the mockup's 6). */
+    val key: Dp = medium(6f),
     /** A tab tile of 30 (Tokens board "tile": the tile's size times 0.27). */
     val tile: Dp = medium(8f),
     /** A small badge, such as a license name (Tokens board "badge"). */
@@ -137,10 +139,14 @@ class VeloSizes(
     val keyBar: Dp = medium(56f),
     /** The widest the key bar grows: in the middle of a wide pane column (WsOpenPanes board: 560). */
     val keyBarMax: Dp = medium(560f),
-    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCells]). */
+    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCapWidths]). */
     val key: Dp = medium(32f),
-    /** A key's height in the strip (KeyBar board: 48). */
+    /** A key's height in the strip, the height that takes its taps (KeyBar board: 48). */
     val keyHeight: Dp = medium(48f),
+    /** A key's cap, a little lower than the strip: a touch bar's key (#142; the latched pill's 40). */
+    val keyCap: Dp = medium(40f),
+    /** Between two caps on the key bar (#142, the mockup's 5). */
+    val keyGap: Dp = medium(5f),
     /** Between panes, and between panes and the screen's edge (Tokens board: 8). */
     val gap: Dp = medium(8f),
     /** Between pane cards and adjacent chrome in Compact style. */
@@ -299,6 +305,8 @@ fun veloSizes(size: UiSize): VeloSizes {
         keyBarMax = base.keyBarMax.s(),
         key = base.key.s(),
         keyHeight = keyHeight,
+        keyCap = minOf(base.keyCap.s(), keyHeight),
+        keyGap = base.keyGap.s(),
         gap = gap,
         gapCompact = base.gapCompact.s(),
         compactOuterPx = base.compactOuterPx,
@@ -467,7 +475,7 @@ fun veloRadii(size: UiSize): VeloRadii {
     val f = size.factor
     return VeloRadii(
         pane = base.pane * f, paneCompact = base.paneCompact * f, overlay = base.overlay * f,
-        card = base.card * f, bar = base.bar * f, tile = base.tile * f,
+        card = base.card * f, bar = base.bar * f, key = base.key * f, tile = base.tile * f,
         badge = base.badge * f, group = base.group * f, sheet = base.sheet * f, pill = base.pill * f, nav = base.nav * f,
     )
 }

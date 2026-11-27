@@ -1,6 +1,12 @@
 package io.github.yhzion.velo.ui.theme
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -262,41 +268,49 @@ fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = 
 }
 
 /**
- * A key on the key bar (KeyBar board). [label] names the key, not the glyph drawn on it. The key
- * takes the taps in all the room its bar gives it; its cap, the board's button, stands in that room
- * at [capAlignment]: as wide as its label with 4 on each side, at least `sizes.key`, and as high as
- * the key. A [latching] key (a modifier) is a pill 40 high, 8 on each side of its label, filled with
- * the accent while [armed]. [capModifier] goes on the cap. A key that is not [enabled] is drawn in
- * the disabled colour, without that fill, and takes no tap. With [holdRepeat], a hold sends
- * [onClick] at the long-press timeout, then [onRepeat] until release or cancellation.
+ * A key on the key bar (KeyBar board), as a touch bar draws it (#142). [label] names the key, not
+ * the glyph drawn on it. The key takes the taps in all the room its bar gives it; its cap stands in
+ * that room inside [capInsets]: a rounded rectangle of the glass, `sizes.keyCap` high, at least
+ * `sizes.key` wide and as wide as its label with 4 on each side. On its own the key is as wide as
+ * that cap. The cap is a step lighter while a finger holds it, and filled with the accent while
+ * [armed] (a modifier the next key takes). [capModifier] goes on the cap. A key that is not
+ * [enabled] keeps its glass, draws its label in the disabled colour and takes no tap. With
+ * [holdRepeat], a hold sends [onClick] at the long-press timeout, then [onRepeat] until release or
+ * cancellation.
  */
 @Composable
 fun KeyCap(
     label: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     armed: Boolean = false, contentDescription: String? = null, enabled: Boolean = true,
     holdRepeat: Boolean = false, onRepeat: () -> Unit = onClick,
-    latching: Boolean = false, capAlignment: Alignment = Alignment.Center, capModifier: Modifier = Modifier,
+    capInsets: PaddingValues = PaddingValues(), capModifier: Modifier = Modifier,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     val lit = armed && enabled
-    val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.text
-    val pill = VeloTheme.medium(40.dp)
+    val presses = remember { MutableInteractionSource() }
+    val pressed by presses.collectIsPressedAsState()
+    val fill = when {
+        lit -> c.accent
+        pressed && enabled -> c.glassSelected
+        else -> c.glass
+    }
+    val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.onGlass
     Box(
-        modifier.height(s.keyHeight).clip(Capsule)
-            .clickable(enabled = enabled, role = Role.Button) { if (enabled) onClick() }
-            .then(if (enabled && holdRepeat) repeatKeyPress(label, onClick, onRepeat) else Modifier)
+        modifier.width(IntrinsicSize.Max).height(s.keyHeight)
+            // The cap's change of colour shows the press, in place of a ripple.
+            .clickable(presses, indication = null, enabled = enabled, role = Role.Button) { if (enabled) onClick() }
+            .then(if (enabled && holdRepeat) repeatKeyPress(label, presses, onClick, onRepeat) else Modifier)
             .semantics { if (lit) selected = true; this.contentDescription = contentDescription ?: label },
-        contentAlignment = capAlignment,
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            capModifier.widthIn(min = s.key).height(if (latching) minOf(pill, s.keyHeight) else s.keyHeight)
-                // A latched key is a pill of the accent (Controls board, sample-key-latched).
-                .then(if (lit) Modifier.clip(Capsule).background(c.accent) else Modifier),
+            Modifier.padding(capInsets).then(capModifier).fillMaxWidth().widthIn(min = s.key).height(s.keyCap)
+                .clip(rounded(VeloTheme.radii.key)).background(fill),
             contentAlignment = Alignment.Center,
         ) {
             // A cap the bar narrowed below its label's room keeps the label whole: it takes the padding.
-            KeyLegend(label, color, Modifier.wrapContentWidth(unbounded = true).padding(horizontal = VeloTheme.medium(if (latching) 8.dp else 4.dp)))
+            KeyLegend(label, color, Modifier.wrapContentWidth(unbounded = true).padding(horizontal = VeloTheme.medium(4.dp)))
         }
     }
 }
@@ -304,8 +318,9 @@ fun KeyCap(
 private const val KeyRepeatIntervalMillis = 60L
 
 // Inside clickable: own the pointer down/up, leaving accessibility and keyboard clicks to clickable.
+// It tells [presses] of the press itself, as clickable would, so the cap lights while it is held.
 @Composable
-private fun repeatKeyPress(label: String, onClick: () -> Unit, onRepeat: () -> Unit): Modifier {
+private fun repeatKeyPress(label: String, presses: MutableInteractionSource, onClick: () -> Unit, onRepeat: () -> Unit): Modifier {
     val click by rememberUpdatedState(onClick)
     val repeat by rememberUpdatedState(onRepeat)
     return Modifier.pointerInput(label) {
@@ -314,7 +329,10 @@ private fun repeatKeyPress(label: String, onClick: () -> Unit, onRepeat: () -> U
                 val down = awaitFirstDown()
                 if (down.type == PointerType.Mouse && !currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
                 down.consume()
+                val press = PressInteraction.Press(down.position)
+                presses.tryEmit(press)
                 var held = false
+                var released = false
                 val timer = launch {
                     delay(viewConfiguration.longPressTimeoutMillis)
                     held = true
@@ -328,9 +346,11 @@ private fun repeatKeyPress(label: String, onClick: () -> Unit, onRepeat: () -> U
                     // Do not consume movement: a parent scroll cancels both the tap and the timer.
                     val up = waitForUpOrCancellation() ?: return@awaitEachGesture
                     up.consume()
+                    released = true
                     if (!held) click()
                 } finally {
                     timer.cancel()
+                    presses.tryEmit(if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press))
                 }
             }
         }

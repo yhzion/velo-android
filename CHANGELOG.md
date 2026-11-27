@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- The key bar's keys are now rounded keys of one width that share the bar's whole width, as on a touch bar; a key turns a step lighter while you hold it.
+
 ### Fixed
 - A screen reader gives each key one name on the key bar and in Keyboard settings, in full words: Control, Escape, Page Up, Page Down, Minus, Pipe, Slash and Tilde.
 - The This Device dot in the sidebar tells a screen reader the Tailscale settings page's word for the node's state, such as Connected, instead of Node Running.
