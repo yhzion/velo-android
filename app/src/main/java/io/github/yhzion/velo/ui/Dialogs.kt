@@ -74,8 +74,8 @@ internal fun RenameDialog(title: String, initial: String, allowEmpty: Boolean, o
 
 /**
  * Clears [HostConnection.error] after its time on screen, once per message. It is separate from
- * [ErrorNotice] so the time does not start over when the notice moves between the pane area and
- * the full window (when the sidebar opens and covers the panes). A person who needs more time to read
+ * [ErrorNotice] so the time does not start over when the notice moves between the pane area, the
+ * sidebar that covers the panes, and the full window (that sidebar with the keyboard up). A person who needs more time to read
  * gets it from the accessibility setting; 4 seconds is the time without one.
  */
 @Composable
