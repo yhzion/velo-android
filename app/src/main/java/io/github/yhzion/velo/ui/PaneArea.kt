@@ -344,9 +344,12 @@ private fun PaneCard(
     }
     // The Pane board names a tab's panes pane-1, pane-2, … in layout order; a preview in the overview is no pane of the screen.
     val number = tabBlocks(window).indexOf(block) + 1
+    // A preview of the overview is a still while the row moves ([PaneStill]); a pane of the workspace never is.
+    val card = LocalPaneStill.current
+    var paneView by remember { mutableStateOf<PaneSurfaceView?>(null) }
     Box(modifier.then(if (!preview && number > 0) Modifier.testTag("pane-$number") else Modifier).paneFrame(focused, radius, focusMark)) {
         AndroidView(
-            factory = { ctx -> PaneSurfaceView(ctx, conn, floating) },
+            factory = { ctx -> PaneSurfaceView(ctx, conn, floating).also { paneView = it } },
             update = { v ->
                 // Before the block: a view never tells the core "shown" for a pane that is a preview.
                 v.returns = block in returning
@@ -381,6 +384,7 @@ private fun PaneCard(
             onRelease = { v -> v.block = "" },
             modifier = Modifier.fillMaxSize(),
         )
+        if (card != null) PaneStillOver(paneView, preview, card)
         // The last child, so that it lies above the terminal view and takes its touches. A preview draws none.
         if (handles != null && !preview) {
             PaneHandle(paneLabel(tabBlocks(window), block) ?: "Pane", haptics, onTap = { handles.onTap(block) }, onLongPress = { handles.onLongPress(block, it) },

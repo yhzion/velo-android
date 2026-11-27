@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import android.os.Build
 import android.os.SystemClock
 import android.annotation.SuppressLint
 import android.content.Context
@@ -9,6 +10,7 @@ import android.text.InputType
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -20,6 +22,9 @@ import android.view.inputmethod.InputConnection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import io.github.yhzion.velo.HostConnection
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 
 /**
  * Render surface for one pane. One finger pans or taps; a long press opens Android's text
@@ -175,6 +180,55 @@ class PaneSurfaceView(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         selection.draw(canvas)
+    }
+
+    /** The layer is hidden for a still of the pane ([hold]); the surface stays. */
+    internal var held = false
+        private set
+
+    /**
+     * Hides the pane's layer while the overview's row moves ([on]), or shows it again; a still of the pane is drawn in its
+     * place ([PaneStill]). The surface stays, and so does what the core draws in it: it follows the view's attachment
+     * while the layer is hidden, not its visibility (API 34). Shown again, the layer has the core's last frame. False when
+     * nothing changed: the device has no such surface, or the layer already was as asked.
+     */
+    internal fun hold(on: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || held == on) return false
+        held = on
+        if (on) {
+            // The lifecycle first: made invisible with the default one, the surface would go.
+            setSurfaceLifecycle(SURFACE_LIFECYCLE_FOLLOWS_ATTACHMENT)
+            visibility = INVISIBLE
+        } else {
+            visibility = VISIBLE
+            setSurfaceLifecycle(SURFACE_LIFECYCLE_DEFAULT)
+        }
+        return true
+    }
+
+    /** A copy of what the surface shows, [scale] of the view's size; null when it has no frame yet or goes meanwhile. */
+    internal suspend fun still(scale: Float): android.graphics.Bitmap? {
+        val main = handler
+        if (!attached || main == null || width <= 0 || height <= 0) return null
+        val w = (width * scale).roundToInt().coerceIn(1, width)
+        val h = (height * scale).roundToInt().coerceIn(1, height)
+        val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val ok = suspendCancellableCoroutine { next ->
+            try {
+                PixelCopy.request(this, bitmap, { result -> if (next.isActive) next.resume(result == PixelCopy.SUCCESS) }, main)
+            } catch (e: IllegalArgumentException) {
+                // The surface went away between the check and the request.
+                next.resume(false)
+            }
+        }
+        return bitmap.takeIf { ok }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        // The app leaves the screen: the surface goes with the window, as it does when no still holds it, and the pane is
+        // suspended ([surfaceDestroyed]). Before Android's own handling, which then finds the default lifecycle.
+        if (visibility != VISIBLE) hold(false)
+        super.onWindowVisibilityChanged(visibility)
     }
 
     override fun onDetachedFromWindow() {

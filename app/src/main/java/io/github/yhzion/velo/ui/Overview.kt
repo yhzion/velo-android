@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -1318,7 +1319,33 @@ internal class OverviewState(
     /** A finger moved the row by [dx] px. */
     fun scrollBy(dx: Float) {
         val now = stage ?: return
-        scroll = (scroll + dx).coerceIn(scrollBounds(rowPlaces(tabs.size), rowAnchor(), now))
+        moveRow((scroll + dx).coerceIn(scrollBounds(rowPlaces(tabs.size), rowAnchor(), now)))
+    }
+
+    /**
+     * The previews are stills ([PaneStill]): a finger or a throw changed the row's scroll within the last [ROW_QUIET_MS].
+     * Read in composition, it changes as a motion starts and as it ends. Unlike [rowMoving] it counts a finger's moves too.
+     */
+    var rowStill by mutableStateOf(false)
+        private set
+    private val rowClock = RowMotionClock()
+    private var rowQuiet: Job? = null
+
+    /** A finger or a throw moves the row to [to]; a scroll that does not change is no motion. */
+    private fun moveRow(to: Float) {
+        if (to == scroll) return
+        scroll = to
+        if (!rowClock.changed(android.os.SystemClock.uptimeMillis())) return
+        rowStill = true
+        rowQuiet?.cancel()
+        rowQuiet = scope.launch {
+            while (true) {
+                val left = rowClock.quietIn(android.os.SystemClock.uptimeMillis())
+                if (left <= 0L) break
+                delay(left)
+            }
+            rowStill = false
+        }
     }
 
     fun rowBounds(): ClosedFloatingPointRange<Float> = stage?.let {
@@ -1347,7 +1374,7 @@ internal class OverviewState(
         rowMotion?.cancel()
         rowMotion = scope.launch {
             // The grid is at rest within half a px: a finger that lands after a fling is a tap again at once ([throwSpring]).
-            animate(scroll, rest, velocity, throwSpring(now)) { value, _ -> scroll = value }
+            animate(scroll, rest, velocity, throwSpring(now)) { value, _ -> moveRow(value) }
         }
     }
 
@@ -1668,8 +1695,15 @@ internal fun TabStage(
                     if (role == PaneRole.Detached || tabBlocks(drawn).isEmpty()) {
                         Box(Modifier.fillMaxSize().clip(rounded(radius)).background(backdrop.glass))
                     } else {
-                        WindowPanes(conn, drawn, focused, gap, radius, input, preview = role == PaneRole.Preview, controls = controls, haptics = haptics, handles = handles.takeIf { controls && role == PaneRole.Shown && !showing }, returning = returning,
-                            focusMark = { 1f - overview.progress }, onFinger = { finger[0] = it }, onFocus = onFocus)
+                        // Its panes are stills while the row moves, as large as the card is drawn ([PaneStill]).
+                        val still = remember(overview, w.id, slot, anchor, stage) {
+                            PaneStill({ overview.rowStill }, { tabTransform(slot, anchor, overview.progress, overview.scroll, stage).scale },
+                                { inView(overview.placed(w.id, cardBox(slot, anchor, overview.progress, overview.scroll, stage)), stage) })
+                        }
+                        CompositionLocalProvider(LocalPaneStill provides still) {
+                            WindowPanes(conn, drawn, focused, gap, radius, input, preview = role == PaneRole.Preview, controls = controls, haptics = haptics, handles = handles.takeIf { controls && role == PaneRole.Shown && !showing }, returning = returning,
+                                focusMark = { 1f - overview.progress }, onFinger = { finger[0] = it }, onFocus = onFocus)
+                        }
                     }
                 }
             }

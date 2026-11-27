@@ -69,7 +69,7 @@ uv run --with perfetto python tools/perf/analyze.py build/perf/traces/new-title.
 | `top.py TRACE THREAD` | where one thread's time went |
 | `contention.py` | waits for the glyph rasterizer's lock |
 | `cpuplace.py` | the cost of one glyph by core kind and clock |
-| `compare.py TRACE...` | one line per trace for an A/B table: swaps, CPU per thread, recomposition, missed frames |
+| `compare.py TRACE...` | one line per trace for an A/B table: swaps, CPU per thread, recomposition, missed frames, SurfaceFlinger's GPU compositions, gaps between the window's frames on the screen |
 | `composables.py TRACE` | which composables a composition-traced run composed, how often and for how long |
 | `firstframe.py TRACE...` | each atlas fill (`Renderer.drawMissing`): how long, glyphs drawn, glyphs from the shared cache |
 
@@ -123,6 +123,11 @@ slower than a release build: compare counts, and times only with each other.
 - A tab next to the one shown has a window of its own already: in `tabs`, the windows that
   start inside the trace depend on when the cold start's tabs got theirs. Compare a scene's
   fills one by one, and its totals only between runs with the same fills.
+- `missed` counts the frames the frame timeline blames on the app. A frame that SurfaceFlinger
+  makes late is not one of them, though it is as late on the screen: in `overview` it
+  composed most frames on the GPU (`gpu`), and the app's frames queued behind them as
+  `Buffer Stuffing`. Read `gaps` for what the screen showed: the gaps of more than 25 ms
+  between two frames of the window while it moves.
 
 ## Results
 
@@ -270,3 +275,51 @@ alternating the three states. Main thread CPU and recomposition, in ms:
   JIT, as `verify` does: in that state `title` took 1463 and 1421 ms of the main thread.
 - In the first batch, a test app of another session ran beside the runs, with a microphone
   service using about 4 % of one core, in every state alike.
+
+### 2026-11-27: the overview's cards move as stills
+
+In `overview`, in landscape, SurfaceFlinger used about 6 s of CPU in 16 s, more than the app's
+main thread and RenderThread together. Each card's pane is a layer of its own, and every
+layer that moves is placed again on each frame. With three or four cards' layers on the
+screen it composed about 300 of the 500 frames on the GPU (RenderEngine drew the window, the
+screen corners and each card's layer); in the workspace and with fewer layers it composed
+none there.
+
+Same commit, `NEIGHBOURS` (the tabs on each side that keep surfaces) changed, two runs each:
+
+| `NEIGHBOURS` | SurfaceFlinger | GPU compositions | Main thread | Main-thread frames over 16.7 ms |
+|---|---|---|---|---|
+| 2 (main) | 6109, 5994 | 303, 296 | 2066, 2054 | 161, 143 |
+| 1 | 5829, 5779 | 291, 280 | 2036, 1997 | 131, 146 |
+| 0 | 4636, 4524 | 0, 0 | 2372, 2275 | 5, 5 |
+
+The layers out of the screen cost little (1 against 2). The layers moving on the screen cost
+the GPU compositions. With 0 every card next to the centred one is a plain card, and the
+surfaces come and go as the cards pass the centre: more recomposition and main thread.
+
+So while the row moves, each preview pane is a still (`ui/PaneStill.kt`): a `PixelCopy` of
+its surface drawn by the window, and the layer hidden with the surface kept (API 34). Main
+against the stills, two runs each, in ms:
+
+| | Main | Stills |
+|---|---|---|
+| SurfaceFlinger | 6024, 6197 | 4833, 4884 |
+| GPU compositions | 293, 313 | 39, 39 |
+| Gaps over 25 ms between the window's frames, of the frames while moving | 82 of 481, 66 of 500 | 28 of 580, 36 of 582 |
+| Main-thread frames over 16.7 ms | 152, 129 | 11, 17 |
+| App frames that missed their deadline (`missed`) | 17, 16 | 35, 35 |
+| Main thread | 2014, 2019 | 2580, 2523 |
+| RenderThread | 2737, 2909 | 3671, 3556 |
+| Recomposition | 86, 63 | 99, 85 |
+
+- SurfaceFlinger takes a fifth less, and the screen skips a vsync about half as often while
+  it shows a sixth more frames. On main, RenderThread waited 5.2 and 5.4 s for buffers
+  SurfaceFlinger had not released (`dequeueBuffer`); with the stills 2.9 s.
+- The app's threads do a quarter more: they draw more frames, copy each pane once a swipe
+  (35 copies a run, 5 to 15 ms of RenderThread each, `copySurfaceInto`) and upload the copy. The frames that
+  hold a copy or show a layer again are the app's missed frames.
+- The panes take turns, one copy and one layer shown again in each frame, those on the screen
+  first. All at once (the first version) missed 72 and 62 frames; only the cards on the
+  screen, with those out of it live, saved half as much SurfaceFlinger time.
+- The surfaces stay: each render thread starts and ends as on main. A pane whose stream came
+  late after the cold start drew its first frame within one of the runs.

@@ -228,7 +228,14 @@ or drawn anew. Back on the tab the overview was opened from, the panes that were
 there are shown again with `paneResume` (`ReturnMark` in `ui/OverviewMotion.kt` decides, per
 connection, session, tab and block, once): a terminal another client holds stays that
 client's until the pane is touched. The selected tab and two tabs on each side of the one in view keep surfaces;
-a tab farther away is a plain card until it comes near. The pane area takes every gesture of
+a tab farther away is a plain card until it comes near. While the row moves (a finger or a
+throw changes its scroll), every preview pane is a still (`ui/PaneStill.kt`): its surface is
+copied with `PixelCopy` into a picture that the window draws, one pane per frame, and the
+surface's own layer is hidden. The surface stays, attached to the view and not to its
+visibility (API 34 and later), and so does the core's renderer: at rest the layer shows again
+with the core's last frame. SurfaceFlinger then moves and composes the window alone; with more
+than two cards' layers moving it composed most frames on the GPU (see [Measuring](perf.md)).
+Before API 34 the cards move live. The pane area takes every gesture of
 two or more fingers before a pane sees it, and every finger while the overview is open.
 
 The left sidebar (`ui/Sidebar.kt`) follows Rex for Mac: a toolbar (hide sidebar, Activity,

@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- Swiping through the tab overview is smoother on Android 14 and later: while the cards move, each shows a picture of its panes, and the phone puts the screen together with much less work. The panes are live again as soon as the cards stop.
+
 ### Fixed
 - A tab running OpenCode is named after its conversation, without the "OC | " that OpenCode puts before the title.
 
