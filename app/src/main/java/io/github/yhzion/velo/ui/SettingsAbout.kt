@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,10 +88,8 @@ internal fun AboutSettings(openUpdates: () -> Unit, openLicenses: () -> Unit) {
             }
         }
         GroupCard(Modifier.testTag("about-links-group")) {
-            NavigationRow(
-                "Updates", openUpdates, Modifier.semantics { if (available != null) stateDescription = "$available available" },
-                tag = "about-updates", spacing = VeloTheme.medium(10.dp),
-            ) {
+            // The release found is said by its text: no state says it again (#167).
+            NavigationRow("Updates", openUpdates, tag = "about-updates", spacing = VeloTheme.medium(10.dp)) {
                 if (available != null) Text("$available available", Modifier.testTag("about-updates-available"),
                     style = textAt(14f, FontWeight.SemiBold), color = c.accent, maxLines = 1)
                 if (dot) Box(Modifier.testTag("about-updates-dot").size(VeloTheme.sizes.dot).clip(Capsule).background(c.accent)

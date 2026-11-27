@@ -13,6 +13,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader says each menu button in settings once, such as Sound: Attention, instead of also saying the choice shown.
 - A screen reader also says the alert rows in Notifications settings, the keys in Edit order, Compose's attachment and the SSH key's buttons once, without the words shown.
 - A screen reader says each part of a sidebar tab row once: the program and panes, the tab's name, its state and folder. SSH details' Forget buttons are also said once.
+- A screen reader says the release found on About's Updates row once, instead of also saying it as the row's state.
 
 ## 2.14.0 - 2026-11-27
 
