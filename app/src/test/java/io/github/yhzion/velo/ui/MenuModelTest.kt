@@ -413,6 +413,17 @@ class MenuModelTest {
     }
 
     @Test
+    fun aPaneWithoutAProgramIsATerminalNotATab() {
+        // The server has not reported b's program yet (#181): the tab's fallback name is not the pane's.
+        val window = tiled("a", "b").copy(zoomed = "a")
+        val state = UiState(session = "s", blocks = mapOf("a" to BlockInfo(program = "zsh"), "b" to BlockInfo()))
+        assertEquals("Terminal", zoomPaneName(state, window, "b"))
+        assertEquals("Full Screen Pane: ${paneLabel(tabBlocks(window), "b")} · Terminal", fullScreenPaneCommands(window, state).single().label)
+        // A tab of one such pane is still a Tab in the sidebar.
+        assertEquals("Tab", tabTitle(state, tiled("b")))
+    }
+
+    @Test
     fun thePaletteNamesAPaneAsTheMinimapsPickerDoes() {
         // No title and a version for a program, a title that is the tab's label, and a title of two lines (#172).
         val window = tiled("a", "b", "c").copy(zoomed = "a")

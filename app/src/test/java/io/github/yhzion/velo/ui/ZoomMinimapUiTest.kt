@@ -158,6 +158,14 @@ class ZoomMinimapUiTest {
         assertTrue("$covered", covered.second != covered.first)
     }
 
+    @Test fun aPaneWithoutAProgramIsNamedTerminal() {
+        // The server has reported nothing for p0 yet (#181): the picker names it as the palette does, not as a tab.
+        zoomed = "p1"
+        show(line(2))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-cell-p0").assertContentDescriptionEquals("Pane 1 of 2, Terminal")
+    }
+
     @Test fun aFloatingCellIsTouchedOverTheTiledOne() {
         // The floating pane lies over the layout's first pane: a tap on it picks the floating pane, as on the panes.
         floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.1f, w = 0.4f, h = 0.4f))

@@ -113,7 +113,11 @@ internal fun blockedIndicator(kind: String?) = when (kind) {
     else -> TabIndicator.Waiting
 }
 
-private fun TabInfo.row(session: String, shown: Boolean): TabRow {
+/**
+ * [this] tab as the sidebar's row of [session]. A row that is one [pane] of a tab ([paneRow]) is a terminal before
+ * the server reports its program: only a tab is named "Tab" then (#181).
+ */
+private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false): TabRow {
     val executable = program.substringAfterLast('/')
     val hint = (icon ?: executable).takeUnless { it.isBlank() || VersionName.matches(it) }
     val agent = TabAgent.from(hint)
@@ -140,7 +144,7 @@ private fun TabInfo.row(session: String, shown: Boolean): TabRow {
     val name = own.ifEmpty { topic.orEmpty() }.ifEmpty { statusSummary.singleLine() }
         .ifEmpty { titles.firstOrNull { it.isNotEmpty() }.orEmpty() }
         .ifEmpty { agent?.label.orEmpty() }.ifEmpty { executable.takeUnless(VersionName::matches).orEmpty() }
-        .ifEmpty { title.takeIf { titleIsLabel }?.singleLine().orEmpty() }.ifEmpty { if (program.isEmpty()) "Tab" else "Terminal" }
+        .ifEmpty { title.takeIf { titleIsLabel }?.singleLine().orEmpty() }.ifEmpty { if (program.isEmpty() && !pane) "Tab" else "Terminal" }
     val mark = when (activity) {
         "working" -> TabIndicator.Working
         "blocked" -> blockedIndicator(kind)
@@ -179,7 +183,7 @@ internal fun WindowInfo.paneRow(state: UiState, session: String, block: String):
         activity = info?.activity ?: "idle", since = info?.since, statusTitle = info?.statusTitle.orEmpty(),
         kind = info?.kind, reportedIdle = info?.reportedIdle == true, titleIsLabel = info?.titleIsLabel == true,
         statusSummary = info?.statusSummary.orEmpty())
-        .row(session, shown = false)
+        .row(session, shown = false, pane = true)
 }
 
 /** The name the sidebar shows for [this] tab of [session]: never the server's ID-made label. */

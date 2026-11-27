@@ -10,6 +10,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - The command palette's Focus Pane and Full Screen Pane commands name each pane as the minimap's picker and the sidebar do, such as Pane 2 · zsh, so a pane without a title is no longer just Pane 2.
+- A pane whose program Velo has not heard of yet is named Terminal in the minimap's picker and the command palette, instead of Tab.
 
 ### Fixed
 - A floating pane made full screen from the menu now shows Full Screen and the minimap in the caption. The minimap draws floating panes over the tab's layout, so you can pick them or swipe to them too.
