@@ -53,6 +53,7 @@ import io.github.yhzion.velo.ui.ComposerDialog
 import io.github.yhzion.velo.ui.ComposerDraft
 import io.github.yhzion.velo.ui.ComposerTarget
 import io.github.yhzion.velo.ui.DeviceNetwork
+import io.github.yhzion.velo.ui.ErrorNotice
 import io.github.yhzion.velo.ui.deviceRow
 import io.github.yhzion.velo.ui.KeyBar
 import io.github.yhzion.velo.ui.PaneCaption
@@ -73,6 +74,7 @@ import io.github.yhzion.velo.ui.paneColumnSlot
 import io.github.yhzion.velo.ui.paneFrame
 import io.github.yhzion.velo.ui.sidebarSlot
 import io.github.yhzion.velo.ui.tabOf
+import io.github.yhzion.velo.ui.UploadToast
 import io.github.yhzion.velo.ui.theme.OverlayLayer
 import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
@@ -97,6 +99,8 @@ import kotlinx.coroutines.flow.first
 val WorkspaceScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "workspace-terminal" to { WorkspaceScene(sidebar = null) },
     "workspace-sidebar" to { WorkspaceScene(sidebar = SidebarPlace.Covers) },
+    // No board draws this: the sidebar that covers the panes holds an error notice and an upload notice (#195).
+    "workspace-sidebar-notices" to { WorkspaceScene(sidebar = SidebarPlace.Covers, notices = true) },
     "workspace-docked" to { WorkspaceScene(sidebar = SidebarPlace.Beside) },
     "workspace-panes" to { WorkspaceScene(sidebar = null) },
     // No board draws these: the rail's pane menu open (shut while MenuSpeechTest opens it), the remote
@@ -184,13 +188,19 @@ internal fun SceneLayer(content: @Composable () -> Unit) {
  * Copy command. These scenes are compared with the boards, so their captures change only with the boards.
  */
 @Composable
-private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, down: Boolean = false) = SceneLayer {
+private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, down: Boolean = false, notices: Boolean = false) = SceneLayer {
     VeloTheme(UiSize.Medium) {
         val basis = rememberSceneBasis(sidebar)
         // The core's state of the same sessions, with the shown tab alone and its panes as the scene splits them.
         val panes = remember(basis) { withPanes(basis.state, basis.count) }
         val conn = rememberFakeConnection(if (down) panes.copy(status = "error") else panes)
-        WorkspaceFrame(basis, sidebar, panes, conn, down = down, paneMenu = paneMenu, overviewOpen = false,
+        // Shown once the core's state is in: the connection clears its error when it connects.
+        if (notices) LaunchedEffect(conn) {
+            snapshotFlow { conn.connected }.first { it }
+            conn.error = SidebarError
+            conn.uploading = SidebarUpload
+        }
+        WorkspaceFrame(basis, sidebar, panes, conn, down = down, paneMenu = paneMenu, overviewOpen = false, notices = notices,
             page = RailPage(if (basis.threePanes) 2 else 1, 4),
             paneArea = { ScenePanes(basis.shape, basis.threePanes, sidebar == SidebarPlace.Beside) },
             caption = { modifier ->
@@ -209,6 +219,8 @@ private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, do
 internal fun WorkspaceFrame(
     basis: SceneBasis, sidebar: SidebarPlace?, panes: UiState, conn: HostConnection, down: Boolean, paneMenu: Boolean,
     overviewOpen: Boolean, page: RailPage?,
+    /** The sidebar holds [conn]'s notices, as the workspace's does while it covers the panes. */
+    notices: Boolean = false,
     paneArea: @Composable ColumnScope.() -> Unit,
     caption: @Composable (Modifier) -> Unit,
     strip: @Composable ColumnScope.() -> Unit,
@@ -224,7 +236,9 @@ internal fun WorkspaceFrame(
             val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), basis.state, basis.readState, active = true, removed = false)
             Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), listOf(host), sidebarSlot(sidebar), NoActions,
                 // Only the docked board's window can dock: its pin is on (WsOpenDocked).
-                settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null, state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
+                settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null,
+                notices = if (notices) { { UploadToast(conn); ErrorNotice(conn) } } else null,
+                state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
             if (sidebar == SidebarPlace.Beside) Spacer(Modifier.width(gap))
         }
         if (sidebar != SidebarPlace.Covers) Column(paneColumnSlot()) {
@@ -252,6 +266,10 @@ internal fun WorkspaceFrame(
     }
     composer?.let { target -> ComposerDialog(target, notificationPending = false, isCurrent = { true }, onClose = { composer = null }) }
 }
+
+/** The notices of the sidebar that covers the panes (workspace-sidebar-notices): a file the remote lacks, and a file sent. */
+internal const val SidebarError = "The remote has no file at /data/local/nosuch/missing-file.txt."
+internal const val SidebarUpload = "Uploading report.pdf…"
 
 /** The failure the down remote's rail says, and its one-line fix (the SSH pool's kind). */
 private const val DownFailure = "The SSH agent offers no key that studio-mac accepts."

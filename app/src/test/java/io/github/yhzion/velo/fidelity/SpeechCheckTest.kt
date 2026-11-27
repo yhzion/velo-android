@@ -45,6 +45,9 @@ class SpeechCheckTest {
         // A name said again in another case inside a longer word is not the same words: "NOTICE", "Full notice".
         assertTrue(!twice(listOf("NOTICE", "Full notice for this build", "Text")))
         assertTrue(!twice(listOf("Tailscale", "tailscale.com 1.104.1", "BSD-3-Clause")))
+        // An error notice says "Error: " before its text, in one node (#195): its text said again under it is twice.
+        assertTrue(twice(listOf("Error: The remote has no file at /tmp/x.txt.", "The remote has no file at /tmp/x.txt.")))
+        assertTrue(!twice(listOf("Error: The remote has no file at /tmp/x.txt.")))
     }
 
     // #167: a short and a full name of one thing, and one description that repeats a part of itself.

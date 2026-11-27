@@ -155,6 +155,10 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         // A pane with a title is named by its place and its title, joined by " · "; neither is pinned. The picker's items
         // have no tag, as the caption's title has ("pane-caption-title"), which joins its host and tab the same way.
         MustHear("workspace-pane-picker", "a pane named with its title") { it.node.startsWith("node at ") && it.parts.size == 1 && it.parts[0].contains(" · ") },
+        // The sidebar that covers the panes holds the notices (#195): the error notice says it is one, in one node whose
+        // text is not said again, and the upload notice says its words.
+        MustHear("workspace-sidebar-notices", "the error notice") { it.parts == listOf("Error: $SidebarError") },
+        MustHear("workspace-sidebar-notices", "the upload notice") { it.parts == listOf(SidebarUpload) },
     )
 
     /** The scenes whose state a tap opens ([Taps]), by the tag tapped: the minimap's picker over the covered pane's row (#188). */
