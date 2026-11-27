@@ -383,7 +383,8 @@ func TestNoRexGivesTheInstallSentence(t *testing.T) {
 }
 
 // The fix reads the host key file of the type the host offered, under Termux's $PREFIX
-// when the host is Termux (Termux sets PREFIX; Linux and macOS leave it unset). The
+// when the host is Termux (Termux sets PREFIX; Linux and macOS leave it unset, and the
+// quotes keep it an empty string in fish too). The
 // dialog for a new host gives the same command (SshDialogs.kt hostKeyCommand).
 func TestHostKeyChangedFixReadsTheKeyOfTheOfferedType(t *testing.T) {
 	for keyType, file := range map[string]string{
@@ -392,7 +393,7 @@ func TestHostKeyChangedFixReadsTheKeyOfTheOfferedType(t *testing.T) {
 		"ecdsa-sha2-nistp521": "ecdsa",
 		"ssh-rsa":             "rsa",
 	} {
-		want := "ssh-keygen -lf ${PREFIX:-}/etc/ssh/ssh_host_" + file + "_key.pub"
+		want := "ssh-keygen -lf \"$PREFIX\"/etc/ssh/ssh_host_" + file + "_key.pub"
 		if got := errHostKeyChanged(keyType).Fix; got != want {
 			t.Errorf("%s: fix = %q, want %q", keyType, got, want)
 		}
@@ -413,7 +414,7 @@ func TestHostKeyChangedRefusesWithoutAsking(t *testing.T) {
 
 	_, err := p.Open(ctxFor(t, 10*time.Second), srv.locator())
 	e := asError(t, err)
-	if e.Code != "host_key_changed" || e.Fix != "ssh-keygen -lf ${PREFIX:-}/etc/ssh/ssh_host_ed25519_key.pub" {
+	if e.Code != "host_key_changed" || e.Fix != "ssh-keygen -lf \"$PREFIX\"/etc/ssh/ssh_host_ed25519_key.pub" {
 		t.Fatalf("error = %+v, want host_key_changed with the ed25519 fix", e)
 	}
 	qs := a.questions()

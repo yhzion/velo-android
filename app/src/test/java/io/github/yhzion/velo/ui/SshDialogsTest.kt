@@ -37,7 +37,7 @@ class SshDialogsTest {
         assertEquals("demo_user@203.0.113.10 is new to this phone. Its ED25519 key fingerprint is", text.intro)
         assertEquals(fingerprint, text.fingerprint)
         assertEquals("Compare it on the host:", text.compare)
-        assertEquals("ssh-keygen -lf \${PREFIX:-}/etc/ssh/ssh_host_ed25519_key.pub", text.command)
+        assertEquals("ssh-keygen -lf \"\$PREFIX\"/etc/ssh/ssh_host_ed25519_key.pub", text.command)
         assertEquals("Copy command", text.copy)
         assertEquals("Cancel", text.cancel)
         assertEquals("Trust and connect", text.confirm)
@@ -45,13 +45,13 @@ class SshDialogsTest {
 
     @Test
     fun theCompareCommandReadsTheHostsKeyOfTheTypeItOffered() {
-        // The pool's host_key_changed fix picks the file the same way (errors.go). ${PREFIX:-} finds
-        // Termux's keys under its prefix and is empty on Linux and macOS.
+        // The pool's host_key_changed fix picks the file the same way (errors.go). "$PREFIX" finds
+        // Termux's keys under its prefix and is empty on Linux and macOS, in fish too.
         val ecdsa = hostKeyText(hostKey("ecdsa-sha2-nistp256"))
-        assertEquals("ssh-keygen -lf \${PREFIX:-}/etc/ssh/ssh_host_ecdsa_key.pub", ecdsa.command)
+        assertEquals("ssh-keygen -lf \"\$PREFIX\"/etc/ssh/ssh_host_ecdsa_key.pub", ecdsa.command)
         assertTrue(ecdsa.intro, ecdsa.intro.endsWith("Its ECDSA key fingerprint is"))
         val rsa = hostKeyText(hostKey("ssh-rsa"))
-        assertEquals("ssh-keygen -lf \${PREFIX:-}/etc/ssh/ssh_host_rsa_key.pub", rsa.command)
+        assertEquals("ssh-keygen -lf \"\$PREFIX\"/etc/ssh/ssh_host_rsa_key.pub", rsa.command)
         assertTrue(rsa.intro, rsa.intro.endsWith("Its RSA key fingerprint is"))
         // A login on another port says so: its key is another host:port's.
         val port = hostKeyText(hostKey(login = "ssh://alice@studio.example:2222", hostPort = "studio.example:2222"))

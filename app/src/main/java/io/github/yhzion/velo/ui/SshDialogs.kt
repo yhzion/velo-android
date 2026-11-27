@@ -84,9 +84,10 @@ internal fun keyTypeName(keyType: String): String = when {
 
 /**
  * The command that prints the host's own fingerprint of a key of [keyType], run on the host to
- * compare. It reads the file the pool's `host_key_changed` fix reads (`errHostKeyChanged`):
- * Termux keeps its host keys under `$PREFIX` and sets `PREFIX`, and Linux and macOS leave it
- * unset, so `${PREFIX:-}` reads `/etc/ssh` there.
+ * compare. It reads the file the pool's `host_key_changed` fix reads (`errHostKeyChanged`).
+ * Termux keeps its host keys under `$PREFIX/etc/ssh` and sets `PREFIX`. Linux and macOS leave
+ * `PREFIX` unset, so on them the command reads `/etc/ssh`. `"$PREFIX"` is quoted so that fish,
+ * which drops a word with an unset unquoted variable, reads it as empty too.
  */
 internal fun hostKeyCommand(keyType: String): String {
     val file = when {
@@ -94,7 +95,7 @@ internal fun hostKeyCommand(keyType: String): String {
         keyType == "ssh-rsa" -> "rsa"
         else -> "ed25519"
     }
-    return "ssh-keygen -lf \${PREFIX:-}/etc/ssh/ssh_host_${file}_key.pub"
+    return "ssh-keygen -lf \"\$PREFIX\"/etc/ssh/ssh_host_${file}_key.pub"
 }
 
 /** The words of the host key dialog. */

@@ -323,8 +323,10 @@ func keyStageStop(t Target, ids []identity) (e *Error, keys, add string) {
 
 // errHostKeyChanged's fix is the command that prints the host's own fingerprint of the
 // key type it offered, to compare with the one the phone remembers. Termux keeps its host
-// keys under $PREFIX and sets PREFIX; Linux and macOS leave it unset, so ${PREFIX:-} reads
-// /etc/ssh there. The dialog for a new host gives the same command (hostKeyCommand).
+// keys under $PREFIX/etc/ssh and sets PREFIX. Linux and macOS leave PREFIX unset, so on them
+// the command reads /etc/ssh. "$PREFIX" is quoted so that fish, which drops a word with an
+// unset unquoted variable, reads it as empty too. The dialog for a new host gives the same
+// command (hostKeyCommand).
 func errHostKeyChanged(keyType string) *Error {
 	file := "ed25519"
 	switch {
@@ -336,7 +338,7 @@ func errHostKeyChanged(keyType string) *Error {
 	return &Error{
 		Code:     "host_key_changed",
 		Sentence: "Velo blocked the connection because the SSH host key differs from the saved key. Verify the new fingerprint with the host administrator before trusting it.",
-		Fix:      "ssh-keygen -lf ${PREFIX:-}/etc/ssh/ssh_host_" + file + "_key.pub",
+		Fix:      "ssh-keygen -lf \"$PREFIX\"/etc/ssh/ssh_host_" + file + "_key.pub",
 	}
 }
 

@@ -77,7 +77,7 @@ const (
 // x/crypto/ssh implements. That leaves out SHA-1 RSA signatures (ssh-rsa), DSA, CBC
 // ciphers, diffie-hellman-group14-sha1 and hmac-sha1-96. Ed25519 host keys come first,
 // so the fingerprint asked about is the one `ssh-keygen -lf
-// ${PREFIX:-}/etc/ssh/ssh_host_ed25519_key.pub` prints on the host.
+// "$PREFIX"/etc/ssh/ssh_host_ed25519_key.pub` prints on the host.
 var (
 	kexAlgos = []string{
 		ssh.KeyExchangeMLKEM768X25519, ssh.KeyExchangeCurve25519,
