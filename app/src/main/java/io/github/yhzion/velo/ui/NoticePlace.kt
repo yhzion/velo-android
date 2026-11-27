@@ -20,17 +20,18 @@ import kotlin.math.roundToInt
  * The top of the notices, in px of the pane column: [padding] above the pane area's lower edge and [lift] over the
  * capsules, as long as the pane area (from [paneTop] to [paneBottom]) holds them with [padding] above too. A pane
  * too short for them (landscape with the keyboard up leaves one line) has them from its top down, over the
- * caption under it, so each shows a whole line.
+ * caption under it, so each shows a whole line. The column ends at the keyboard: a stack that would run past its
+ * bottom ([column] tall) moves up to end [padding] above it, and one taller than the whole column starts at its top.
  */
-fun noticeTop(paneTop: Int, paneBottom: Int, notices: Int, padding: Int, lift: Int): Int {
+fun noticeTop(paneTop: Int, paneBottom: Int, column: Int, notices: Int, padding: Int, lift: Int): Int {
     val atBottom = paneBottom - padding - lift - notices
-    return if (atBottom >= paneTop + padding) atBottom else paneTop + padding
+    return if (atBottom >= paneTop + padding) atBottom else minOf(paneTop + padding, column - padding - notices).coerceAtLeast(0)
 }
 
 /**
  * The notices, [gap] apart, over the whole pane column: placed by [noticeTop] against the [pane] area's box in
  * the column (null until it is placed), [padding] from the sides and centred between them. They are measured at
- * their own height, which a short pane area does not cut. [pane] is read only to place them: the pane area's
+ * their own height, which a short pane area does not cut, and kept inside the column. [pane] is read only to place them: the pane area's
  * moves with the keyboard place them again and compose nothing.
  */
 @Composable
@@ -43,7 +44,7 @@ internal fun PaneNotices(pane: () -> Rect?, padding: Dp, gap: Dp, lift: Dp, modi
         layout(constraints.maxWidth, constraints.maxHeight) {
             val box = pane() ?: return@layout
             val x = side + Alignment.CenterHorizontally.align(notices.width, constraints.maxWidth - side * 2, layoutDirection)
-            notices.place(IntOffset(x, noticeTop(box.top.roundToInt(), box.bottom.roundToInt(), notices.height, side, lift.roundToPx())))
+            notices.place(IntOffset(x, noticeTop(box.top.roundToInt(), box.bottom.roundToInt(), constraints.maxHeight, notices.height, side, lift.roundToPx())))
         }
     }
 }
