@@ -4,8 +4,9 @@
 #   changelog.sh section VERSION   the ### and - lines of "## VERSION" (X.Y.Z or Unreleased)
 #   changelog.sh body VERSION CODE the head of the release body: the version-code marker and the
 #                                  <!-- velo-changes --> block the app shows before updating
-#   changelog.sh pr-check BASE HEAD fail when app/ or native/ changed from the merge base of BASE
-#                                  and HEAD to HEAD, but the items under "## Unreleased" did not
+#   changelog.sh pr-check BASE HEAD fail when an item under "## Unreleased" is over 200 characters,
+#                                  or when app/ or native/ changed from the merge base of BASE and
+#                                  HEAD to HEAD without changing the items under "## Unreleased"
 #
 # CHANGELOG overrides the file for section and body; pr-check reads CHANGELOG.md from git.
 set -euo pipefail
@@ -13,6 +14,7 @@ export LC_ALL=C
 die() { echo "changelog.sh: $1" >&2; exit 1; }
 root=$(cd "$(dirname "$0")/../.." && pwd)
 changelog=${CHANGELOG:-$root/CHANGELOG.md}
+max_item_length=200
 
 check_version() {
   local n='(0|[1-9][0-9]{0,8})'
@@ -65,10 +67,46 @@ body() {
   printf '<!-- android-version-code: %d -->\n<!-- velo-changes -->\n%s\n<!-- /velo-changes -->\n' "$code" "$items"
 }
 
+# Fail if any "- " item under "## Unreleased" is over max_item_length characters (after "- ").
+# Released sections are not checked.
+check_unreleased_lengths() (
+  local lineno=0 inside=0 line heading item len bad=0
+  # Count characters, not UTF-8 bytes, to match ChangeNotes.kt's MAX_CHANGE_LENGTH.
+  { export LC_ALL=C.UTF-8; } 2>/dev/null || true
+  while IFS= read -r line || [[ -n $line ]]; do
+    lineno=$((lineno + 1))
+    if [[ $line == '## '* ]]; then
+      heading=${line%% - *}
+      if [[ $heading == '## Unreleased' ]]; then
+        inside=1
+      else
+        inside=0
+      fi
+      continue
+    fi
+    (( inside )) || continue
+    [[ $line == '- '* ]] || continue
+    item=${line#'- '}
+    len=${#item}
+    if (( len > max_item_length )); then
+      if (( bad == 0 )); then
+        echo "Items under \"## Unreleased\" in CHANGELOG.md must be at most $max_item_length characters (after \"- \"):" >&2
+      fi
+      printf '  CHANGELOG.md:%d (%d characters): %s\n' "$lineno" "$len" "$line" >&2
+      bad=1
+    fi
+  done
+  if (( bad )); then
+    echo "Shorten each item so Velo does not cut it off in What's new. See docs/releasing.md." >&2
+    exit 1
+  fi
+)
+
 pr_check() {
   local base=$1 head=$2 merge_base changed before after
   git rev-parse --verify --quiet "$head^{commit}" >/dev/null || die "'$head' is not a commit"
   merge_base=$(git merge-base "$base" "$head") || die "no merge base of '$base' and '$head'"
+  { git show "$head:CHANGELOG.md" 2>/dev/null || true; } | check_unreleased_lengths
   changed=$(git diff --name-only "$merge_base" "$head" -- app native)
   if [[ -z $changed ]]; then
     echo 'No changes under app/ or native/: no changelog entry needed.'

@@ -141,6 +141,51 @@ later_main=$(commit later-main)
 reject pr_check "$later_main" "$old_entry"
 pr_check "$later_main" "$with_entry"
 
+# pr-check rejects items under ## Unreleased over 200 characters (after "- "),
+# naming the line and its length, while leaving released sections alone.
+"${git[@]}" checkout -q -b limit "$base"
+c200=$(printf 'a%.0s' {1..200})
+c201="${c200}b"
+c250=$(printf 'r%.0s' {1..250})
+# 199 ASCII + ellipsis (U+2026, 3 UTF-8 bytes) = 200 characters, 202 bytes.
+u200="$(printf 'a%.0s' {1..199})…"
+u201="${u200}b"
+
+echo c >> "$tmp/repo/app/a.kt"
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$c200" "$c250" > "$tmp/repo/CHANGELOG.md"
+exact_200=$(commit exact-200)
+pr_check "$base" "$exact_200"
+
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$u200" "$c250" > "$tmp/repo/CHANGELOG.md"
+utf8_200=$(commit utf8-200)
+pr_check "$base" "$utf8_200"
+
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$c201" "$c250" > "$tmp/repo/CHANGELOG.md"
+over_201=$(commit over-201)
+if out=$(pr_check "$base" "$over_201" 2>&1); then
+  fail "Unexpectedly accepted 201-char Unreleased item"
+fi
+[[ $out == *'CHANGELOG.md:6'* && $out == *'201'* && $out == *"- $c201"* ]] ||
+  fail "Expected line number, length 201, and line text in error, got:"$'\n'"$out"
+
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- %s\n' \
+  "$u201" "$c250" > "$tmp/repo/CHANGELOG.md"
+utf8_201=$(commit utf8-201)
+if out=$(pr_check "$base" "$utf8_201" 2>&1); then
+  fail "Unexpectedly accepted 201-char UTF-8 Unreleased item"
+fi
+[[ $out == *'201'* ]] || fail "Expected character length 201 for UTF-8 item, got:"$'\n'"$out"
+
+# Even without app/ or native/ changes, a >200-char item under ## Unreleased fails.
+"${git[@]}" checkout -q -b changelog-only "$base"
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-01\n\n### Added\n- First.\n' \
+  "$c201" > "$tmp/repo/CHANGELOG.md"
+changelog_only_long=$(commit changelog-only-long)
+reject pr_check "$base" "$changelog_only_long"
+
 reject pr_check "$base"
 reject pr_check "$base" not-a-commit
 
