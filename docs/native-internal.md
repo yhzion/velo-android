@@ -265,7 +265,8 @@ which can wait for a GC. A thread given up during that wait, while a disconnect 
 reference is the link's, not the call's. When the thread wakes it ends without the pane and
 gives up its EGL objects. Then it gives up the window's reference (which the pane left it,
 `Ref.thread`) and frees the link, which drops the link's reference to the source. One that
-never wakes leaks all of these, and logcat has `renderer given up after … ms pane=… window=…`.
+never wakes leaks all of these, and the listener's global reference, which keeps the destroyed
+`HostConnection` reachable. Logcat has `renderer given up after … ms pane=… window=…`.
 A thread that ends in time is joined as before. After the join the pane gives up the window's
 reference and frees the link with its reference.
 

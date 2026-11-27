@@ -235,7 +235,8 @@ fn stopBound(now: i128) u64 {
 /// and once given up never again; the reference to the window it draws to is then its own. The
 /// pane frees the link after joining its thread; a thread given up frees it itself when it ends
 /// (`end`). One that never ends leaks the link, its EGL objects, the window's reference and its
-/// reference to the glyph source.
+/// reference to the glyph source, and with it the listener's global reference, which keeps the
+/// destroyed `HostConnection` reachable.
 pub const RenderLink = struct {
     gpa: std.mem.Allocator,
     /// The window the thread draws to. Its reference is the pane's until the pane gives the
