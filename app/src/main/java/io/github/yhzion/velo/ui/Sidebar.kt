@@ -77,22 +77,28 @@ internal class SidebarHost private constructor(
  */
 data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip)
 
-/** The This Device row of the node's [state]; while Android holds the network back ([paused]) its dot is Paused, unless the node is off. */
+/**
+ * The This Device row of the node's [state]; while Android holds the network back ([paused]) its
+ * dot and its line say Paused, unless the node is off, so a screen reader does not hear Running beside Paused.
+ */
 fun deviceRow(state: TailnetState, paused: Boolean): DeviceRow {
-    val word = when (state) {
-        TailnetState.Off -> "Off"
-        TailnetState.Starting -> "Starting"
-        is TailnetState.NeedsLogin -> "Needs login"
-        TailnetState.LoggedOut -> "Logged out"
-        is TailnetState.Running -> "Running"
-        is TailnetState.Error -> "Error"
-    }
+    val word = if (paused && state != TailnetState.Off) "Paused" else nodeWord(state)
     val running = state as? TailnetState.Running
     val name = running?.name?.trim()?.takeUnless { it.isEmpty() }
         ?: "This Device"
     val ip = running?.ips?.firstOrNull()
     // The dot is the Tailscale page's chip, so its words and colour agree with that page in every state.
     return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, tailnetChip(state, paused))
+}
+
+/** The node's own state in a word or two, as This Device's line says it. */
+private fun nodeWord(state: TailnetState): String = when (state) {
+    TailnetState.Off -> "Off"
+    TailnetState.Starting -> "Starting"
+    is TailnetState.NeedsLogin -> "Needs login"
+    TailnetState.LoggedOut -> "Logged out"
+    is TailnetState.Running -> "Running"
+    is TailnetState.Error -> "Error"
 }
 
 /**

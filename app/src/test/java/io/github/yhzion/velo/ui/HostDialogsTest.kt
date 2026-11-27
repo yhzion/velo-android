@@ -206,9 +206,17 @@ class HostDialogsTest {
     fun theDeviceDotIsPausedWhileAndroidHoldsTheNetworkBack() {
         val running = TailnetState.Running("velo", listOf("192.0.2.40"))
         assertEquals(TailnetChip("Paused", Status.Warning), deviceRow(running, paused = true).chip)
-        // The line under the name keeps the node's own state; only the dot says Paused.
-        assertEquals("192.0.2.40 · Running", deviceRow(running, paused = true).line)
         assertEquals(TailnetChip("Off", Status.Off), deviceRow(TailnetState.Off, paused = true).chip)
+    }
+
+    @Test
+    fun theDeviceLineSaysPausedAsItsDotDoes() {
+        // While Android holds the network back, the line under the name does not say Running beside a Paused dot (#127).
+        assertEquals("192.0.2.40 · Paused", deviceRow(TailnetState.Running("velo", listOf("192.0.2.40")), paused = true).line)
+        assertEquals("Paused", deviceRow(TailnetState.Running("velo", emptyList()), paused = true).line)
+        assertEquals("Paused", deviceRow(TailnetState.Starting, paused = true).line)
+        // An off node is not held back: its line says Off, as its dot does.
+        assertEquals("Off", deviceRow(TailnetState.Off, paused = true).line)
     }
 
     @Test
