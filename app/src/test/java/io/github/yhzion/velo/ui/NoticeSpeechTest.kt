@@ -7,9 +7,12 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,10 +26,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ApplicationProvider
+import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.HostConnection
+import io.github.yhzion.velo.PaneNotificationLaunches
 import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
@@ -58,6 +69,7 @@ import org.robolectric.annotation.GraphicsMode
  * leaves a node that another covers whole out of the tree, and TalkBack then puts the focus on the sidebar's first
  * item. An error notice says it is an error, as Velo's other errors do ("Error: …").
  */
+@OptIn(ExperimentalLayoutApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi",
@@ -80,7 +92,12 @@ class NoticeSpeechTest {
         shadowOf(manager).setEnabledAccessibilityServiceList(listOf(AccessibilityServiceInfo()))
     }
 
-    @After fun destroyConnection() { conn?.destroy() }
+    private var app: AppController? = null
+
+    @After fun destroyConnection() {
+        conn?.destroy()
+        app?.destroy()
+    }
 
     private fun connection() = fakeConnection(ApplicationProvider.getApplicationContext(), state).also { conn = it }
 
@@ -278,6 +295,69 @@ class NoticeSpeechTest {
     @Test fun theFilterKeepsTheFocusInAShortSidebarWithOneNotice() = theFilterKeepsTheFocusInAShortSidebar(241, uploading = false)
 
     @Test fun theFilterKeepsTheFocusInAShortSidebarWithTwoNotices() = theFilterKeepsTheFocusInAShortSidebar(300, uploading = true)
+
+    // The workspace itself: the sidebar that covers the panes, and the keyboard that opens from its Filter field.
+
+    /**
+     * The workspace of [c], its sidebar open over the panes, an error notice in it and the Filter field with the
+     * accessibility focus; returns the Filter's node id. The workspace once moved the notices to a box over the
+     * window, bottom centre, while the keyboard was up: over the Filter field, which Compose then left out of what a
+     * screen reader sees, so TalkBack put the focus on Toggle Sidebar; and composed anew, so it read them again.
+     */
+    private fun workspaceWithSidebarNotice(c: HostConnection): Int {
+        val app = AppController(ApplicationProvider.getApplicationContext()).also { this.app = it }
+        compose.setContent {
+            view = LocalView.current
+            keyboardShown = WindowInsets.isImeVisible
+            VeloTheme {
+                Workspace(app, c, remember { TerminalInputView(view.context) }, FoldInfo(), null, remember { PaneNotificationLaunches() },
+                    settingsOpen = false, onSettings = {}, onTailscale = {})
+            }
+        }
+        settle()
+        compose.onNodeWithTag("rail-sidebar").performClick()
+        settle()
+        c.error = missing
+        settle()
+        val filter = filterId()
+        compose.runOnIdle { view.accessibilityNodeProvider.performAction(filter, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
+        settle()
+        return filter
+    }
+
+    /** Whether Compose sees the keyboard up, as the workspace reads it. */
+    private var keyboardShown = false
+
+    /** The keyboard up, as the window tells the view: the input method's inset, shown, [height] dp tall. */
+    private fun keyboardUp(height: Int) = compose.runOnIdle {
+        val px = (height * view.resources.displayMetrics.density).toInt()
+        val insets = WindowInsetsCompat.Builder()
+            .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, px))
+            .setVisible(WindowInsetsCompat.Type.ime(), true)
+            .build()
+        ViewCompat.dispatchApplyWindowInsets(view, insets)
+    }
+
+    @Test fun theWorkspaceKeepsTheSidebarsNoticeAndTheFilterFocusWhenTheKeyboardOpens() {
+        val c = connection()
+        val filter = workspaceWithSidebarNotice(c)
+        val from = mark()
+        // Gboard on the Velvet upright: about 374 dp of 894.
+        keyboardUp(374)
+        settle()
+        assertTrue("the keyboard is up", compose.runOnIdle { keyboardShown })
+        assertEquals("one error notice", 1, compose.onAllNodesWithContentDescription("Error: $missing").fetchSemanticsNodes().size)
+        val sidebar = compose.onNodeWithTag("sidebar").getBoundsInRoot()
+        val field = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
+        val notice = compose.onNodeWithContentDescription("Error: $missing").getBoundsInRoot()
+        assertTrue("the notice $notice in the sidebar $sidebar", notice.left >= sidebar.left && notice.right <= sidebar.right &&
+            notice.top >= sidebar.top && notice.bottom <= sidebar.bottom)
+        assertTrue("the notice $notice off the Filter field $field", notice.bottom <= field.top || notice.top >= field.bottom)
+        val node = compose.runOnIdle { view.accessibilityNodeProvider.createAccessibilityNodeInfo(filter) }
+        assertTrue("the Filter field is still in the tree", node != null)
+        assertTrue("the Filter field keeps the accessibility focus", node!!.isAccessibilityFocused)
+        assertEquals("nothing read out again", emptyList<List<String>>(), readOut(from))
+    }
 
     @Test fun anErrorNoticeSaysItIsAnError() {
         val c = connection()
