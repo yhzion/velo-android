@@ -188,6 +188,9 @@ const R = struct {
     scaling: ?Scaling = null,
     /// When this thread swapped its first frame (`PaneMod.monoNow`).
     first_swap_ns: i128 = 0,
+    /// The window's size at this thread's previous `setSwapScaling`; 0 before the first.
+    prev_window_w: i32 = 0,
+    prev_window_h: i32 = 0,
     /// The frame this thread asked for itself (`askFrame`), as `Pane.frame_due_ns` has it; 0
     /// for none.
     due_ns: i128 = 0,
@@ -432,7 +435,9 @@ fn setSwapScaling(r: *R, now_ns: i128) void {
     const ww = gl.ANativeWindow_getWidth(win);
     const wh = gl.ANativeWindow_getHeight(win);
     const since = if (r.scaling == null) 0 else now_ns - r.first_swap_ns;
-    const mode = swapScaling(r.scaling, since, bw, bh, ww, wh);
+    const mode = swapScaling(r.scaling, since, bw, bh, ww, wh, r.prev_window_w, r.prev_window_h);
+    r.prev_window_w = ww;
+    r.prev_window_h = wh;
     if (mode == .scale_to_window and (bw != ww or bh != wh)) r.scaled_off_size +|= 1;
     if (r.scaling == mode) return;
     if (!setWindowScaling(win, mode)) {
@@ -768,22 +773,28 @@ pub const scale_hold_ns: i128 = 150 * std.time.ns_per_ms;
 /// Decide the scaling mode of the buffer a swap queues (#117). `mode`: what the thread's last
 /// swap queued with, null before its first; `since_first_ns`: the time since its first swap;
 /// `buffer_w`/`buffer_h`: the size of the buffer the frame is drawn to (the EGL surface's);
-/// `window_w`/`window_h`: the size the window gives buffers now.
+/// `window_w`/`window_h`: the size the window gives buffers now; `prev_window_w`/`prev_window_h`:
+/// what that size was at this thread's previous check (0 before the first).
 ///
 /// While a window sync is set, a buffer BLAST rejects makes the swap wait for good: it was the
 /// only frame, and the thread that would queue the next one is the one waiting. A FREEZE buffer
 /// is rejected when its size is neither the window's nor that of the last FREEZE buffer the
 /// window took; with none taken yet, or a scaled one last, only the window's size will do, and
 /// that changes while the window returns. So a new thread's buffers go out scaled until the
-/// hold is over and a buffer has the window's size. From then on an old-size buffer has the
+/// hold is over and a buffer has the window's size, with the window the size it had at the
+/// previous check. From then on an old-size buffer has the
 /// size of the last one taken, as on every running thread, and FREEZE stays.
-pub fn swapScaling(mode: ?Scaling, since_first_ns: i128, buffer_w: i32, buffer_h: i32, window_w: i32, window_h: i32) Scaling {
+pub fn swapScaling(mode: ?Scaling, since_first_ns: i128, buffer_w: i32, buffer_h: i32, window_w: i32, window_h: i32, prev_window_w: i32, prev_window_h: i32) Scaling {
     const m = mode orelse return .scale_to_window;
     if (m == .freeze) return .freeze;
     if (since_first_ns < scale_hold_ns) return .scale_to_window;
     // A size that could not be read proves nothing: the buffers stay scaled.
     if (buffer_w <= 0 or buffer_h <= 0 or window_w <= 0 or window_h <= 0) return .scale_to_window;
     if (buffer_w != window_w or buffer_h != window_h) return .scale_to_window;
+    // A window that moved since the last check is resizing (the keyboard's animation moves it
+    // every frame): its next update can land between this check and the queue, and BLAST then
+    // rejects this very buffer. The swap-back waits for a window that held still.
+    if (window_w != prev_window_w or window_h != prev_window_h) return .scale_to_window;
     return .freeze;
 }
 
@@ -2493,20 +2504,23 @@ test "renderer: a thousand ordinary frames of an unchanged size keep the pane's 
 const ms = std.time.ns_per_ms;
 
 test "swapScaling: a new thread's first buffer goes out scaled, whatever its size" {
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 1026, 863, 1026));
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 610, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 1026, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 610, 863, 1026, 863, 1026));
 }
 
 test "swapScaling: right after the start a buffer of the window's size still goes out scaled" {
     // #117: the window's size and its sync come within the first tens of ms of a return.
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 10 * ms, 863, 1026, 863, 1026));
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, scale_hold_ns - 1, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 10 * ms, 863, 1026, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, scale_hold_ns - 1, 863, 1026, 863, 1026, 863, 1026));
 }
 
 test "swapScaling: the hold covers a return's first tens of ms and ends before the keyboard's resize" {
     // Measured on the Velvet (#117): the stuck swaps 12 ms after the thread started, the window's
     // size changes and the transition's sync within 52 ms; the keyboard's resize at 193 ms at the
     // earliest. A buffer that is scaled when the window changes size shows scaled until the next.
+    // The swap that goes back to FREEZE is not kept away from a resize by the hold: it can come
+    // after 193 ms, inside the keyboard's animation (80 of 250 threads; 9 of them had that very
+    // buffer rejected). That is what the window's size at the previous check guards against.
     try std.testing.expect(scale_hold_ns > 52 * ms);
     try std.testing.expect(scale_hold_ns < 193 * ms);
     // The retries end within about half a second of the first swap.
@@ -2514,20 +2528,32 @@ test "swapScaling: the hold covers a return's first tens of ms and ends before t
 }
 
 test "swapScaling: after the hold a buffer of the window's size goes back to FREEZE" {
-    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, scale_hold_ns, 863, 1026, 863, 1026));
-    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, 2000 * ms, 863, 610, 863, 610));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, scale_hold_ns, 863, 1026, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, 2000 * ms, 863, 610, 863, 610, 863, 610));
 }
 
 test "swapScaling: after the hold a buffer of another size still goes out scaled" {
     // The buffer was taken before the window's last size change: as FREEZE it would be rejected.
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 610, 863, 1026));
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 1080, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 610, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 1080, 1026, 863, 1026, 863, 1026));
+}
+
+test "swapScaling: a window that changed size since the last check keeps the buffers scaled" {
+    // #117: the window moves every frame during the keyboard's animation, and its next update can
+    // land between this check and the queue; BLAST then rejects the FREEZE buffer, as 9 of 250
+    // threads showed. The swap-back waits for a window that held still since the last check.
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 200 * ms, 863, 995, 863, 995, 863, 993));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 200 * ms, 863, 995, 863, 995, 860, 995));
+    // Still since the last check: FREEZE.
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, 250 * ms, 863, 995, 863, 995, 863, 995));
+    // No check before (0x0 read, or none yet): nothing proves the window is still.
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 200 * ms, 863, 995, 863, 995, 0, 0));
 }
 
 test "swapScaling: once FREEZE, a thread stays FREEZE whatever the sizes" {
     // An old-size buffer is then the size of the last one the window took, and is not rejected.
-    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 0, 863, 610, 863, 1026));
-    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 600 * ms, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 0, 863, 610, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 600 * ms, 863, 1026, 863, 1026, 863, 1026));
 }
 
 test "scalingFrameDue: a first swap that went out scaled asks for a frame when the hold is over" {
@@ -2561,8 +2587,8 @@ test "scalingFrameDue: a thread that went back to FREEZE asks for nothing" {
 
 test "swapScaling: a size that could not be read keeps the buffers scaled" {
     // ANativeWindow_getWidth/Height answer a negative error code; eglQuerySurface leaves 0.
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 1026, -19, -19));
-    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 0, 0, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 1026, -19, -19, -19, -19));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 0, 0, 863, 1026, 863, 1026));
 }
 
 test "renderer: a size is taken once, and a pending attach-settle takes it once when it expires" {
