@@ -50,7 +50,9 @@ Each scene starts from a cold start of the app, so the glyph atlases start empty
 | `overview-out` | the overview open while every tab prints | one atlas per preview |
 
 `prose` prints `load.py prose` (words of 380 syllables, the common ones often) unless
-`VELO_PERF_TEXT` names a text file. The taps are for the LG Velvet in landscape
+`VELO_PERF_TEXT` names a text file. In `title`, the first tab's label (`t1`) names it, so the
+new titles are drawn nowhere. To measure a tab named by its title, as an agent's tab is, clear
+the label first: `rex window rename -s velo-perf 1 ""`. The taps are for the LG Velvet in landscape
 (2460 x 1080 px, 95 columns); `scenes.sh` lists the `PERF_*` variables for another screen.
 
 ## Reading
@@ -66,6 +68,24 @@ uv run --with perfetto python tools/perf/analyze.py build/perf/traces/new-title.
 | `top.py TRACE THREAD` | where one thread's time went |
 | `contention.py` | waits for the glyph rasterizer's lock |
 | `cpuplace.py` | the cost of one glyph by core kind and clock |
+| `compare.py TRACE...` | one line per trace for an A/B table: swaps, CPU per thread, recomposition, missed frames |
+| `composables.py TRACE` | which composables a composition-traced run composed, how often and for how long |
+
+### Composition tracing
+
+A release build names no composable in its trace. To see which composables each state delivery
+composes again, build a measuring APK with `tools/perf/compose-tracing.patch`: it hands the
+composer a tracer that writes every composable it composes into the app's trace, and keeps R8
+from removing the composer's trace calls.
+
+```sh
+git apply tools/perf/compose-tracing.patch
+ANDROID_HOME=$HOME/Android/Sdk gradle :app:assembleRelease
+git apply -R tools/perf/compose-tracing.patch
+```
+
+Sign and install it as above, record a scene, and read it with `composables.py`. The build is
+slower than a release build: compare counts, and times only with each other.
 
 ## Pitfalls
 
@@ -77,6 +97,9 @@ uv run --with perfetto python tools/perf/analyze.py build/perf/traces/new-title.
   streams can arrive inside a trace.
 - The app runs from the APK with JIT after a sideloaded install. `adb shell cmd package
   compile -m speed -f io.github.yhzion.velo` compiles it ahead of time; `--reset` undoes it.
+- Traces and APKs fill `/tmp` quickly. When the user's quota is full, a signed APK is cut short
+  without an error from the signer, and `adb install` fails with `INSTALL_PARSE_FAILED_NOT_APK`.
+  Check it with `apksigner verify`.
 - A change that removes work from one thread can make others slower: the cores of a cluster
   share one clock, which drops with the cluster's load. Compare CPU cycles, not only time.
 
@@ -120,3 +143,29 @@ The four threads use 30 % (default) and 23 % (low-end) less CPU. The main thread
 work but takes longer: low-end, it needs the same cycles at a 11 % lower clock; by default, it
 runs more often on a little core. The missed frames do not change: they come from Compose
 recomposing on every state delivery.
+
+### 2026-11-27: the workspace is composed without the titles
+
+The workspace read the whole state of the connection, so every state delivery composed the
+whole screen again: the panes, the rail, the caption. A new title is such a delivery, several
+times a second from an agent. The workspace now reads the state without the titles
+(`HostConnection.steady`), and what draws a title reads it where it draws it: the caption, the
+rail's wheel, the overview's cards while they show, the minimized panes, the pane picker, the
+palette and the dialogs. `title`, same commit with and without the change, means of six and two
+runs (first tab named by its label) and of four runs each (first tab named by its title):
+
+| | Label before | Label after | Title before | Title after |
+|---|---|---|---|---|
+| Main thread CPU | 2447 ms | 1801 ms | 2568 ms | 1868 ms |
+| Compose recomposition | 1617 ms | 668 ms | 1586 ms | 832 ms |
+| Main-thread frames over 16.7 ms | 75 | 4 | 79 | 35 |
+| App frames drawn | 84 | 3 | 82 | 82 |
+| App frames that missed their deadline | 78 | 3 | 79 | 78 |
+| Compose's RenderThread CPU | 546 ms | 34 ms | 518 ms | 584 ms |
+| SurfaceFlinger CPU | 1303 ms | 550 ms | 1291 ms | 1178 ms |
+
+- With the label, a title changes nothing on the screen, and the screen draws nothing.
+- With the title, the caption and the rail's wheel are composed again for each title, and only
+  they (`composables.py`). The frames still miss their deadline: each needs about 10 ms of the
+  main thread and 7 ms of RenderThread on the Velvet's little cores at a low clock.
+

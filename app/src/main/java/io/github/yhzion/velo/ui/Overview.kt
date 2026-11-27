@@ -1496,6 +1496,9 @@ internal fun TabStage(
     }
     // Read as whether the overview shows, not as its progress, which changes on each frame of its motion (#347).
     val showing = overview.showing
+    // The cards' names are the tabs' titles. [state] is without them ([HostConnection.steady]): they are read with
+    // the titles only while the cards are named, on the overview, the rail's wheel or a pane move.
+    val named = if (showing || overview.wheel || overview.paneMove != null) conn.state else state
     val displayId by remember(overview, selected.id) {
         derivedStateOf { displayAnchor(selected.id, overview.lastConfirmed, overview.anchor, rowActive = overview.showing || overview.pinching) }
     }
@@ -1585,11 +1588,11 @@ internal fun TabStage(
                     // its panes are the places ([PaneMoveOverlay]).
                     val note = overview.paneMove?.let { sourceCardNote(w, it.block, it.sourceTab) }
                     Modifier.clearAndSetSemantics {
-                        contentDescription = tabTitle(state, w)
+                        contentDescription = tabTitle(named, w)
                         if (note != null) stateDescription = note
                     }
                 } else if (showing) Modifier.clearAndSetSemantics {
-                    contentDescription = tabTitle(state, w)
+                    contentDescription = tabTitle(named, w)
                     // Compose suppresses Android ACTION_CLICK for a selected Role.Tab.
                     // This card can still be opened to close the overview on the same tab.
                     stateDescription = if (w.id == selected.id) "Selected" else "Not selected"
@@ -1602,7 +1605,7 @@ internal fun TabStage(
                     }
                     // What lifting the card away does, for those who do not swipe.
                     customActions = listOf(CustomAccessibilityAction("Close tab") { overview.dismiss(w.id, gestureEnds.dismiss) }) +
-                        tabCardMoves(shownRow, w.id, conn.connected).map { (text, move) -> CustomAccessibilityAction(text) { overview.moveTabAloud(move, tabTitle(state, w)) } }
+                        tabCardMoves(shownRow, w.id, conn.connected).map { (text, move) -> CustomAccessibilityAction(text) { overview.moveTabAloud(move, tabTitle(named, w)) } }
                 } else Modifier
                 // A grid card aside ([OverviewState.aside]) rides over its neighbours too, so one swiped towards them passes
                 // over them. Derived, so that only its start and end recompose, not each step of the finger.
@@ -1782,7 +1785,7 @@ internal fun TabStage(
                         contentAlignment = if (drum != null) Alignment.CenterEnd else Alignment.Center,
                     ) {
                         val bright = if (drum != null) slot == front else w.id == selected.id
-                        CardName(w.row(state, state.session.orEmpty(), w.id == state.window), state.status == "connected", conn.activityReadState,
+                        CardName(w.row(named, named.session.orEmpty(), w.id == named.window), named.status == "connected", conn.activityReadState,
                             bright = bright, room = if (drum != null) null else with(density) { stage.labelRoom.toDp() })
                     }
                 }

@@ -62,8 +62,9 @@ internal fun PaneMenu(
     val context = LocalContext.current
     val floating = window.floating.any { it.block == block }
     val zoomed = window.zoomed == block
-    val session = conn.state.session
-    val canCompose = expanded && session != null && conn.state.showsComposerPane(session, block)
+    // Without the titles ([HostConnection.steady]), which the menu does not show: a new one does not compose it again.
+    val session = conn.steady.session
+    val canCompose = expanded && session != null && conn.steady.showsComposerPane(session, block)
     // Kept by the menu, which stays open (unseen) while it asks; closing the menu, or another pane, ends the question.
     var pasteAsked by remember(block, expanded) { mutableStateOf<PasteAsked?>(null) }
     // Every action changes or reads the panes, so it follows the compact rule; Close only opens its dialog.
@@ -106,7 +107,7 @@ internal fun PaneMenu(
         val connected = conn.connected
         val items = paneMenu(floating, zoomed, panes.size, canCompose, window.layout != null, minimized = window.minimized,
             connected = connected, canMoveToNewTab = canMoveToNewTab(window, block),
-            canMoveToTab = onMoveToTab != null && showsMoveHandle(conn.state.windows), canStash = canStash(window, block))
+            canMoveToTab = onMoveToTab != null && showsMoveHandle(conn.steady.windows), canStash = canStash(window, block))
         Text("Split", Modifier.padding(horizontal = VeloTheme.sizes.rowPadding), style = VeloTheme.type.caption)
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             for (direction in listOf(PaneSplit.Left, PaneSplit.Right, PaneSplit.Above, PaneSplit.Below, PaneSplit.Auto)) {

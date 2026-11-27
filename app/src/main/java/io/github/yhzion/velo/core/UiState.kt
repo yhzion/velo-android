@@ -35,6 +35,19 @@ data class UiState(
     }
 }
 
+/**
+ * This state without what programs change many times a second: the titles of tabs and panes, and
+ * the titles and summaries of their reports. An agent sets its title several times a second while it
+ * works. A screen that draws none of these reads this state ([io.github.yhzion.velo.HostConnection.steady])
+ * and is not composed again for each new title.
+ */
+fun UiState.steady(): UiState = copy(
+    sessions = sessions.map { s -> s.tabs?.let { tabs -> s.copy(tabs = tabs.map(TabInfo::untitled)) } ?: s },
+    blocks = blocks.mapValues { (_, b) -> b.copy(title = "", statusTitle = "", statusSummary = "") },
+)
+
+private fun TabInfo.untitled() = copy(title = "", statusTitle = "", statusSummary = "")
+
 /** Confined to the native serialized onState callback (not to the main thread). */
 internal class StateAccumulator(private val postFullRequest: () -> Unit) {
     private var generation = 0L

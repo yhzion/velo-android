@@ -15,6 +15,7 @@ import io.github.yhzion.velo.core.CoreListener
 import io.github.yhzion.velo.core.VeloCore
 import io.github.yhzion.velo.core.StateAccumulator
 import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.core.steady
 import io.github.yhzion.velo.ui.ForwardAnswer
 import io.github.yhzion.velo.ui.LoopbackLink
 import io.github.yhzion.velo.ui.PaneCover
@@ -101,9 +102,24 @@ class HostConnection(
     /** True while the first dial waits (for the node, or the SSH pool, to start): nothing dials yet. */
     val waitingToDial: Boolean get() = waiting
 
-    var state by mutableStateOf(UiState(status = if (waitForNode) "connecting" else "idle"))
+    /** The core's state. Setting it also sets [steady] and [connected]. */
+    var state: UiState
+        get() = liveState
+        private set(value) {
+            liveState = value
+            steady = value.steady()
+            connectedNow = value.status == "connected"
+        }
+    private var liveState by mutableStateOf(UiState(status = if (waitForNode) "connecting" else "idle"))
+    /**
+     * [state] without the titles ([io.github.yhzion.velo.core.steady]): read where no title is drawn, so that
+     * a new title, which comes many times a second from an agent, does not compose that screen again. Set with
+     * [state] as a plain state: an equal value changes nothing, so its readers are not even looked at again.
+     */
+    var steady: UiState by mutableStateOf(liveState.steady())
         private set
-    override val connected: Boolean get() = state.status == "connected"
+    private var connectedNow by mutableStateOf(liveState.status == "connected")
+    override val connected: Boolean get() = connectedNow
     private val errorNote = ErrorNote()
     /** The failure notice's text ([io.github.yhzion.velo.ui.ErrorNotice]); null hides it. */
     var error: String?

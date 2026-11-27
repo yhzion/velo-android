@@ -60,7 +60,10 @@ internal fun Workspace(
     app: AppController, conn: HostConnection, input: TerminalInputView, fold: FoldInfo, notification: PaneNotificationGate?,
     launches: PaneNotificationLaunches, settingsOpen: Boolean, onSettings: () -> Unit, onTailscale: () -> Unit,
 ) {
-    val state = conn.state
+    // The state without the titles, which an agent changes many times a second: the workspace is not composed
+    // again for each. What draws a title reads [HostConnection.state] itself: the caption, the rail's wheel, the
+    // overview's cards, the minimized panes, the pane picker, the palette and the dialogs.
+    val state = conn.steady
     val s = app.settings
     val view = LocalView.current
     var sidebar by remember { mutableStateOf(false) }
@@ -317,7 +320,8 @@ internal fun Workspace(
     var moveNotice by remember(conn, state.session) { mutableStateOf<MoveNotice?>(null) }
     // A pane move was sent while the tabs were [before]: from the overview or from the pane menu, it is told alike.
     fun noteMove(block: String, place: MovePlace, before: List<WindowInfo>) {
-        moveNotice = moveNoticeAfter(moveNotice, block, place, before) { it.row(state, state.session.orEmpty(), false).ownLabel }
+        val live = conn.state
+        moveNotice = moveNoticeAfter(moveNotice, block, place, before) { it.row(live, live.session.orEmpty(), false).ownLabel }
     }
     // The pane menu's Move Pane to New Tab: the move the overview's New Tab card sends, with the same notice and Undo.
     fun moveToNewTab(block: String) {
@@ -545,7 +549,7 @@ internal fun Workspace(
         }
     }
     if (pickingPane) {
-        KeyboardPanePicker(keyboardPanes, tabPanes, focused, state.blocks, onDismiss = { pickingPane = false }) { block ->
+        KeyboardPanePicker(keyboardPanes, tabPanes, focused, conn.state.blocks, onDismiss = { pickingPane = false }) { block ->
             pickingPane = false
             menuFor = block
         }
@@ -803,7 +807,9 @@ internal fun Workspace(
                 if (covered && window != null && drawsPanes(window)) InputPausedCover(mark, state.status, radius)
                 // The minimized floating windows, at the chosen corner. Not in the overview, which has no panes to bring one back to.
                 // The row is a child of this box: a drag drops it at the nearest of its four places in this box.
-                val minimized = shownCapsules(window, state.blocks, overviewVisible, overview.paneMove != null)
+                // Their capsules are named by their titles: read only where there are some.
+                val capsuleBlocks = if (window?.minimizedLayers.isNullOrEmpty()) state.blocks else conn.state.blocks
+                val minimized = shownCapsules(window, capsuleBlocks, overviewVisible, overview.paneMove != null)
                 val corner = shownCorner(s.capsuleCorner)
                 // At a top corner the row starts below the panes' move handles and the input-paused capsule (top centre).
                 val topClearance = maxOf(PaneHandleStrip, sizes.overlayMargin + sizes.capsule)
@@ -833,8 +839,7 @@ internal fun Workspace(
             if (fold.tabletop) Spacer(Modifier.weight(1f))
             // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-            PaneCaption(window?.row(state, state.session.orEmpty(), true), connected, conn.activityReadState,
-                host = hostLabel, modifier = captionSlot(gap), compact = compactStyle)
+            ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle)
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
                 KeyBar(s.keyBar, armed, keyBarSlot(gap),
                     enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
@@ -886,7 +891,12 @@ internal fun Workspace(
                 // The free strip (#304): a plain drag scrolls the focused pane as a finger on it would; a long press turns
                 // a wheel of the session's tabs over the overview's drum, and the tab in front when the finger lifts is selected.
                 // Each tab's tile has the brand its sidebar row's has: of the agent its report names, else of its program.
-                val wheelWindows = wheelWindows(state, conn.activityReadState, connected)
+                // The names are the titles: derived from the state with them, apart from the workspace, and the strip
+                // is composed again only when a name or a tile changes, not for each title. The workspace's [state]
+                // is without the titles: the wheel reads [HostConnection.state].
+                val wheelWindows by remember(conn, connected) {
+                    derivedStateOf { wheelWindows(conn.state, conn.activityReadState, connected) }
+                }
                 RailScrubber(wheelWindows, shown = window?.id,
                     scrolls = focused != null && !panesHidden && !overviewVisible,
                     turns = connected && window != null && !panesHidden && !overviewVisible && overview.paneMove == null && !overview.pinching,
@@ -922,6 +932,8 @@ internal fun Workspace(
     }
 
     if (palette) {
+        // The commands name panes and tabs by their titles. The workspace reads them while the palette is open.
+        val live = conn.state
         val pane = focused
         val floating = pane != null && window?.floating?.any { it.block == pane } == true
         val zoomed = pane != null && window?.zoomed == pane
@@ -1005,13 +1017,13 @@ internal fun Workspace(
                 if (terminalKeyboardBeforePalette) imeRestore?.suppressRestore()
                 paletteImeRequest = !terminalKeyboardBeforePalette
             }
-        } else null) + window?.let { focusPaneCommands(it, state.blocks, focused) }.orEmpty().map { c ->
+        } else null) + window?.let { focusPaneCommands(it, live.blocks, focused) }.orEmpty().map { c ->
             // What a tap on that pane does: it leaves the pane a notification opened, then moves the focus.
             PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("focus", "block" to c.block) }
         } + state.sessions.filter { it.id != state.session }.map { s ->
             PaletteCommand("Switch to Session: ${s.label.ifEmpty { "Session" }}") { notification?.leave?.invoke(); conn.selectSession(s.id) }
         } + state.windows.filter { it.id != state.window }.map { w ->
-            PaletteCommand("Go to Tab: ${tabTitle(state, w)}", connected) { notification?.leave?.invoke(); conn.op("selectWindow", "window" to w.id) }
+            PaletteCommand("Go to Tab: ${tabTitle(live, w)}", connected) { notification?.leave?.invoke(); conn.op("selectWindow", "window" to w.id) }
         }
         CommandPalette(
             // A sidebar that covers the panes hides what commands change: they close it.
@@ -1106,6 +1118,19 @@ internal fun Workspace(
 // column, and under the panes the caption and the key bar, [gap] apart. The fidelity scenes place their parts with these too.
 
 /** The open sidebar's place in the workspace's row: the whole width beside the rail where it covers the panes, else its own width. */
+/**
+ * The caption of the shown tab ([PaneCaption]), composed apart from the [Workspace]: it reads the state with the
+ * titles, so that a new title composes the caption again and not the workspace.
+ */
+@Composable
+private fun ShownCaption(conn: HostConnection, connected: Boolean, host: String, modifier: Modifier, compact: Boolean) {
+    // Derived: a title that leaves the tab's row as it was (a tab named by its label) composes nothing again.
+    val row by remember(conn) {
+        derivedStateOf { conn.state.let { shownWindow(it)?.row(it, it.session.orEmpty(), true) } }
+    }
+    PaneCaption(row, connected, conn.activityReadState, host = host, modifier = modifier, compact = compact)
+}
+
 @Composable
 internal fun RowScope.sidebarSlot(place: SidebarPlace): Modifier =
     if (place == SidebarPlace.Covers) Modifier.weight(1f).fillMaxHeight() else Modifier.width(VeloTheme.sizes.sidebar).fillMaxHeight()

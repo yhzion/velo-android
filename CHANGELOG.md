@@ -6,6 +6,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - A terminal whose program only changes its title, rings the bell or switches a mode no longer redraws its screen, so the phone does less work while an agent updates its title many times a second.
+- A new title no longer rebuilds the whole screen: only the tab's name is drawn again where it is shown. While an agent updates its title, the app's main thread does about a quarter less work.
 
 ## 2.12.3 - 2026-11-27
 
