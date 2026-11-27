@@ -43,11 +43,11 @@ import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.Feel
+import io.github.yhzion.velo.ui.theme.ToastSurface
 import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.feel
-import io.github.yhzion.velo.ui.theme.ToastSurface
 
 /** Fold posture as observed by the activity. */
 data class FoldInfo(val tabletop: Boolean = false, val hingeTopPx: Int = 0)
@@ -836,8 +836,7 @@ internal fun Workspace(
                     .padding(bottom = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap)), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
                     UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
-                    // No timer: a clipboard file's toast stays until its send ends (#109).
-                    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload) }
+                    UploadToast(conn)
                     ErrorNotice(conn, text = ::noticeText)
                 }
             }
@@ -1115,8 +1114,18 @@ internal fun Workspace(
     ErrorNoticeTimer(conn)
     // Without the panes there is no pane area to hold the notice: the window's own safe area does.
     if (panesHidden) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.screenSafeDrawing).padding(sizes.overlayPadding)) {
-        ErrorNotice(conn, Modifier.align(Alignment.BottomCenter), ::noticeText)
+        Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
+            UploadToast(conn)
+            ErrorNotice(conn, text = ::noticeText)
+        }
     }
+}
+
+/** A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109). */
+@Composable
+private fun UploadToast(conn: HostConnection) {
+    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload) }
 }
 
 // Where each part of the workspace goes in its row (WsBar*, WsClosed*, WsOpen* boards): the open sidebar, the pane

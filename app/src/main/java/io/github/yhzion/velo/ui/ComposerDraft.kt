@@ -46,10 +46,13 @@ internal fun draftProblem(text: String): String? = when {
 internal fun usableAttachmentName(name: String?): Boolean = !name.isNullOrBlank() && name != "." && name != ".." &&
     name.length <= 255 && name.none { it == '/' || it == '\\' || it.isISOControl() } && name.encodeToByteArray().size <= 255
 
+internal const val FILE_TOO_LARGE = "Choose a file of 8 MiB or less."
+internal const val PROVIDER_STALLED = "The file provider stopped returning data."
+
 /** SIZE can be absent or wrong. Never store more than the limit; probe one byte past it for EOF. */
 internal fun readComposerBytes(input: InputStream, reportedSize: Long?): ByteArray {
     val limit = 8 * 1024 * 1024
-    fun tooLarge(): Nothing = throw IOException("Choose a file of 8 MiB or less.")
+    fun tooLarge(): Nothing = throw IOException(FILE_TOO_LARGE)
     if (reportedSize != null && reportedSize > limit) tooLarge()
     var bytes = ByteArray(reportedSize?.takeIf { it >= 0 }?.toInt() ?: DEFAULT_BUFFER_SIZE)
     var used = 0
@@ -63,7 +66,7 @@ internal fun readComposerBytes(input: InputStream, reportedSize: Long?): ByteArr
         } else {
             val n = input.read(bytes, used, bytes.size - used)
             if (n < 0) return bytes.copyOf(used)
-            if (n == 0) throw IOException("The file provider stopped returning data.")
+            if (n == 0) throw IOException(PROVIDER_STALLED)
             used += n
         }
     }

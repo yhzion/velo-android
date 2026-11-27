@@ -166,7 +166,9 @@ class HostConnection(
      * The upload toast's text while a clipboard file is read and sent ([io.github.yhzion.velo.ui.pasteClipboardFile]);
      * null hides it. Main thread. It is set before [composerRunning], so it also refuses a second Paste during the read.
      */
-    var uploading: String? by mutableStateOf(null)
+    internal var uploading: String? by mutableStateOf(null)
+    /** The paste that owns [uploading]; a step of any other paste does nothing. Main thread. */
+    internal var uploadOwner: Any? = null
     // Owned on main, as composerRunning: a download thread holds the core until it ends.
     private var downloadRunning = false
     // Owned on main, as composerRunning: threads that open, close or sweep forwards hold the core.
@@ -650,6 +652,9 @@ class HostConnection(
         if (forwarded) onForwardsChanged()
         error = null
         failure = null
+        // A clipboard paste that waits for focus or for its read ends here; its late steps do nothing.
+        uploading = null
+        uploadOwner = null
         // The core reports nothing more: a write it was checking or sending may have gone out.
         val writes = paneWrites.values.toList()
         paneWrites.clear()
