@@ -154,20 +154,141 @@ const R = struct {
     bg_count: usize = 0,
     /// Where the keyboard's composition starts in `frame`; it runs to the end.
     preedit_start: usize = 0,
+    /// What the window shows: the last frame `present` handed it (`remember`). A frame that
+    /// would draw the same is not drawn again (`drawsShown`).
+    shown: Look = .{},
+    shown_frame: std.ArrayList(Inst) = .empty,
+    /// The images below the text, then the ones above it, with their textures.
+    shown_images: std.ArrayList(Inst) = .empty,
+    shown_image_tex: std.ArrayList(gl.GLuint) = .empty,
+    /// The last `placeImages` made the texture of an image, or made it again.
+    images_loaded: bool = false,
+    /// The frame `build` made draws what the window shows: `present` draws nothing.
+    same: bool = false,
+    /// When the last frame began to build (`PaneMod.monoNow`).
+    build_ns: i128 = 0,
 
     /// `run`'s drawing. `build` is called with the pane lock held.
     pub fn build(r: *R) bool {
+        r.build_ns = PaneMod.monoNow();
         return buildFrame(r) catch false;
     }
 
     pub fn present(r: *R) bool {
+        if (r.same) {
+            Trace.begin("Renderer.unchanged");
+            defer Trace.end();
+            paceUntil(r.build_ns + unchanged_frame_ns);
+            return true;
+        }
         drawFrame(r);
         // Blocks until vsync (swap interval 1).
-        if (gl.eglSwapBuffers(r.dpy, r.surf) != 0) return true;
+        if (gl.eglSwapBuffers(r.dpy, r.surf) != 0) {
+            remember(r);
+            return true;
+        }
         logWarn("renderer swap failed");
         return false;
     }
 };
+
+/// What `drawFrame` draws a frame with, besides its quads and the textures they sample.
+const Look = struct {
+    /// False until a frame is shown, and after one could not be remembered.
+    valid: bool = false,
+    view: [2]u32 = .{ 0, 0 },
+    origin: [2]f32 = .{ 0, 0 },
+    clear_rgb: [3]u8 = .{ 0, 0, 0 },
+    /// Where the passes start in the frame's quads, and how many images are below the text.
+    bg_count: usize = 0,
+    preedit_start: usize = 0,
+    images_below: usize = 0,
+    /// The cell and glyph sizes, which choose how the atlas is sampled.
+    cell: [2]u32 = .{ 0, 0 },
+    glyph: [2]u32 = .{ 0, 0 },
+
+    fn of(r: *const R) Look {
+        return .{
+            .valid = true,
+            .view = .{ r.view_w, r.view_h },
+            .origin = r.origin,
+            .clear_rgb = r.clear_rgb,
+            .bg_count = r.bg_count,
+            .preedit_start = r.preedit_start,
+            .images_below = r.img_below.items.len,
+            .cell = .{ r.cell_w, r.cell_h },
+            .glyph = .{ r.glyph_w, r.glyph_h },
+        };
+    }
+};
+
+/// The least time from the start of one build to the next, after a frame that draws nothing
+/// new: about a frame of a 120 Hz display. A swap would have waited for the display. Without
+/// this wait, a stream of writes that change nothing on the screen would be built as fast as
+/// it comes, each build taking the pane lock from the data thread.
+const unchanged_frame_ns: i128 = 8 * std.time.ns_per_ms;
+
+fn paceUntil(due_ns: i128) void {
+    const left = due_ns - PaneMod.monoNow();
+    if (left <= 0) return;
+    var ts: std.c.timespec = .{ .sec = 0, .nsec = @intCast(left) };
+    _ = std.c.nanosleep(&ts, null);
+}
+
+/// Called with the pane lock held, once a frame is built: whether it draws what the window
+/// shows already, so that `present` need not hand it the same again. Writes that leave the
+/// screen as it is make such frames: a new title, a bell, a mode. The frame is drawn all the
+/// same after an attach in place (`Pane.present_due`), and while frames are how the window
+/// gets a buffer of its size: during an attach-settle (`settling`, also on the frame that
+/// spends it), while the pane's surface has another size than the buffer answered, and when
+/// the frame asks for the next one itself.
+fn drawsShown(r: *R, settling: bool) bool {
+    const p = r.pane;
+    const due = p.present_due;
+    p.present_due = false;
+    if (due or settling or p.wake or p.settle_frames > 0) return false;
+    if (r.view_w != p.surface_w or r.view_h != p.surface_h) return false;
+    if (!r.shown.valid or r.images_loaded) return false;
+    if (!std.meta.eql(Look.of(r), r.shown)) return false;
+    if (anyDirty(&r.atlas.mask) or anyDirty(&r.atlas.color)) return false;
+    if (!sameQuads(r.frame.items, r.shown_frame.items)) return false;
+    const below = r.img_below.items.len;
+    const above = r.img_above.items.len;
+    if (r.shown_images.items.len != below + above) return false;
+    return sameQuads(r.img_below.items, r.shown_images.items[0..below]) and
+        sameQuads(r.img_above.items, r.shown_images.items[below..]) and
+        std.mem.eql(gl.GLuint, r.img_tex_below.items, r.shown_image_tex.items[0..below]) and
+        std.mem.eql(gl.GLuint, r.img_tex_above.items, r.shown_image_tex.items[below..]);
+}
+
+fn anyDirty(plane: *const AtlasMod.Plane) bool {
+    return std.mem.indexOfScalar(bool, plane.dirty.items, true) != null;
+}
+
+fn sameQuads(a: []const Inst, b: []const Inst) bool {
+    return std.mem.eql(u8, std.mem.sliceAsBytes(a), std.mem.sliceAsBytes(b));
+}
+
+/// After a swap: the frame is what the window shows. One that cannot be kept is forgotten,
+/// and the next frame is drawn.
+fn remember(r: *R) void {
+    keepShown(r) catch {
+        r.shown.valid = false;
+    };
+}
+
+fn keepShown(r: *R) !void {
+    r.shown.valid = false;
+    r.shown_frame.clearRetainingCapacity();
+    try r.shown_frame.appendSlice(r.gpa, r.frame.items);
+    r.shown_images.clearRetainingCapacity();
+    try r.shown_images.appendSlice(r.gpa, r.img_below.items);
+    try r.shown_images.appendSlice(r.gpa, r.img_above.items);
+    r.shown_image_tex.clearRetainingCapacity();
+    try r.shown_image_tex.appendSlice(r.gpa, r.img_tex_below.items);
+    try r.shown_image_tex.appendSlice(r.gpa, r.img_tex_above.items);
+    r.shown = Look.of(r);
+}
 
 pub fn releaseWindow(window: *anyopaque) void {
     gl.ANativeWindow_release(window);
@@ -395,6 +516,9 @@ fn teardown(r: *R) void {
     r.img_above.deinit(r.gpa);
     r.img_tex_below.deinit(r.gpa);
     r.img_tex_above.deinit(r.gpa);
+    r.shown_frame.deinit(r.gpa);
+    r.shown_images.deinit(r.gpa);
+    r.shown_image_tex.deinit(r.gpa);
     r.scratch.deinit(r.gpa);
     r.atlas.deinit();
 }
@@ -440,6 +564,8 @@ fn takeSurfaceSize(r: *R, w: u32, h: u32) void {
 /// Called with the pane lock held: snapshot terminal → instance lists.
 fn buildFrame(r: *R) !bool {
     const p = r.pane;
+    // Before the take below spends the settle's last frame: that frame is drawn too.
+    const settling = p.settle_frames > 0;
     // The EGL surface has the size of the buffer it draws to. That follows the window's
     // size (rotation, unfold, an attach in place) a buffer late, so the size an attach
     // in place gave stands until the buffer has it or the settle's last frame is due. That
@@ -461,6 +587,7 @@ fn buildFrame(r: *R) !bool {
     try assembleFrame(r, colors);
     // The offset rests on rows, a frame at a time: the next frame asks for itself.
     if (p.scrollStepLocked(PaneMod.monoNow())) p.wake = true;
+    r.same = drawsShown(r, settling);
     return true;
 }
 
@@ -1006,6 +1133,7 @@ fn placeImages(r: *R, textures: anytype) !void {
     r.img_above.clearRetainingCapacity();
     r.img_tex_below.clearRetainingCapacity();
     r.img_tex_above.clearRetainingCapacity();
+    r.images_loaded = false;
     if (c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR, @ptrCast(&r.images_it)) != c.GHOSTTY_SUCCESS) return;
     var it = r.images.valueIterator();
     while (it.next()) |t| t.seen = false;
@@ -1013,7 +1141,11 @@ fn placeImages(r: *R, textures: anytype) !void {
     while (c.ghostty_render_state_image_iterator_next(r.images_it)) {
         const image = reportedImage(r);
         // A texture stays as long as the terminal reports its image, on the viewport or not.
-        const tex = cachedTexture(r, image.id, image.gen) orelse (try textures.load(r, image.id, image.gen)) orelse continue;
+        const tex = cachedTexture(r, image.id, image.gen) orelse blk: {
+            const made = (try textures.load(r, image.id, image.gen)) orelse continue;
+            r.images_loaded = true;
+            break :blk made;
+        };
         const inst = cut(image.inst, r.viewport[0], r.viewport[1]) orelse continue;
         if (image.above) {
             try r.img_above.append(r.gpa, inst);
@@ -1399,6 +1531,9 @@ const TestRenderer = struct {
         t.r.img_above.deinit(gpa);
         t.r.img_tex_below.deinit(gpa);
         t.r.img_tex_above.deinit(gpa);
+        t.r.shown_frame.deinit(gpa);
+        t.r.shown_images.deinit(gpa);
+        t.r.shown_image_tex.deinit(gpa);
     }
 
     /// One frame without a window, as `buildFrame` makes it when the buffer does not answer:
@@ -1420,7 +1555,113 @@ const TestRenderer = struct {
     fn placeImagesWith(t: *TestRenderer, textures: anytype) !void {
         try placeImages(&t.r, textures);
     }
+
+    /// A frame as `run` makes one, the wake taken first: whether `present` would hand it to
+    /// the window. `textures` places the images too (null: the frame keeps the ones it has).
+    fn frame(t: *TestRenderer, textures: anytype) !bool {
+        t.r.pane.wake = false;
+        const settling = t.r.pane.settle_frames > 0;
+        try t.build();
+        if (@TypeOf(textures) != @TypeOf(null)) try t.placeImagesWith(textures);
+        return !drawsShown(&t.r, settling);
+    }
+
+    /// What `present` keeps of a frame it hands the window, without the GL: the atlas pages
+    /// it uploads are clean afterwards.
+    fn show(t: *TestRenderer) void {
+        for (t.r.atlas.mask.dirty.items) |*d| d.* = false;
+        for (t.r.atlas.color.dirty.items) |*d| d.* = false;
+        remember(&t.r);
+    }
 };
+
+test "a frame that draws what the window shows is not drawn again: a title is not, a cell is" {
+    var source: CountingSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = CountingSource.raster });
+    defer p.destroy();
+    p.setFontSizePx(10);
+    p.write("abc");
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+
+    try std.testing.expect(try t.frame(null)); // the window shows nothing yet
+    t.show();
+    try std.testing.expect(!try t.frame(null)); // woken for nothing new
+    p.write("\x1b]0;building\x07"); // the program sets its title, as agents do many times a second
+    try std.testing.expect(!try t.frame(null));
+    p.write("\x07"); // a bell
+    try std.testing.expect(!try t.frame(null));
+
+    p.write("d"); // a cell
+    try std.testing.expect(try t.frame(null));
+    t.show();
+    p.write("\x1b[1;1H"); // the cursor
+    try std.testing.expect(try t.frame(null));
+    t.show();
+    try std.testing.expect(!try t.frame(null));
+    p.setScale(1.5, true); // a pinch: other cells, the same glyphs
+    try std.testing.expect(try t.frame(null));
+}
+
+test "the window gets a frame that draws the same after an attach in place, while it settles and while its buffer lags" {
+    var source: CountingSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = CountingSource.raster });
+    defer p.destroy();
+    p.setFontSizePx(10);
+    p.surface_w = 640;
+    p.surface_h = 400;
+    p.write("abc");
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    _ = try t.frame(null);
+    t.show();
+
+    p.present_due = true; // an attach in place
+    try std.testing.expect(try t.frame(null));
+    try std.testing.expect(!try t.frame(null)); // once
+    p.settle_frames = 1; // the last frame of an attach-settle, which spends it at the take
+    try std.testing.expect(try t.frame(null));
+    p.settle_frames = 0;
+
+    // The frame asks for the next one itself (the scroll offset rests a frame at a time).
+    p.wake = false;
+    try t.build();
+    p.wake = true;
+    try std.testing.expect(!drawsShown(&t.r, false));
+
+    // The pane has a size the window's buffer does not answer yet: drawing gets it one.
+    p.wake = false;
+    try t.build();
+    p.surface_w = 320;
+    try std.testing.expect(!drawsShown(&t.r, false));
+}
+
+test "a frame whose quads are the same is drawn when a glyph or an image under them is new" {
+    var source: CountingSource = .{};
+    const p = try paneWithHistory(&source);
+    defer p.destroy();
+    writeImageAbove(p);
+    _ = p.pan(0, 12, 0, 0); // one row back: the image is on the viewport
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    var textures: CountingTextures = .{};
+
+    try std.testing.expect(try t.frame(&textures));
+    try std.testing.expectEqual(@as(usize, 1), textures.loads);
+    t.show();
+    try std.testing.expect(!try t.frame(&textures)); // placed from the texture it has
+
+    t.r.images.getPtr(1).?.generation += 1; // the image is sent again: its texture is made again
+    try std.testing.expect(try t.frame(&textures));
+    try std.testing.expectEqual(@as(usize, 2), textures.loads);
+    t.show();
+    try std.testing.expect(!try t.frame(&textures));
+
+    t.r.atlas.mask.dirty.items[0] = true; // a glyph drawn into the atlas, where an old one was
+    try std.testing.expect(try t.frame(&textures));
+    t.show();
+    try std.testing.expect(!try t.frame(&textures));
+}
 
 fn cellOf(p: *Pane) Pane.CellSize {
     p.lock.lock();

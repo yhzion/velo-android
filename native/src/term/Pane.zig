@@ -408,6 +408,10 @@ pub const Pane = struct {
     surface_h: u32 = 0,
     /// Set whenever the render thread should draw a new frame.
     wake: bool = true,
+    /// The next frame goes to the window even when it draws what the window shows already:
+    /// an attach in place may come with a window that waits for a buffer. Other frames that
+    /// draw the same are not drawn again (`Renderer.drawsShown`).
+    present_due: bool = true,
     /// Ends the names of this pane's threads (`Trace.blockTag` of its block); empty until set.
     thread_tag: [4]u8 = @splat(0),
     thread_tag_len: u8 = 0,
@@ -668,6 +672,7 @@ pub const Pane = struct {
                 self.settle_frames = frames_after_resize;
             }
             self.wake = true;
+            self.present_due = true;
             self.lock.signal();
         }
         self.lock.unlock();
