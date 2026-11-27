@@ -262,5 +262,8 @@ internal class BoardKeys(val fake: FakeKeys = FakeKeys()) : SshKeyTool by fake {
 // The board's public key line, so the fingerprints the app shows are the board's too.
 private const val BoardPhoneKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK7v1Qm3xR9tY2b velo-phone"
 
-/** The SetSsh block's imported key: an rsa key without a comment. Its digest is the scene's own (tools/fidelity/known-text.json). */
+/**
+ * The SetSsh block's imported key: an rsa key without a comment. The board draws its digest, so new bytes show as a
+ * fidelity difference (docs/fidelity.md).
+ */
 private val BoardImportedKey = openSshPem("ssh-rsa", ByteArray(32) { (it * 7).toByte() }).first

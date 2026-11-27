@@ -19,7 +19,7 @@ It takes about a minute for one screen and a few minutes for the whole canvas. T
 
 | File | Content |
 |---|---|
-| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, new and known text differences, fills |
+| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, new and known text differences, label differences, fills |
 | `report.json` | The same numbers for tools |
 | `boards/<Board>.json`, `.png` | Every `data-el` element of a board (box in dp, text, colours), its rendered text boxes, and the board's render |
 | `app/<screen>@<device>.json`, `.png` | Every testTag node of the app scene: box in dp, text; the app's screenshot |
@@ -144,7 +144,7 @@ follows the canvas. A canvas detail the app does not show at all follows the app
 
 The SSH key boards draw the imported key's name, fingerprint and remove button `aria-label` with the
 digest of the rsa key `SettingsScenes.kt` imports (`BoardImportedKey`), so these canvas strings follow
-the scene's key bytes and a change to that key shows as a new text difference.
+the scene's key bytes and a change to that key shows as new text differences (and the remove label as a label difference).
 
 **Remaining blind spot and why text colour is not compared.** A change of text colour, weight, or
 within-box size inside a board text box (and copy inside a wrapper whose Compose node carries no

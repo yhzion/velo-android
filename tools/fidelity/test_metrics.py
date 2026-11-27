@@ -100,6 +100,8 @@ class PairingTest(unittest.TestCase):
             ({"name": "row", "label": None}, {"tag": "row", "label": "Channel, Stable"}),
             ({"name": "dot", "label": "Waiting  for an answer"}, {"tag": "dot", "label": "Waiting for an answer"}),
             ({"name": "chip", "label": "Control"}, {"tag": "chip", "label": "Ctrl"}),
+            # A blank label (aria-label="" or an empty contentDescription) counts as no label.
+            ({"name": "blank", "label": "  "}, {"tag": "blank", "label": "Back"}),
         ]
         compared, diffs = m.label_diffs(pairs)
         self.assertEqual(compared, 2)
