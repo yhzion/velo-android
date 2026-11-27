@@ -223,3 +223,128 @@ test "attach: the VM attaches a native thread under the name the thread has (#33
     other.join();
     try std.testing.expectEqualStrings("velocore", FakeVm.asked[0..FakeVm.asked_len]);
 }
+
+const pane = @import("pane");
+const glyphs = @import("glyphs.zig");
+
+/// A JNIEnv for the glyph source (`glyphs.Glyphs`): it counts the global references and finds
+/// every method, or none. A VM that has it for every thread (`ListenerVm`) lets `jni.attach`
+/// return it anywhere.
+const FakeListener = struct {
+    /// What `Env` points to: the function table.
+    table: c.JNIEnv = &functions,
+    /// Global references made and not deleted yet.
+    globals: usize = 0,
+    deleted: usize = 0,
+    /// The thread that deleted the last one.
+    deleted_on: ?std.Thread.Id = null,
+    /// GetMethodID finds nothing and leaves an exception.
+    no_method: bool = false,
+    exception: bool = false,
+
+    const functions: c.JNINativeInterface = .{
+        .NewGlobalRef = newGlobalRef,
+        .DeleteGlobalRef = deleteGlobalRef,
+        .GetObjectClass = getObjectClass,
+        .DeleteLocalRef = deleteLocalRef,
+        .GetMethodID = getMethodId,
+        .ExceptionCheck = exceptionCheck,
+        .ExceptionDescribe = exceptionDescribe,
+        .ExceptionClear = exceptionClear,
+    };
+
+    /// Any jobject: it only has to be non-null.
+    var some_object: u8 = 0;
+    var some_method: u8 = 0;
+
+    fn env(self: *FakeListener) Env {
+        return &self.table;
+    }
+
+    fn of(e: [*c]c.JNIEnv) *FakeListener {
+        return @fieldParentPtr("table", @as(*c.JNIEnv, @ptrCast(e)));
+    }
+
+    fn newGlobalRef(e: [*c]c.JNIEnv, _: c.jobject) callconv(.c) c.jobject {
+        of(e).globals += 1;
+        return @ptrCast(&some_object);
+    }
+
+    fn deleteGlobalRef(e: [*c]c.JNIEnv, _: c.jobject) callconv(.c) void {
+        const self = of(e);
+        self.globals -= 1;
+        self.deleted += 1;
+        self.deleted_on = std.Thread.getCurrentId();
+    }
+
+    fn getObjectClass(_: [*c]c.JNIEnv, _: c.jobject) callconv(.c) c.jclass {
+        return @ptrCast(&some_object);
+    }
+
+    fn deleteLocalRef(_: [*c]c.JNIEnv, _: c.jobject) callconv(.c) void {}
+
+    fn getMethodId(e: [*c]c.JNIEnv, _: c.jclass, _: [*c]const u8, _: [*c]const u8) callconv(.c) c.jmethodID {
+        const self = of(e);
+        if (self.no_method) {
+            self.exception = true;
+            return null;
+        }
+        return @ptrCast(&some_method);
+    }
+
+    fn exceptionCheck(e: [*c]c.JNIEnv) callconv(.c) c.jboolean {
+        return @intFromBool(of(e).exception);
+    }
+
+    fn exceptionDescribe(_: [*c]c.JNIEnv) callconv(.c) void {}
+
+    fn exceptionClear(e: [*c]c.JNIEnv) callconv(.c) void {
+        of(e).exception = false;
+    }
+};
+
+/// A JavaVM that has attached every thread already, with `env`.
+const ListenerVm = struct {
+    var functions: c.struct_JNIInvokeInterface = .{ .GetEnv = getEnv };
+    var vm: c.JavaVM = &functions;
+    var env: Env = null;
+
+    fn getEnv(_: [*c]c.JavaVM, raw: [*c]?*anyopaque, _: c.jint) callconv(.c) c.jint {
+        raw.* = @ptrCast(env);
+        return c.JNI_OK;
+    }
+};
+
+test "glyph source: its own reference to the listener goes with its last holder, on that holder's thread (#178)" {
+    // jni.zig's `Handle` holds the source's first reference and each render link one more. A
+    // render thread its pane gave up may be the last: the reference is deleted there.
+    var java: FakeListener = .{};
+    ListenerVm.env = java.env();
+    _ = jni.onLoad(&ListenerVm.vm);
+    defer _ = jni.onLoad(null);
+    const source = (try glyphs.Glyphs.create(java.env(), @ptrCast(&FakeListener.some_object))).source();
+    try std.testing.expectEqual(1, java.globals); // its own, apart from the Handle's
+
+    source.take(); // a render thread's link
+    source.drop(); // the Handle goes
+    try std.testing.expectEqual(1, java.globals);
+
+    const Last = struct {
+        var id: ?std.Thread.Id = null;
+        fn run(s: pane.GlyphSource) void {
+            id = std.Thread.getCurrentId();
+            s.drop();
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Last.run, .{source});
+    thread.join();
+    try std.testing.expectEqual(0, java.globals);
+    try std.testing.expectEqual(1, java.deleted);
+    try std.testing.expectEqual(Last.id, java.deleted_on);
+}
+
+test "glyph source: a listener without rasterizeGlyph keeps no reference to it (#178)" {
+    var java: FakeListener = .{ .no_method = true };
+    try std.testing.expectError(error.MethodNotFound, glyphs.Glyphs.create(java.env(), @ptrCast(&FakeListener.some_object)));
+    try std.testing.expectEqual(0, java.globals);
+}

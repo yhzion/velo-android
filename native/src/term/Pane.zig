@@ -34,6 +34,40 @@ pub const GlyphSource = struct {
     /// What this source drew, for every pane that has the source. Null: each render thread
     /// asks for what its own atlas lacks.
     cache: ?*GlyphCache = null,
+    /// Who keeps the source alive (#178). Null: the source outlives every render thread that
+    /// can call it (the host tests' and the probe's).
+    refs: ?*Refs = null,
+
+    /// The holders of a source: its owner (jni.zig's `Handle`) and each render thread's link
+    /// (`RenderLink`). A pane may give its thread up while the thread is in the source, and the
+    /// owner may then go. The last holder to let go frees the source.
+    pub const Refs = struct {
+        /// Starts with the owner's reference.
+        count: std.atomic.Value(u32) = .init(1),
+        /// Frees the source. The last `drop` calls it once, on its own thread.
+        free: *const fn (refs: *Refs) void,
+
+        /// Only by one who holds a reference already, so the count is never 0 here.
+        pub fn take(r: *Refs) void {
+            const before = r.count.fetchAdd(1, .monotonic);
+            std.debug.assert(before > 0);
+        }
+
+        pub fn drop(r: *Refs) void {
+            const before = r.count.fetchSub(1, .acq_rel);
+            std.debug.assert(before > 0);
+            if (before == 1) r.free(r);
+        }
+    };
+
+    /// A reference for one more holder (`Refs.take`); nothing for a source without `refs`.
+    pub fn take(s: GlyphSource) void {
+        if (s.refs) |r| r.take();
+    }
+
+    pub fn drop(s: GlyphSource) void {
+        if (s.refs) |r| r.drop();
+    }
 };
 
 pub const Theme = struct {
@@ -200,12 +234,18 @@ fn stopBound(now: i128) u64 {
 /// it gave up is still stuck. So the thread touches the pane only between `enter` and `leave`,
 /// and once given up never again; the reference to the window it draws to is then its own. The
 /// pane frees the link after joining its thread; a thread given up frees it itself when it ends
-/// (`end`). One that never ends leaks the link, its EGL objects and the window's reference.
+/// (`end`). One that never ends leaks the link, its EGL objects, the window's reference and its
+/// reference to the glyph source.
 pub const RenderLink = struct {
     gpa: std.mem.Allocator,
     /// The window the thread draws to. Its reference is the pane's until the pane gives the
     /// thread up.
     window: *anyopaque,
+    /// The glyph source the thread draws with, outside the pane. The link holds a reference to it
+    /// from `create` until the link is freed (#178): the thread calls the source only while it has
+    /// the link, so the source outlives it, also when the pane gave it up in the source and the
+    /// source's owner went meanwhile.
+    glyphs: GlyphSource,
     lock: Lock = .{},
     /// The thread is between `enter` and `leave`.
     in_pane: bool = false,
@@ -214,14 +254,19 @@ pub const RenderLink = struct {
     /// The pane gave the thread up (`waitEnd`): the thread enters no more.
     given_up: bool = false,
 
-    pub fn create(gpa: std.mem.Allocator, window: *anyopaque) !*RenderLink {
+    /// Called by the pane, which has the source: the count is not 0.
+    pub fn create(gpa: std.mem.Allocator, window: *anyopaque, glyphs: GlyphSource) !*RenderLink {
         const l = try gpa.create(RenderLink);
-        l.* = .{ .gpa = gpa, .window = window };
+        glyphs.take();
+        l.* = .{ .gpa = gpa, .window = window, .glyphs = glyphs };
         return l;
     }
 
+    /// Frees the link and drops its reference to the glyph source, which may free the source.
     pub fn destroy(l: *RenderLink) void {
+        const glyphs = l.glyphs;
         l.gpa.destroy(l);
+        glyphs.drop();
     }
 
     /// The thread's side: whether it may touch the pane, until `leave`. False once the pane
@@ -261,7 +306,8 @@ pub const RenderLink = struct {
 
     /// The thread's last act, after it gave up its EGL surface. A thread the pane waits for says
     /// it is done, and the pane joins it and frees the link. One the pane gave up gives up the
-    /// window's reference and frees the link itself.
+    /// window's reference and frees the link itself, and with it the link's reference to the
+    /// glyph source: the last one, once the source's owner went, frees the source here.
     pub fn end(l: *RenderLink) void {
         l.lock.lock();
         const given_up = l.given_up;
@@ -270,7 +316,7 @@ pub const RenderLink = struct {
         l.lock.unlock();
         if (!given_up) return;
         releaseWindow(l.window);
-        l.gpa.destroy(l);
+        l.destroy();
     }
 
     /// The pane's side, once it asked the thread to quit: wait for the thread to end, at most
@@ -896,7 +942,7 @@ pub const Pane = struct {
     /// where `link` is the thread's `RenderLink`. `startRenderer` starts `Renderer.threadMain`; the
     /// host tests start a drawing of their own. The window's reference is not touched here.
     pub fn startThread(self: *Pane, window: *anyopaque, width_px: u32, height_px: u32, comptime body: anytype, extra: anytype) StartError!void {
-        const link = try RenderLink.create(self.gpa, window);
+        const link = try RenderLink.create(self.gpa, window, self.glyphs);
         self.lock.lock();
         self.window = window;
         self.surface_w = width_px;

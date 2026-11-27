@@ -153,7 +153,8 @@ pub fn build(b: *std.Build) !void {
     }
     if (jni_source) |source| {
         // The string conversions in sys/jni.zig, and `CText` against a fake JNIEnv. Needs
-        // the NDK only for jni.h.
+        // the NDK only for jni.h. Also the glyph source's references (sys/glyphs.zig), which
+        // takes its types from `pane`.
         const mod = b.createModule(.{
             .root_source_file = b.path("src/sys/test_jni.zig"),
             .target = host,
@@ -161,6 +162,7 @@ pub fn build(b: *std.Build) !void {
             .link_libc = true,
         });
         mod.addImport("jni_c", b.createModule(.{ .root_source_file = source }));
+        mod.addImport("pane", mods.pane);
         const exe = b.addTest(.{ .name = "test-jni", .root_module = mod, .filters = test_filters });
         test_step.dependOn(&b.addRunArtifact(exe).step);
     }

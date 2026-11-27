@@ -62,7 +62,9 @@ const Handle = struct {
     on_pane_screen: c.jmethodID,
     on_reconnect_token: c.jmethodID,
     on_error: c.jmethodID,
-    glyphs: glyphs.Glyphs,
+    /// The glyph source of the core's panes, with the Handle's reference to it: a render thread
+    /// its pane gave up may outlive the Handle, and it holds a reference of its own (#178).
+    glyphs: *glyphs.Glyphs,
     /// CA directories passed to `Core.create`; kept until `destroy`.
     ca_dirs: [][]u8,
 
@@ -70,6 +72,9 @@ const Handle = struct {
         if (listener == null) return error.NullListener;
         const global = jni.newGlobalRef(env, listener) orelse return error.OutOfMemory;
         errdefer jni.deleteGlobalRef(env, global);
+
+        const source = try glyphs.Glyphs.create(env, listener);
+        errdefer source.refs.drop();
 
         const self = try gpa.create(Handle);
         errdefer gpa.destroy(self);
@@ -86,10 +91,7 @@ const Handle = struct {
             .on_state = try jni.methodId(env, global, "onState", "(JZLjava/lang/String;)V"),
             .on_reconnect_token = try jni.methodId(env, global, "onReconnectToken", "(Ljava/lang/String;)V"),
             .on_error = try jni.methodId(env, global, "onError", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
-            .glyphs = .{
-                .listener = global,
-                .rasterize_glyph = try jni.methodId(env, global, "rasterizeGlyph", "([BZZIII)[B"),
-            },
+            .glyphs = source,
             .ca_dirs = ca_dirs,
         };
         self.core = try Core.create(gpa, .{
@@ -106,9 +108,11 @@ const Handle = struct {
     }
 
     /// Stops the core (it joins its threads, so no callback runs after this) and frees
-    /// everything.
+    /// everything. The glyph source goes with its last holder: here, or later in a render thread
+    /// its pane gave up (#178).
     fn destroy(self: *Handle, env: Env) void {
         self.core.destroy();
+        self.glyphs.refs.drop();
         jni.deleteGlobalRef(env, self.listener);
         freeStrings(self.ca_dirs);
         gpa.destroy(self);

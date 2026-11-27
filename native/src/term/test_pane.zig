@@ -9,6 +9,9 @@ const Pane = P.Pane;
 const BoxDraw = P.BoxDraw;
 const Atlas = P.Atlas;
 const Keys = @import("Keys.zig");
+const Host = @import("test_host.zig");
+const Unmapping = Host.Unmapping;
+const sleepNs = Host.sleepNs;
 const c = @import("c");
 
 const stream = @embedFile("testdata/stream.bin");
@@ -18,8 +21,10 @@ fn noGlyph(_: *anyopaque, _: []const u8, _: bool, _: bool, _: u32, _: u32, _: u3
 }
 
 var dummy: u8 = 0;
+/// A glyph source with no reference count: it outlives every render thread.
+const no_glyphs: P.GlyphSource = .{ .ctx = &dummy, .rasterize = noGlyph };
 fn newPane() !*Pane {
-    return Pane.create(std.testing.allocator, .{ .ctx = &dummy, .rasterize = noGlyph });
+    return Pane.create(std.testing.allocator, no_glyphs);
 }
 
 /// Strip Rex APCs (`ESC _ rex1;… ESC \`) like Core does.
@@ -1063,7 +1068,7 @@ const FakeDraw = struct {
 
 /// `Renderer.run` on the test's own thread, with a link that no pane gives up.
 fn runHere(p: *Pane, draw: anytype) void {
-    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a, .glyphs = no_glyphs };
     Renderer.run(p, &link, draw);
 }
 
@@ -1360,46 +1365,6 @@ fn noBurst() void {
     P.give_up_until_ns.store(0, .monotonic);
 }
 
-/// A test's allocator whose every allocation has pages of its own, unmapped when freed: a use
-/// after free faults at once (the test allocator unmaps only large ones). It counts what is
-/// still allocated, so a leak shows too.
-const Unmapping = struct {
-    live: std.atomic.Value(usize) = .init(0),
-
-    fn allocator(u: *Unmapping) std.mem.Allocator {
-        return .{ .ptr = u, .vtable = &vtable };
-    }
-
-    const vtable: std.mem.Allocator.VTable = .{ .alloc = alloc, .resize = resize, .remap = remap, .free = free };
-    const pages = std.heap.page_allocator;
-
-    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
-        const u: *Unmapping = @ptrCast(@alignCast(ctx));
-        const ptr = pages.rawAlloc(len, alignment, ra) orelse return null;
-        _ = u.live.fetchAdd(1, .monotonic);
-        return ptr;
-    }
-
-    fn resize(_: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) bool {
-        return pages.rawResize(memory, alignment, new_len, ra);
-    }
-
-    fn remap(_: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
-        return pages.rawRemap(memory, alignment, new_len, ra);
-    }
-
-    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ra: usize) void {
-        const u: *Unmapping = @ptrCast(@alignCast(ctx));
-        pages.rawFree(memory, alignment, ra);
-        _ = u.live.fetchSub(1, .monotonic);
-    }
-};
-
-fn sleepNs(ns: u64) void {
-    var ts: std.c.timespec = .{ .sec = @intCast(ns / std.time.ns_per_s), .nsec = @intCast(ns % std.time.ns_per_s) };
-    _ = std.c.nanosleep(&ts, null);
-}
-
 test "Lock.waitUntil: the deadline is a time on the monotonic clock" {
     // #159: the wait for a render thread must not grow when the wall clock steps back. A wait
     // that read the deadline on the wall clock would find it long past, and return at once.
@@ -1458,7 +1423,7 @@ test "render link: a thread inside the pane when the wait runs out is given up o
     // pane waits there for the pane's lock and the build, so the wait for it to leave is short.
     LateLeave.watch();
     defer P.host_late_leave = null;
-    const link = try P.RenderLink.create(std.testing.allocator, &window_a);
+    const link = try P.RenderLink.create(std.testing.allocator, &window_a, no_glyphs);
     try std.testing.expect(link.enter());
     var leaver: Leaver = .{ .link = link, .inside_ns = 100 * ms_ns };
     const thread = try std.Thread.spawn(.{}, Leaver.run, .{&leaver});
@@ -1482,7 +1447,7 @@ test "render link: a wait for a thread long to leave the pane says so once, whil
     // goes on shows in the log, before the thread leaves.
     LateLeave.watch();
     defer P.host_late_leave = null;
-    const link = try P.RenderLink.create(std.testing.allocator, &window_a);
+    const link = try P.RenderLink.create(std.testing.allocator, &window_a, no_glyphs);
     try std.testing.expect(link.enter());
     const bound = 20 * ms_ns;
     var leaver: Leaver = .{ .link = link, .inside_ns = bound + P.leave_late_ns + 400 * ms_ns };
@@ -1500,7 +1465,7 @@ test "render link: a wait for a thread long to leave the pane says so once, whil
 }
 
 test "render link: a thread that ends within the wait is not given up" {
-    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a, .glyphs = no_glyphs };
     const Ender = struct {
         fn run(l: *P.RenderLink) void {
             var ts: std.c.timespec = .{ .sec = 0, .nsec = 20 * ms_ns };
@@ -1645,6 +1610,117 @@ test "after giving a render thread up, a pane starts and stops the next one as u
     try std.testing.expect(P.monoNow() - start < P.stop_wait_ns / 2);
     try std.testing.expect(next.ended.load(.acquire));
     try Released.expect(1, 1);
+}
+
+/// A stop waits `burst_wait_ns`, as one right after another give-up: the tests below give threads
+/// up and need not wait the whole bound for it. Clear it with `noBurst`.
+fn burst() void {
+    P.give_up_until_ns.store(@intCast(P.monoNow() + P.stop_wait_ns), .monotonic);
+}
+
+const CountedSource = Host.CountedSource;
+
+fn sourceRefs(source: *CountedSource) u32 {
+    return source.refs.count.load(.monotonic);
+}
+
+test "glyph source: a render thread that ends in time holds a reference to it until it is joined" {
+    // #178: the core (jni.zig's `Handle`) holds the source's first reference, and the link of
+    // each render thread one more.
+    var unmapping: Unmapping = .{};
+    var watch: CountedSource.Watch = .{};
+    const source = try CountedSource.create(unmapping.allocator(), &watch);
+    var dropped = false;
+    defer if (!dropped) source.refs.drop();
+    const p = try Pane.create(unmapping.allocator(), source.source());
+    var freed = false;
+    defer if (!freed) p.destroy();
+    var draw: IdleDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(IdleDraw), .{&draw});
+    try draw.waitPresented();
+    try std.testing.expectEqual(@as(u32, 2), sourceRefs(source));
+
+    p.detachSurface();
+    try std.testing.expect(draw.ended.load(.acquire)); // joined
+    try std.testing.expectEqual(@as(u32, 1), sourceRefs(source));
+
+    // The core goes: its panes, then its own reference, the last one.
+    p.destroy();
+    freed = true;
+    try std.testing.expectEqual(@as(usize, 0), watch.freesNow());
+    source.refs.drop();
+    dropped = true;
+    try std.testing.expectEqual(@as(usize, 1), watch.freesNow());
+    try std.testing.expectEqual(@as(usize, 0), unmapping.live.load(.monotonic));
+}
+
+test "glyph source: a render thread given up keeps its reference until it ends, before the core goes" {
+    // #178: a thread given up may still call the source. When it ends, the core's reference is
+    // the last one, and the core frees the source when it goes.
+    noBurst();
+    defer noBurst();
+    var unmapping: Unmapping = .{};
+    var watch: CountedSource.Watch = .{};
+    const source = try CountedSource.create(unmapping.allocator(), &watch);
+    var dropped = false;
+    defer if (!dropped) source.refs.drop();
+    const p = try Pane.create(unmapping.allocator(), source.source());
+    var freed = false;
+    defer if (!freed) p.destroy();
+    var stuck: StuckDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(StuckDraw), .{&stuck});
+    defer stuck.finish();
+    try stuck.waitStuck();
+    burst();
+    _ = try detachStuck(p, &stuck);
+    try std.testing.expect(!stuck.ended.load(.acquire)); // given up
+    try std.testing.expectEqual(@as(u32, 2), sourceRefs(source));
+
+    stuck.letGo();
+    try std.testing.expect(waitEnded(&stuck.ended, 5000));
+    try std.testing.expectEqual(@as(u32, 1), sourceRefs(source));
+    try std.testing.expectEqual(@as(usize, 0), watch.freesNow());
+
+    p.destroy();
+    freed = true;
+    source.refs.drop();
+    dropped = true;
+    try std.testing.expectEqual(@as(usize, 1), watch.freesNow());
+    try std.testing.expectEqual(@as(usize, 0), unmapping.live.load(.monotonic));
+}
+
+test "glyph source: a render thread given up frees the source when it ends, after the core went" {
+    // #178: a disconnect gives the thread up, frees the core and drops the core's reference. The
+    // source then lives on for the thread alone, and the thread frees it as it ends.
+    noBurst();
+    defer noBurst();
+    var unmapping: Unmapping = .{};
+    var watch: CountedSource.Watch = .{};
+    const source = try CountedSource.create(unmapping.allocator(), &watch);
+    var dropped = false;
+    defer if (!dropped) source.refs.drop();
+    const p = try Pane.create(unmapping.allocator(), source.source());
+    var freed = false;
+    defer if (!freed) p.destroy();
+    var stuck: StuckDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(StuckDraw), .{&stuck});
+    defer stuck.finish();
+    try stuck.waitStuck();
+    burst();
+    _ = try detachStuck(p, &stuck);
+    try std.testing.expect(!stuck.ended.load(.acquire)); // given up
+
+    p.destroy();
+    freed = true;
+    source.refs.drop();
+    dropped = true;
+    try std.testing.expectEqual(@as(usize, 0), watch.freesNow());
+    try std.testing.expectEqual(@as(u32, 1), sourceRefs(source));
+
+    stuck.letGo();
+    try std.testing.expect(waitEnded(&stuck.ended, 5000));
+    try std.testing.expectEqual(@as(usize, 1), watch.freesNow());
+    try std.testing.expectEqual(@as(usize, 0), unmapping.live.load(.monotonic));
 }
 
 test "box drawing classification and geometry" {

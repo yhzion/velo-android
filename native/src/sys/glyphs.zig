@@ -39,17 +39,46 @@ fn threadBuffer() ?*std.ArrayList(u8) {
     return buffer;
 }
 
+/// The source of every pane of one core. It has an allocation of its own and lives until its last
+/// holder lets go (`refs`, #178): jni.zig's `Handle`, and the link of each render thread that can
+/// call it (`pane.RenderLink`). A render thread its pane gave up (#159) may be anywhere in
+/// `rasterize` when a disconnect frees the `Handle`. Before `CallObjectMethodA` the call reads
+/// `listener` and `rasterize_glyph`, and it gets there through `jni.attach`, `PushLocalFrame`
+/// and `NewByteArray`, which can wait for a GC or for ART to suspend the thread. After it the
+/// call touches only `env`, the result and the thread's own buffer. The thread's link keeps
+/// the source and its listener reference valid until the thread ends, and the thread asks for
+/// no further glyph once given up (`Renderer.drawMissing`).
 pub const Glyphs = struct {
-    /// Global reference to the CoreListener. Owned by jni.zig's `Handle`, which outlives every
-    /// pane but not every thread that calls the source: a render thread its pane gave up (#159)
-    /// may still be in a call when a disconnect frees the `Handle`. Such a thread makes no
-    /// further call (`Renderer.drawMissing`), and the call in flight touches only `env` and the
-    /// thread's own buffer once `CallObjectMethodA` has returned.
+    refs: pane.GlyphSource.Refs = .{ .free = free },
+    /// This source's own global reference to the CoreListener, apart from the `Handle`'s.
     listener: c.jobject,
     rasterize_glyph: c.jmethodID,
 
+    /// With one reference, its owner's.
+    pub fn create(env: jni.Env, listener: c.jobject) !*Glyphs {
+        const global = jni.newGlobalRef(env, listener) orelse return error.OutOfMemory;
+        errdefer jni.deleteGlobalRef(env, global);
+        const self = try gpa.create(Glyphs);
+        errdefer gpa.destroy(self);
+        self.* = .{
+            .listener = global,
+            .rasterize_glyph = try jni.methodId(env, global, "rasterizeGlyph", "([BZZIII)[B"),
+        };
+        return self;
+    }
+
     pub fn source(self: *Glyphs) pane.GlyphSource {
-        return .{ .ctx = self, .rasterize = rasterize, .cache = &shared };
+        return .{ .ctx = self, .rasterize = rasterize, .cache = &shared, .refs = &self.refs };
+    }
+
+    /// The last holder's drop, on its own thread: it may be a render thread its pane gave up.
+    /// `jni.attach` gives any thread its env.
+    fn free(refs: *pane.GlyphSource.Refs) void {
+        const self: *Glyphs = @fieldParentPtr("refs", refs);
+        if (jni.attach()) |env| {
+            jni.deleteGlobalRef(env, self.listener);
+        } else jni.log(.warn, "glyph source freed without a JNIEnv: its listener reference stays", .{});
+        gpa.destroy(self);
     }
 
     /// Runs on a pane's render thread, on atlas misses only. The returned pixels stay
