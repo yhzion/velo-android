@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.13.0 - 2026-11-27
+
 ### Added
 - Paste now sends an image or file copied in another app, such as a browser, the gallery or a file manager, to the remote and types its path into the pane, as Compose's attachment does.
 
