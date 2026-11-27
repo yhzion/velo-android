@@ -28,6 +28,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Upload and error notices now show a whole line in landscape with the keyboard up, and sit under the sidebar's Filter field instead of over it and the rail.
 - A screen reader says Compose's Draft field once, instead of saying its name twice.
 - In landscape with the keyboard up, two or three notices at once now sit side by side above the key bar, so at the default text size none covers it or runs under the keyboard.
+- A pane the server names only by its ID, such as Block 9ac42573, is now called Terminal in the full screen minimap's picker and the command palette.
 
 ## 2.14.0 - 2026-11-27
 
