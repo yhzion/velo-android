@@ -67,7 +67,7 @@ The workflow checks that the tag matches `VERSION` and points to a commit in `ma
 
 Download the APK and `.sha256` file to the same directory, then run `sha256sum -c "velo-${tag}-arm64-v8a.apk.sha256"` with `tag` set to the downloaded tag. Use `apksigner verify --print-certs` to compare the APK certificate digest with the expected signing certificate. To check only the tag and version rules without a tag or signing key, run `bash .github/scripts/test-release-version.sh`. To test the changelog script, run `bash .github/scripts/test-changelog.sh`.
 
-Run `python3 .github/scripts/test-verify-apk-notices.py` to test the font and notice checks without Android tools or a signing key.
+Run `python3 .github/scripts/test-verify-apk-notices.py` to test the font and notice checks without Android tools or a signing key. The [scripts check](../.github/workflows/pr-check-scripts.yml) runs all three tests automatically on pull requests that touch `.github/scripts/`.
 
 If a debug build uses the same package name as the release, Android will not install the release over it because the signatures differ. Record any settings you need before uninstalling the debug build; uninstalling erases its data. Subsequent releases signed with the same release key can update the installation in place.
 
