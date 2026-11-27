@@ -764,6 +764,9 @@ is `sent`, `changed`, `not_sent`, or `unconfirmed`. Neither side encodes the rep
 
 `sys/glyphs.zig` implements `pane.GlyphSource` over `rasterizeGlyph`, copying the
 returned `byte[]` into a per-thread buffer (A8 when len == w*h, RGBA when len == w*h*4).
+Its `Glyphs` has its own allocation and its own global reference to the listener, and
+lives until its last holder drops it: the `Handle`, or the link of a render thread that
+outlived the `Handle` (#178, `docs/native-internal.md`).
 JNI types come from a HOST translate-c of NDK `jni.h` (it includes only `stdarg.h` and
 `stdint.h`; verified to translate: 1298 lines) added as module `jni_c`; `ANativeWindow_fromSurface`
 and `__android_log_write` are declared `extern`.

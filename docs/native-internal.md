@@ -53,6 +53,16 @@ pub const GlyphSource = struct {
     /// What this source drew, for every pane that has the source (one for the process,
     /// `sys/glyphs.zig`). `Pane.setFont` empties it.
     cache: ?*GlyphCache = null,
+    /// Who keeps the source alive: its owner and each render thread's link (#178, below).
+    /// Null: the source outlives every render thread (the host tests', the probe's).
+    refs: ?*Refs = null,
+
+    pub const Refs = struct {
+        count: std.atomic.Value(u32) = .init(1), // the owner's
+        free: *const fn (refs: *Refs) void, // called once, by the last drop
+        pub fn take(r: *Refs) void;
+        pub fn drop(r: *Refs) void;
+    };
 };
 
 pub const Theme = struct {
@@ -236,13 +246,28 @@ only outside: one inside when the bound runs out is waited for until it leaves, 
 its own, and 500 ms past the bound logcat has `renderer still in its pane … ms past the bound
 window=…`. The bound does not cover a thread stuck while it holds the pane's lock either:
 `stopRenderer` takes that lock to set `quit` before its wait starts. It covers a thread stuck
-outside the pane, in the swap, in EGL setup or teardown, or in the glyph source. A thread given
-up enters no more and asks the glyph source for no further glyph, since a disconnect frees the
-source (jni.zig's `Handle`) right after it gave the core's threads up. When it wakes it ends
-without the pane, gives up its EGL objects, then the window's reference (which the pane left it,
-`Ref.thread`) and frees the link. One that never wakes leaks those, and logcat has `renderer
-given up after … ms pane=… window=…`. A thread that ends in time is joined as before, and the
-pane gives up the window's reference after the join.
+outside the pane, in the swap, in EGL setup or teardown, or in the glyph source. Right after
+`quit`, the pane marks the link as stopping (`RenderLink.stop`, #178). The thread sees `quit`
+only inside the pane, but it sees `stopping` before each glyph it has the source draw. So a
+thread that is only drawing many glyphs, such as the first frame of a pane full of Hangul or
+CJK, ends within one glyph and is joined, also within the 200 ms of a burst. The frame it was
+drawing is not shown.
+
+A thread given up enters no more and asks the glyph source for no further glyph. The source
+outlives it all the same (#178). `Glyphs` (sys/glyphs.zig) has its own allocation, its own
+global reference to the listener and an atomic reference count (`GlyphSource.Refs`). jni.zig's
+`Handle` holds one reference and drops it after the core has stopped its threads. Each link
+holds one from the moment the pane makes it until the link is freed. The last drop deletes the
+global reference through `jni.attach`, on whatever thread it runs, and frees `Glyphs`. Before
+`CallObjectMethodA`, a source call reads the listener and its method, after `NewByteArray`,
+which can wait for a GC. A thread given up during that wait, while a disconnect frees the
+`Handle`, still finds both valid when it goes on. The count costs nothing per glyph: the
+reference is the link's, not the call's. When the thread wakes it ends without the pane and
+gives up its EGL objects. Then it gives up the window's reference (which the pane left it,
+`Ref.thread`) and frees the link, which drops the link's reference to the source. One that
+never wakes leaks all of these, and logcat has `renderer given up after … ms pane=… window=…`.
+A thread that ends in time is joined as before. After the join the pane gives up the window's
+reference and frees the link with its reference.
 
 A renderer that cannot set up EGL for its window, or whose `eglSwapBuffers` fails, marks
 the pane (`render_failed`) and its thread ends, releasing its EGL surface, EGL context
