@@ -6,6 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.InputMode
+import io.github.yhzion.velo.ui.theme.VeloPalettes
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -46,9 +54,11 @@ class KeyBarCapsTest {
     private val keys = Settings.DEFAULT_KEY_BAR.split(',')
     private val sent = mutableListOf<Pair<String, Boolean>>()
     private var enabled by mutableStateOf(true)
+    private lateinit var inputMode: InputModeManager
 
     private fun show(width: Dp, armed: Set<String> = emptySet()) {
         compose.setContent {
+            inputMode = LocalInputModeManager.current
             VeloTheme(UiSize.Medium) {
                 KeyBar(keys, armed, Modifier.width(width), enabled = enabled) { key, repeat -> sent += key to repeat }
             }
@@ -94,5 +104,17 @@ class KeyBarCapsTest {
         key("Esc").performClick()
         compose.waitForIdle()
         assertTrue("$sent", sent.isEmpty())
+    }
+
+    @Test fun theKeyWithTheKeyboardsFocusIsAStepLighter() {
+        show(560.dp)
+        val cap = compose.onNodeWithTag(keyTestTag("Esc"), useUnmergedTree = true)
+        fun fill() = cap.captureToImage().toPixelMap().let { it[it.width / 2, 4] }
+        assertEquals(VeloPalettes.dark.chrome.glass, fill())
+        // A hardware keyboard's Tab moves the focus: the keys take it only out of touch mode.
+        compose.runOnIdle { inputMode.requestInputMode(InputMode.Keyboard) }
+        key("Esc").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.waitForIdle()
+        assertEquals(VeloPalettes.dark.chrome.glassSelected, fill())
     }
 }

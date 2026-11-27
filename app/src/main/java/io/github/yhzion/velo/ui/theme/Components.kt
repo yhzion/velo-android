@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -272,11 +273,11 @@ fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = 
  * the glyph drawn on it. The key takes the taps in all the room its bar gives it; its cap stands in
  * that room inside [capInsets]: a rounded rectangle of the glass, `sizes.keyCap` high, at least
  * `sizes.key` wide and as wide as its label with [KeyLegendPadding] on each side. On its own the
- * key is as wide as that cap. The cap is a step lighter while a finger holds it, and filled with
- * the accent while [armed] (a modifier the next key takes). [capModifier] goes on the cap. A key
- * that is not [enabled] keeps its glass, draws its label in the disabled colour and takes no tap.
- * With [holdRepeat], a hold sends [onClick] at the long-press timeout, then [onRepeat] until
- * release or cancellation.
+ * key is as wide as that cap. The cap is a step lighter while a finger holds it or while it has the
+ * keyboard's focus, and filled with the accent while [armed] (a modifier the next key takes).
+ * [capModifier] goes on the cap. A key that is not [enabled] keeps its glass, draws its label in
+ * the disabled colour and takes no tap. With [holdRepeat], a hold sends [onClick] at the
+ * long-press timeout, then [onRepeat] until release or cancellation.
  */
 @Composable
 fun KeyCap(
@@ -290,9 +291,11 @@ fun KeyCap(
     val lit = armed && enabled
     val presses = remember { MutableInteractionSource() }
     val pressed by presses.collectIsPressedAsState()
+    // Without a ripple, the cap shows the keyboard's focus as it shows a press.
+    val focused by presses.collectIsFocusedAsState()
     val fill = when {
         lit -> c.accent
-        pressed && enabled -> c.glassSelected
+        (pressed || focused) && enabled -> c.glassSelected
         else -> c.glass
     }
     val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.onGlass
