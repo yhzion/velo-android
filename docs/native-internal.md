@@ -138,14 +138,15 @@ every pane's view and only moves it, so a preview draws exactly what a shown pan
 state is `SizeRules.State` in Core.
 
 Attach in place. `attachStep(current, alive, wanted)` is the whole decision of what an
-attach does with the renderer, and `attachRefs(action, started)` the whole decision of
-what it does with the window references; both are pure functions tested on the host.
+attach does with the renderer, and `attachRefs(action, started, given_up)` the whole
+decision of what it does with the window references; both are pure functions tested on
+the host.
 
 | `wanted` window | Step | What happens |
 |---|---|---|
 | the window the pane draws to, renderer alive | `keep` | The render thread, EGL surface, EGL context and glyph atlas stay. The pane takes the new size and draws one frame. |
-| another window, a first one, or the same one after its renderer failed | `replace` | The old render thread is joined (one that ended by itself too), then a new one starts. |
-| none (`detachSurface`) | `detach` | The render thread is joined. |
+| another window, a first one, or the same one after its renderer failed | `replace` | The old render thread is joined (one that ended by itself too), or given up after 2 s, then a new one starts. |
+| none (`detachSurface`) | `detach` | The render thread is joined, or given up after 2 s. |
 
 Limit. `keep` is decided from `render_failed` under the pane lock, and the render thread
 sets that flag only after a swap has failed; the swap runs without the lock. An attach in
@@ -167,12 +168,16 @@ every attach with one reference to the window it draws to and no other:
 | `replace`, the new renderer did not start | released | released: the pane draws to no window |
 | `detach` | released | none was passed |
 
+For a `replace` or `detach` whose old render thread the pane gave up (below), `current` is
+`thread`: the reference stays with that thread, whose EGL surface is still on the window.
+
 `Pane.setSurface` releases what `attachRefs` says and nothing else, and only after the
 old render thread has ended, because that thread's EGL surface is on the window
 `current` refers to (a host test with a real thread checks the order). `startRenderer`
 and `stopRenderer` release nothing, and neither does the render thread (it owns the EGL
-surface and context and its GL objects, not the window). On the host there is no window
-to release, so the tests count the releases through `Pane.zig`'s `host_release`.
+surface and context and its GL objects, not the window), unless the pane gave it up. On
+the host there is no window to release, so the tests count the releases through
+`Pane.zig`'s `host_release`.
 
 Two windows are the same when their addresses are equal. That is an identity because the
 pane holds a reference to its window for as long as it draws to it, so no other window
@@ -201,18 +206,33 @@ draws nothing asks for a frame of its own when the hold ends (`Pane.frame_due_ns
 for none, and its next frame can still go back to FREEZE. The swap that goes back can still
 be rejected if the window's update lands between its check and the queue: on the Velvet this
 happens in about 2–4% of new threads, during the keyboard's resize, harmless without a window
-sync but a hang under one. The join in `stopRenderer` is unbounded, so a stuck thread still
-ends in an ANR. The design assumes the driver queues inside `eglSwapBuffers` on the calling
-thread (Adreno does; other GPUs are not checked). The Vulkan swapchain sets
+sync but a hang under one; such a thread is given up (below) rather than joined for good.
+The design assumes the driver queues inside `eglSwapBuffers` on the calling thread (Adreno
+does; other GPUs are not checked). The Vulkan swapchain sets
 `SCALE_TO_WINDOW` on its window, so where GLES is ANGLE over Vulkan, FREEZE lasts only until
 ANGLE's next swapchain and the window stays scaled after that, as all buffers were before
 #117.
+
+A render thread that does not end within `stop_wait_ns` (2 s) of the pane asking is given up
+(#159): main waits for it with `Core.lock` held (`surfaceDestroyed` → `paneSuspend`), and
+`velo-control` does when the server closes a pane, so a thread stuck in a swap (#117) would
+otherwise be an ANR. The pane detaches the thread, forgets it and goes on: it may then be freed,
+or start a new thread on the next attach. So the thread and the pane share a `RenderLink`, kept
+apart from the pane. The thread touches the pane only between `link.enter()` and `link.leave()`:
+`run` is inside but while `present` runs, and `present` enters only to rebuild rows after drawing
+glyphs and after its swap. Nothing between the two waits on the platform, so the pane gives the
+thread up only outside, and never while it is inside. A thread given up enters no more: when it
+wakes it ends without the pane, gives up its EGL objects, then the window's reference (which the
+pane left it, `Ref.thread`) and frees the link. One that never wakes leaks those, and logcat has
+`renderer given up after … ms pane=… window=…`. A thread that ends in time is joined as before,
+and the pane gives up the window's reference after the join.
 
 A renderer that cannot set up EGL for its window, or whose `eglSwapBuffers` fails, marks
 the pane (`render_failed`) and its thread ends, releasing its EGL surface, EGL context
 and GL objects as on any other exit. Nothing is drawn until the next attach, which joins
 the thread and starts again even for the same window (`alive` is `!render_failed`). The
-loop is `Renderer.run(pane, draw)`, which the host tests run with a drawing of their own.
+loop is `Renderer.run(pane, link, draw)`, which the host tests run with a drawing of their own,
+also on a thread of the pane's (`Pane.startThread`).
 Logcat tag `VeloTerm` has one line per renderer start and end (`renderer start pane=…
 window=…`), and `renderer setup failed` or `renderer swap failed` before the end of one
 that failed; an attach in place writes none. A new thread writes `renderer freezes its
