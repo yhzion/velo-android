@@ -28,6 +28,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Upload and error notices now show a whole line in landscape with the keyboard up, and sit under the sidebar's Filter field instead of over it and the rail.
 - A screen reader says Compose's Draft field once, instead of saying its name twice.
 - In landscape with the keyboard up, two or three notices at once now sit side by side above the key bar, so at the default text size none covers it or runs under the keyboard.
+- With the keyboard up from the sidebar's Filter field, a notice stays under the field, so a screen reader keeps its place there and does not read the notice again. Error notices are read as errors.
 
 ## 2.14.0 - 2026-11-27
 
