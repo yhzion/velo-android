@@ -19,6 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
@@ -691,177 +694,189 @@ internal fun Workspace(
                 moveTab = { remote, row, forward -> app.connectionOf(remote)?.let { moveTabOnePlace(it, row.session, row.tab, forward) } },
                 closeTab = { remote, row -> app.connectionOf(remote)?.let { closeTab(it, row) } },
                 toggleDock = ::toggleDock,
-            ), settingsBadge = updateDot(), docked = dockSwitch(dockable, s.sidebarDocked))
+            ), settingsBadge = updateDot(), docked = dockSwitch(dockable, s.sidebarDocked),
+                // Without the panes there is no pane area to hold the notices: the sidebar that covers them does, under
+                // its Filter field, so that they lie over none of its controls nor the rail's (#165).
+                notices = if (panesHidden && (conn.uploading != null || conn.error != null)) {
+                    {
+                        UploadToast(conn)
+                        ErrorNotice(conn, text = ::noticeText)
+                    }
+                } else null)
             if (!covers) Spacer(Modifier.width(gap))
         }
-        if (!panesHidden) Column(paneColumnSlot()) {
-            if (activeSearch != null) key(conn, activeSearch) {
-                PaneSearchBar(conn, activeSearch, paneLabel(tabPanes, activeSearch) ?: "Pane", ::closeSearch)
-            }
-            val paneMod = if (fold.tabletop && fold.hingeTopPx > 0)
-                Modifier.fillMaxWidth().height(with(density) { fold.hingeTopPx.toDp() } - outerY * 2)
-            else Modifier.weight(1f).fillMaxWidth()
-            Box(paneMod) {
-                when {
-                    // Every pane minimized: nothing to say, the capsules bring one back.
-                    blankStage(window) -> Unit
-                    window == null || !drawsPanes(window) -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(if (removedActive) "${activeRemote?.label ?: "This remote"} was removed from this phone" else emptyText(state, activeRemote?.label.orEmpty()),
-                            color = backdrop.secondary, style = VeloTheme.type.body)
-                        // Why the remote is down, after the notice that said it has gone. A connected
-                        // remote, and the removed one (its connection is destroyed), keep none.
-                        notice?.let {
-                            Text(it.text, Modifier.padding(horizontal = sizes.overlayPadding), color = backdrop.secondary,
-                                style = VeloTheme.type.caption, textAlign = TextAlign.Center)
-                        }
-                        // Nothing to show: the way out is on the screen, not in a menu.
-                        val actions = emptyActions(state, removedActive, sidebar = sidebar, copyCommand = notice?.fix != null)
-                        if (actions.isNotEmpty()) {
-                            Spacer(Modifier.height(sizes.rowGap))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(sizes.gap, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
-                                for ((i, action) in actions.withIndex()) VeloButton(action.label, {
-                                    when (action) {
-                                        EmptyAction.NewSession, EmptyAction.NewTab -> newTab()
-                                        // What the rail's popover does.
-                                        EmptyAction.Reconnect -> app.reconnect(conn)
-                                        EmptyAction.CopyCommand -> copyFix()
-                                        EmptyAction.ShowRemotes -> sidebar = true
-                                    }
-                                }, kind = if (i == 0) ButtonKind.Primary else ButtonKind.Secondary)
+        if (!panesHidden) Box(paneColumnSlot()) {
+            // The pane area's box in the column, which places the notices ([PaneNotices]). Read only to place them.
+            val paneBox = remember { mutableStateOf<Rect?>(null) }
+            // The minimized floating windows, at the chosen corner. Not in the overview, which has no panes to bring one back to.
+            // Their capsules are named by their titles: read only where there are some.
+            val capsuleBlocks = if (window?.minimizedLayers.isNullOrEmpty()) state.blocks else conn.state.blocks
+            val minimized = shownCapsules(window, capsuleBlocks, overviewVisible, overview.paneMove != null)
+            val corner = shownCorner(s.capsuleCorner)
+            Column(Modifier.fillMaxSize()) {
+                if (activeSearch != null) key(conn, activeSearch) {
+                    PaneSearchBar(conn, activeSearch, paneLabel(tabPanes, activeSearch) ?: "Pane", ::closeSearch)
+                }
+                val paneMod = if (fold.tabletop && fold.hingeTopPx > 0)
+                    Modifier.fillMaxWidth().height(with(density) { fold.hingeTopPx.toDp() } - outerY * 2)
+                else Modifier.weight(1f).fillMaxWidth()
+                Box(paneMod.onPlaced { paneBox.value = it.boundsInParent() }) {
+                    when {
+                        // Every pane minimized: nothing to say, the capsules bring one back.
+                        blankStage(window) -> Unit
+                        window == null || !drawsPanes(window) -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(if (removedActive) "${activeRemote?.label ?: "This remote"} was removed from this phone" else emptyText(state, activeRemote?.label.orEmpty()),
+                                color = backdrop.secondary, style = VeloTheme.type.body)
+                            // Why the remote is down, after the notice that said it has gone. A connected
+                            // remote, and the removed one (its connection is destroyed), keep none.
+                            notice?.let {
+                                Text(it.text, Modifier.padding(horizontal = sizes.overlayPadding), color = backdrop.secondary,
+                                    style = VeloTheme.type.caption, textAlign = TextAlign.Center)
+                            }
+                            // Nothing to show: the way out is on the screen, not in a menu.
+                            val actions = emptyActions(state, removedActive, sidebar = sidebar, copyCommand = notice?.fix != null)
+                            if (actions.isNotEmpty()) {
+                                Spacer(Modifier.height(sizes.rowGap))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(sizes.gap, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
+                                    for ((i, action) in actions.withIndex()) VeloButton(action.label, {
+                                        when (action) {
+                                            EmptyAction.NewSession, EmptyAction.NewTab -> newTab()
+                                            // What the rail's popover does.
+                                            EmptyAction.Reconnect -> app.reconnect(conn)
+                                            EmptyAction.CopyCommand -> copyFix()
+                                            EmptyAction.ShowRemotes -> sidebar = true
+                                        }
+                                    }, kind = if (i == 0) ButtonKind.Primary else ButtonKind.Secondary)
+                                }
                             }
                         }
-                    }
-                    // A pane view belongs to one core: another host's panes are new views.
-                    else -> key(conn) {
-                        val linkContext = LocalContext.current
-                        // One handler for the panes' whole life: a new one would redraw every pane.
-                        val linkTaps = remember(linkContext, files) {
-                            LinkTaps { c, block, tapped, notAFile ->
-                                fun remote() = app.activeRemote?.label?.ifEmpty { null } ?: "the remote"
-                                // The remote's loopback: forwarded to the phone first, then opened there. A new forward
-                                // lets every app on this phone reach that port of the remote, so it asks first (#28).
-                                fun forward(link: LoopbackLink, hidden: Boolean) {
-                                    forwardTap(link, hidden, c.state.forwards, remote()) {
-                                        c.openForward(block, link) { answer ->
-                                            val failure = forwardFailure(answer, link)
-                                            if (failure != null) c.error = failure else openTerminalLink(linkContext, c, link.onPhone(answer.port))
-                                        }
-                                    }?.let { linkQuestion = it }
-                                }
-                                fun open(tap: LinkTap) {
-                                    when (tap) {
-                                        is LinkTap.Open -> openTerminalLink(linkContext, c, tap.uri)
-                                        is LinkTap.Ask -> linkQuestion = LinkQuestion(linkQuestionTitle(tap), linkQuestionText(tap)) {
-                                            openTerminalLink(linkContext, c, tap.uri)
-                                        }
-                                        is LinkTap.File -> files.open(c, block, tap.target, notAFile)
-                                        is LinkTap.Forward -> forward(tap.link, hidden = false)
-                                        // The terminal did not show where it goes: the question does, and Open goes on as for a shown link.
-                                        is LinkTap.Hidden -> when (val then = tap.then) {
-                                            is LinkTap.Open -> linkQuestion = LinkQuestion(hiddenLinkTitle(then), hiddenLinkText(then)) { open(then) }
-                                            is LinkTap.File -> {
-                                                // A link to another machine's file is no file here, as for a shown one.
-                                                val path = remoteFilePath(then.target, remoteNames(c.url)) ?: return notAFile()
-                                                linkQuestion = LinkQuestion(HIDDEN_FILE_TITLE, hiddenFileText(path, remote())) { open(then) }
+                        // A pane view belongs to one core: another host's panes are new views.
+                        else -> key(conn) {
+                            val linkContext = LocalContext.current
+                            // One handler for the panes' whole life: a new one would redraw every pane.
+                            val linkTaps = remember(linkContext, files) {
+                                LinkTaps { c, block, tapped, notAFile ->
+                                    fun remote() = app.activeRemote?.label?.ifEmpty { null } ?: "the remote"
+                                    // The remote's loopback: forwarded to the phone first, then opened there. A new forward
+                                    // lets every app on this phone reach that port of the remote, so it asks first (#28).
+                                    fun forward(link: LoopbackLink, hidden: Boolean) {
+                                        forwardTap(link, hidden, c.state.forwards, remote()) {
+                                            c.openForward(block, link) { answer ->
+                                                val failure = forwardFailure(answer, link)
+                                                if (failure != null) c.error = failure else openTerminalLink(linkContext, c, link.onPhone(answer.port))
                                             }
-                                            is LinkTap.Forward -> forward(then.link, hidden = true)
-                                            else -> open(then)
+                                        }?.let { linkQuestion = it }
+                                    }
+                                    fun open(tap: LinkTap) {
+                                        when (tap) {
+                                            is LinkTap.Open -> openTerminalLink(linkContext, c, tap.uri)
+                                            is LinkTap.Ask -> linkQuestion = LinkQuestion(linkQuestionTitle(tap), linkQuestionText(tap)) {
+                                                openTerminalLink(linkContext, c, tap.uri)
+                                            }
+                                            is LinkTap.File -> files.open(c, block, tap.target, notAFile)
+                                            is LinkTap.Forward -> forward(tap.link, hidden = false)
+                                            // The terminal did not show where it goes: the question does, and Open goes on as for a shown link.
+                                            is LinkTap.Hidden -> when (val then = tap.then) {
+                                                is LinkTap.Open -> linkQuestion = LinkQuestion(hiddenLinkTitle(then), hiddenLinkText(then)) { open(then) }
+                                                is LinkTap.File -> {
+                                                    // A link to another machine's file is no file here, as for a shown one.
+                                                    val path = remoteFilePath(then.target, remoteNames(c.url)) ?: return notAFile()
+                                                    linkQuestion = LinkQuestion(HIDDEN_FILE_TITLE, hiddenFileText(path, remote())) { open(then) }
+                                                }
+                                                is LinkTap.Forward -> forward(then.link, hidden = true)
+                                                else -> open(then)
+                                            }
                                         }
                                     }
+                                    open(tapped)
                                 }
-                                open(tapped)
+                            }
+                            CompositionLocalProvider(LocalLinkTaps provides linkTaps) {
+                                TabStage(conn, state, window, overview, focused, gap, radius, input, controls = !covered, haptics = s.haptics,
+                                    grid = s.overviewLayout == OverviewLayout.Grid, fontSize = s.fontSize,
+                                    handles = paneHandles.takeIf { showsMoveHandle(state.windows) && conn.connected }, strip = strip,
+                                    // A card flown away replaces the move's notice: its own Undo (#228) shows in the same place.
+                                    onDismiss = { id ->
+                                        moveNotice = null
+                                        closeFlownTab(id)
+                                    },
+                                    onMoved = ::noteMove,
+                                    onFocus = { block ->
+                                        // Without the connection the focus stays: the pane takes no keys then ([paneInputPaused]).
+                                        if (block != state.focused && conn.connected) {
+                                            notification?.leave?.invoke()
+                                            conn.op("focus", "block" to block)
+                                        }
+                                    })
                             }
                         }
-                        CompositionLocalProvider(LocalLinkTaps provides linkTaps) {
-                            TabStage(conn, state, window, overview, focused, gap, radius, input, controls = !covered, haptics = s.haptics,
-                                grid = s.overviewLayout == OverviewLayout.Grid, fontSize = s.fontSize,
-                                handles = paneHandles.takeIf { showsMoveHandle(state.windows) && conn.connected }, strip = strip,
-                                // A card flown away replaces the move's notice: its own Undo (#228) shows in the same place.
-                                onDismiss = { id ->
-                                    moveNotice = null
-                                    closeFlownTab(id)
-                                },
-                                onMoved = ::noteMove,
-                                onFocus = { block ->
-                                    // Without the connection the focus stays: the pane takes no keys then ([paneInputPaused]).
-                                    if (block != state.focused && conn.connected) {
-                                        notification?.leave?.invoke()
-                                        conn.op("focus", "block" to block)
-                                    }
-                                })
+                    }
+                    // Another session chosen in the overview (#229): the server drops the shown session's view
+                    // before the new one's comes, and the stage goes for that while. The strip stays in sight,
+                    // and stays for a session without tabs, to go on to another one. Not in a pane move's overview, which
+                    // a switch of session ends ([OverviewState.forMove]).
+                    // Read as [overviewVisible], which changes when the overview comes or goes, not with each frame of its motion (#335).
+                    if ((window == null || !drawsPanes(window)) && overviewVisible && !overview.forMove) {
+                        SessionStrip(strip, overview, Modifier.align(Alignment.TopCenter))
+                        // The overview left open on a session without tabs (#247): the tab it closed is said to be closed here.
+                        if (state.windows.isEmpty()) {
+                            LaunchedEffect(overview, state.session) { overview.tabsGone() }
+                            RowNote(overview, Modifier.align(Alignment.BottomCenter))
+                        }
+                    }
+                    // The panes stay to be read; the cover says that nothing typed reaches them.
+                    if (covered && window != null && drawsPanes(window)) InputPausedCover(mark, state.status, radius)
+                    // The row of capsules is a child of this box: a drag drops it at the nearest of its four places in this box.
+                    // At a top corner the row starts below the panes' move handles and the input-paused capsule (top centre).
+                    val topClearance = maxOf(PaneHandleStrip, sizes.overlayMargin + sizes.capsule)
+                    // One row per tab: another tab shown during a drag ends it, and the row goes back with nothing saved.
+                    if (window != null && minimized.isNotEmpty()) key(window.id) {
+                        MinimizedPanes(minimized, conn.connected,
+                            onShow = { c -> state.session?.let { conn.showMinimized(it, window.id, c.block) } },
+                            corner = corner, onMoveTo = s::saveCapsuleCorner, haptics = s.haptics,
+                            insets = CapsuleInsets(side = sizes.overlayPadding, top = topClearance + sizes.gapCompact),
+                            modifier = Modifier.align(corner.alignment()))
+                    }
+                    if (window != null) openPaneMenu?.let { b ->
+                        PaneMenu(window, b, onDismiss = { menuFor = null }, conn = conn,
+                            onAutoSplit = ::autoSplit, onFind = ::openSearch, onNotifications = ::editAlerts, onCompose = ::openComposer,
+                            onClose = ::askToCloseFromPaneMenu, showing = ::showing, keyboard = true, onMoveToTab = ::pickPlaceFor, onMoveToNewTab = ::moveToNewTab,
+                            beforePaste = input::finishCompositionBeforePaste)
+                    }
+                }
+                if (fold.tabletop) Spacer(Modifier.weight(1f))
+                // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
+                val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
+                ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle, notification = notification)
+                if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
+                    KeyBar(s.keyBar, armed, keyBarSlot(gap),
+                        enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
+                        // A modifier is felt turning on or off, any other key as a key (#309).
+                        if (!repeated) haptic(barKeyFeel(k, armed))
+                        if (k in StickyKeys) {
+                            val next = toggleSticky(armed, k)
+                            // Ctrl or Alt is for the key that follows it. What the keyboard composed
+                            // before goes first and without it, and the next key arrives alone ([armedLatinKey]).
+                            if (takesComposedKey(stickyMeta(next)) && !takesComposedKey(input.stickyMeta)) input.finishBarComposition()
+                            armed = next
+                            input.stickyMeta = stickyMeta(armed)
+                        } else if (!input.finishBarComposition()) {
+                            // A composition that was a paste waits for its question; the key waits with it, unsent.
+                            val code = KEY_CODES[k]
+                            if (code != null) input.sendKey(code, 0, 0) else input.sendText(k)
                         }
                     }
                 }
-                // Another session chosen in the overview (#229): the server drops the shown session's view
-                // before the new one's comes, and the stage goes for that while. The strip stays in sight,
-                // and stays for a session without tabs, to go on to another one. Not in a pane move's overview, which
-                // a switch of session ends ([OverviewState.forMove]).
-                // Read as [overviewVisible], which changes when the overview comes or goes, not with each frame of its motion (#335).
-                if ((window == null || !drawsPanes(window)) && overviewVisible && !overview.forMove) {
-                    SessionStrip(strip, overview, Modifier.align(Alignment.TopCenter))
-                    // The overview left open on a session without tabs (#247): the tab it closed is said to be closed here.
-                    if (state.windows.isEmpty()) {
-                        LaunchedEffect(overview, state.session) { overview.tabsGone() }
-                        RowNote(overview, Modifier.align(Alignment.BottomCenter))
-                    }
-                }
-                // The panes stay to be read; the cover says that nothing typed reaches them.
-                if (covered && window != null && drawsPanes(window)) InputPausedCover(mark, state.status, radius)
-                // The minimized floating windows, at the chosen corner. Not in the overview, which has no panes to bring one back to.
-                // The row is a child of this box: a drag drops it at the nearest of its four places in this box.
-                // Their capsules are named by their titles: read only where there are some.
-                val capsuleBlocks = if (window?.minimizedLayers.isNullOrEmpty()) state.blocks else conn.state.blocks
-                val minimized = shownCapsules(window, capsuleBlocks, overviewVisible, overview.paneMove != null)
-                val corner = shownCorner(s.capsuleCorner)
-                // At a top corner the row starts below the panes' move handles and the input-paused capsule (top centre).
-                val topClearance = maxOf(PaneHandleStrip, sizes.overlayMargin + sizes.capsule)
-                // One row per tab: another tab shown during a drag ends it, and the row goes back with nothing saved.
-                if (window != null && minimized.isNotEmpty()) key(window.id) {
-                    MinimizedPanes(minimized, conn.connected,
-                        onShow = { c -> state.session?.let { conn.showMinimized(it, window.id, c.block) } },
-                        corner = corner, onMoveTo = s::saveCapsuleCorner, haptics = s.haptics,
-                        insets = CapsuleInsets(side = sizes.overlayPadding, top = topClearance + sizes.gapCompact),
-                        modifier = Modifier.align(corner.alignment()))
-                }
-                if (window != null) openPaneMenu?.let { b ->
-                    PaneMenu(window, b, onDismiss = { menuFor = null }, conn = conn,
-                        onAutoSplit = ::autoSplit, onFind = ::openSearch, onNotifications = ::editAlerts, onCompose = ::openComposer,
-                        onClose = ::askToCloseFromPaneMenu, showing = ::showing, keyboard = true, onMoveToTab = ::pickPlaceFor, onMoveToNewTab = ::moveToNewTab,
-                        beforePaste = input::finishCompositionBeforePaste)
-                }
-                // This box is inside the safe-drawing insets and above the caption and the key bar, so
-                // the notice stays clear of the soft keyboard. It is last, so it covers the pause layer.
-                Column(Modifier.align(Alignment.BottomCenter).padding(sizes.overlayPadding)
-                    .padding(bottom = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap)), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
-                    UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
-                    UploadToast(conn)
-                    ErrorNotice(conn, text = ::noticeText)
-                }
             }
-            if (fold.tabletop) Spacer(Modifier.weight(1f))
-            // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
-            val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-            ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle, notification = notification)
-            if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
-                KeyBar(s.keyBar, armed, keyBarSlot(gap),
-                    enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
-                    // A modifier is felt turning on or off, any other key as a key (#309).
-                    if (!repeated) haptic(barKeyFeel(k, armed))
-                    if (k in StickyKeys) {
-                        val next = toggleSticky(armed, k)
-                        // Ctrl or Alt is for the key that follows it. What the keyboard composed
-                        // before goes first and without it, and the next key arrives alone ([armedLatinKey]).
-                        if (takesComposedKey(stickyMeta(next)) && !takesComposedKey(input.stickyMeta)) input.finishBarComposition()
-                        armed = next
-                        input.stickyMeta = stickyMeta(armed)
-                    } else if (!input.finishBarComposition()) {
-                        // A composition that was a paste waits for its question; the key waits with it, unsent.
-                        val code = KEY_CODES[k]
-                        if (code != null) input.sendKey(code, 0, 0) else input.sendText(k)
-                    }
-                }
+            // Over the whole column, so that a pane area too short for them (landscape with the keyboard up) does not
+            // cut them: they go over its caption then ([noticeTop]). The column is inside the safe-drawing insets, so
+            // they stay clear of the soft keyboard. Last, so they cover the pause layer.
+            PaneNotices({ paneBox.value }, sizes.overlayPadding, sizes.gap,
+                lift = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap), modifier = Modifier.matchParentSize()) {
+                UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
+                UploadToast(conn)
+                ErrorNotice(conn, text = ::noticeText)
             }
         }
         Spacer(Modifier.width(gap))
@@ -1115,14 +1130,6 @@ internal fun Workspace(
         else LaunchedEffect(asked) { sshDetailsFor = null }
     }
     ErrorNoticeTimer(conn)
-    // Without the panes there is no pane area to hold the notice: the window's own safe area does.
-    if (panesHidden) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.screenSafeDrawing).padding(sizes.overlayPadding)) {
-        Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
-            UploadToast(conn)
-            ErrorNotice(conn, text = ::noticeText)
-        }
-    }
 }
 
 /** A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109). */

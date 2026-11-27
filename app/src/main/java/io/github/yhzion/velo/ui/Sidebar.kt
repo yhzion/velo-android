@@ -197,6 +197,8 @@ internal fun Sidebar(
     settingsBadge: Boolean = false,
     /** The pin beside the toggle ([dockSwitch]): whether the sidebar is docked beside the panes; null draws no pin. */
     docked: Boolean? = null,
+    /** The notices it holds under its Filter field while it covers the panes ([Workspace]): the list makes room for them. */
+    notices: (@Composable ColumnScope.() -> Unit)? = null,
     state: SidebarState = remember { SidebarState() },
 ) = VeloSurface(VeloTheme.colors.sidebar) {
     val c = VeloTheme.surface
@@ -327,6 +329,11 @@ internal fun Sidebar(
             SearchField(query, { query = it }, Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .background(c.surface).padding(12.bd).testTag("sidebar-filter"), placeholder = "Filter",
                 inputModifier = Modifier.testTag("sidebar-filter-input").heightIn(min = 21.bd))
+        }
+        // On the band under the field, the board's 12 from its edges: the list above grows shorter.
+        notices?.let {
+            Column(Modifier.fillMaxWidth().padding(start = 12.bd, end = 12.bd, bottom = 12.bd), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(VeloTheme.sizes.gap), content = it)
         }
     }
 }
