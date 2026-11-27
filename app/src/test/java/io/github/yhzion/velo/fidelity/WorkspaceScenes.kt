@@ -22,10 +22,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -37,12 +40,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import io.github.yhzion.velo.DiscoveredServer
 import io.github.yhzion.velo.HostConnection
 import io.github.yhzion.velo.PaneAddress
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.BlockInfo
+import io.github.yhzion.velo.core.FloatingLayer
 import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.SessionInfo
@@ -59,10 +64,16 @@ import io.github.yhzion.velo.ui.ComposerTarget
 import io.github.yhzion.velo.ui.DeviceNetwork
 import io.github.yhzion.velo.ui.deviceRow
 import io.github.yhzion.velo.ui.KeyBar
+import io.github.yhzion.velo.ui.KeyboardPanePicker
+import io.github.yhzion.velo.ui.MoveNotice
+import io.github.yhzion.velo.ui.MovePlace
+import io.github.yhzion.velo.ui.moveNoticeAfter
 import io.github.yhzion.velo.ui.OverviewCarry
 import io.github.yhzion.velo.ui.OverviewState
 import io.github.yhzion.velo.ui.PaneCaption
 import io.github.yhzion.velo.ui.PaneMenu
+import io.github.yhzion.velo.ui.PaneNotices
+import io.github.yhzion.velo.ui.PaneRect
 import io.github.yhzion.velo.ui.paneRow
 import io.github.yhzion.velo.ui.RailColumn
 import io.github.yhzion.velo.ui.RailPage
@@ -88,9 +99,11 @@ import io.github.yhzion.velo.ui.rememberOverviewState
 import io.github.yhzion.velo.ui.sessionChips
 import io.github.yhzion.velo.ui.sidebarSlot
 import io.github.yhzion.velo.ui.stripRemotes
+import io.github.yhzion.velo.ui.tabBlocks
 import io.github.yhzion.velo.ui.tabOf
 import io.github.yhzion.velo.ui.TabStage
 import io.github.yhzion.velo.ui.TerminalInputView
+import io.github.yhzion.velo.ui.UndoNotice
 import io.github.yhzion.velo.ui.theme.OverlayLayer
 import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
@@ -134,6 +147,13 @@ val WorkspaceScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "workspace-drum" to { ScreenScene(SceneView.Drum) },
     "workspace-pane-move" to { ScreenScene(SceneView.PaneMove) },
     "workspace-zoom" to { ScreenScene(SceneView.Zoom) },
+    // The other states of those screens (#188): the overview as a grid with a close waiting for Undo, a move of a tab's
+    // only pane, the notice after a move, a zoomed tab's pane under a floating one, and the hardware keys' pane picker.
+    "workspace-overview-grid" to { ScreenScene(SceneView.Grid) },
+    "workspace-pane-move-alone" to { ScreenScene(SceneView.MoveAlone) },
+    "workspace-move-undo" to { ScreenScene(SceneView.Moved) },
+    "workspace-zoom-covered" to { ScreenScene(SceneView.Covered) },
+    "workspace-pane-picker" to { ScreenScene(SceneView.Picker) },
 )
 
 /**
@@ -151,9 +171,22 @@ private enum class SceneView {
     PaneMove,
     /** The shown tab zoomed on its first pane: the caption's minimap ([ZoomMinimap]), whose tap opens its picker. */
     Zoom,
+    /** The overview as a grid of cards (the Overview setting, #281), with a tab's close waiting for Undo under it ([RowNote]). */
+    Grid,
+    /** The overview of a pick-mode move of a tab's only pane: its card says the tab closes, the New Tab card that it is alone. */
+    MoveAlone,
+    /** The pane cards after a swap of the shown tab's first two panes, with the move's notice and its Undo ([UndoNotice]). */
+    Moved,
+    /** [Zoom] with the first pane under a floating one, so the minimap's picker lists it in a row under its map. */
+    Covered,
+    /** The pane cards with the hardware keys' pane picker open ([KeyboardPanePicker]), as its shortcut opens it. */
+    Picker,
     ;
 
-    val overview: Boolean get() = this == Overview || this == Drum || this == PaneMove
+    val overview: Boolean get() = this == Overview || this == Drum || this == PaneMove || this == Grid || this == MoveAlone
+
+    /** The shown tab is zoomed on its first pane, and the caption has its minimap. */
+    val zoomed: Boolean get() = this == Zoom || this == Covered
 }
 
 /** The device shape a capture is drawn for, told by its width (393, 475, 821 dp). */
@@ -257,8 +290,8 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
         val basis = rememberSceneBasis(sidebar = null)
         val shown = basis.shown
         val panes = remember(basis, view) {
-            val tabs = withTabs(basis.state, basis.count, basis.now)
-            if (view != SceneView.Zoom) tabs else tabs.copy(windows = tabs.windows.map { if (it.id == shown) it.copy(zoomed = tabs.focused) else it })
+            val tabs = withTabs(basis.state, basis.count, basis.now).let { if (view == SceneView.Covered) withFloating(it, basis.count) else it }
+            if (!view.zoomed) tabs else tabs.copy(windows = tabs.windows.map { if (it.id == shown) it.copy(zoomed = tabs.focused) else it })
         }
         val conn = rememberFakeConnection(panes)
         val overview = rememberOverviewState(conn, remember { OverviewCarry() }) {}
@@ -272,9 +305,16 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
             when (view) {
                 SceneView.Overview -> overview.open()
                 SceneView.Drum -> checkNotNull(overview.openWheel()) { "The drum did not open" }
-                else -> check(overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)) { "The pane move did not start" }
+                SceneView.PaneMove -> check(overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)) { "The pane move did not start" }
+                SceneView.Grid -> closeForUndo(overview, conn, basis.state, shown)
+                SceneView.MoveAlone -> moveAlone(overview, conn)
+                else -> error("Unhandled overview view: $view")
             }
         }
+        // The hardware keys' pane picker, opened once the core's state is in, as the pane menu is ([WorkspaceFrame]); shut
+        // while MenuSpeechTest scans, which has no key to open it.
+        var picking by remember { mutableStateOf(false) }
+        if (view == SceneView.Picker && !LocalMenusShut.current) LaunchedEffect(conn) { snapshotFlow { conn.connected }.first { it }; picking = true }
         val focused = panes.windows.single { it.id == shown }.layout!!.blocks().first()
         // As the workspace hands the rail its state: from the overview, not from the scene's view.
         WorkspaceFrame(basis, sidebar = null, panes, conn, down = false, paneMenu = false, overviewOpen = overview.showing && !overview.wheel,
@@ -282,13 +322,16 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
             page = railPage(panes.windows.map { it.id }, shown, front = if (overview.wheel) overview.wheelFront else -1),
             paneArea = {
                 when {
-                    view.overview -> Box(Modifier.weight(1f).fillMaxWidth()) { if (conn.connected) SceneStage(conn, overview, basis.state) }
-                    view == SceneView.Zoom -> ZoomedPane(basis.shape)
+                    view.overview -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                        if (conn.connected) SceneStage(conn, overview, basis.state, grid = view == SceneView.Grid)
+                    }
+                    view.zoomed -> ZoomedPane(basis.shape)
+                    view == SceneView.Moved -> MovedPanes(basis, conn, panes)
                     else -> ScenePanes(basis.shape, basis.threePanes, docked = false)
                 }
             },
             caption = { modifier ->
-                if (view == SceneView.Zoom) ZoomCaption(panes, basis.readState, modifier)
+                if (view.zoomed) ZoomCaption(panes, basis.readState, modifier)
                 else PaneCaption(tabOf(basis.state, Agents, shown), connected = true, basis.readState, host = Host, modifier = modifier)
             },
             // As the workspace draws it: it turns only while the overview is shut, and a turn sends nothing here.
@@ -298,7 +341,84 @@ private fun ScreenScene(view: SceneView) = SceneLayer {
                     onScroll = { _, _ -> false }, onOpen = { overview.openWheel() }, onTurn = overview::turnWheel,
                     onPick = { overview.pickWheel(it, select = false) }, onSelect = {}, modifier = Modifier.weight(1f))
             })
+        if (picking) {
+            // As the workspace opens it: the shown tab's panes, the focused one marked, each named with its title.
+            val blocks = tabBlocks(panes.windows.single { it.id == shown })
+            KeyboardPanePicker(blocks, blocks, conn.state.focused, conn.state.blocks, onDismiss = { picking = false }) {}
+        }
     }
+}
+
+/**
+ * The grid's close that waits for Undo (#228): once the grid is open, the last card but the shown tab's flies away as a
+ * screen reader's Close tab sends it, and its tab is closed as one that holds only a shell is, without a question. The
+ * close is never sent here. A close that does not wait fails the scene.
+ */
+private suspend fun closeForUndo(overview: OverviewState, conn: HostConnection, state: UiState, shown: String) {
+    overview.open()
+    val id = overview.tabs.last { it != shown }
+    repeat(240) { if (!overview.liftable(id)) withFrameNanos {} }
+    check(overview.stage?.grid != null) { "The overview is no grid" }
+    check(overview.dismiss(id) { gone -> overview.closeLater(gone, tabOf(state, Agents, gone)?.name.orEmpty()) { conn.connected } }) { "The card did not fly" }
+    repeat(240) { if (overview.undoName == null) withFrameNanos {} }
+    checkNotNull(overview.undoName) { "The close does not wait for Undo" }
+}
+
+/**
+ * A move of the only pane of the last tab that has one, as a screen reader's Move to Tab on its card's handle starts it:
+ * the move empties its tab. Then the screen reader scrolls the row on, a card at a time, to its last place, the New Tab
+ * card after that tab's, which cannot take a pane that is alone already. A move that does not start fails the scene.
+ */
+private suspend fun moveAlone(overview: OverviewState, conn: HostConnection) {
+    val windows = conn.state.windows
+    val alone = checkNotNull(windows.lastOrNull { tabBlocks(it).size == 1 }) { "No tab has one pane" }
+    check(overview.startPaneMove(windows, conn.connected, tabBlocks(alone).single(), root = null)) { "The move of a tab's only pane did not start" }
+    repeat(240) { if (overview.stage == null || overview.progress < 1f) withFrameNanos {} }
+    repeat(windows.size + 1) {
+        if (!overview.scrollCards(1f)) return
+        repeat(240) { if (overview.rowMoving) withFrameNanos {} }
+    }
+}
+
+/**
+ * The shown tab's panes after its first pane was swapped with its second, with the move's notice over them as the
+ * workspace places it ([PaneNotices]). The notice keeps its place for the scan: its time running out does nothing.
+ */
+@Composable
+private fun ColumnScope.MovedPanes(basis: SceneBasis, conn: HostConnection, panes: UiState) {
+    val notice = remember(panes) { swapNotice(panes) }
+    var box by remember { mutableStateOf<Rect?>(null) }
+    val sizes = VeloTheme.sizes
+    Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { box = Rect(Offset.Zero, it.size.toSize()) }) {
+        Column(Modifier.fillMaxSize()) { ScenePanes(basis.shape, basis.threePanes, docked = false) }
+        PaneNotices({ box }, sizes.overlayPadding, sizes.gap, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+            UndoNotice(conn, notice, onDone = {})
+        }
+    }
+}
+
+/**
+ * The notice of a swap of the shown tab's first pane with its second ([moveNoticeAfter]): the tabs of [state] were the
+ * tabs before it but for those two panes, the other way round. So the move has landed, and its Undo swaps them back.
+ */
+private fun swapNotice(state: UiState): MoveNotice {
+    val shown = checkNotNull(state.window)
+    val blocks = checkNotNull(state.windows.single { it.id == shown }.layout).blocks()
+    val before = state.windows.map { if (it.id == shown) it.copy(layout = layoutOf(listOf(blocks[1], blocks[0]) + blocks.drop(2))) else it }
+    return moveNoticeAfter(null, blocks[0], MovePlace.Swap(shown, blocks[1], PaneRect(blocks[1], 0f, 0f, 0f, 0f)), before) { "" }
+}
+
+/**
+ * [state] with a floating pane over the shown tab's first pane, as large as it is in [layoutOf]'s split of [count]
+ * panes (the left half of three, the top half of two): the minimap's picker leaves that pane no finger's target, so
+ * it lists it in a row under its map ([CoveredCells]).
+ */
+private fun withFloating(state: UiState, count: Int): UiState {
+    val shown = checkNotNull(state.window)
+    val block = "block:$shown-floating"
+    val over = if (count >= 3) FloatingLayer(block, 0f, 0f, 0.5f, 1f) else FloatingLayer(block, 0f, 0f, 1f, 0.5f)
+    return state.copy(windows = state.windows.map { if (it.id == shown) it.copy(floating = listOf(over)) else it },
+        blocks = state.blocks + (block to BlockInfo(program = "zsh", cwd = "~")))
 }
 
 /**
@@ -402,17 +522,17 @@ private fun withTabs(state: UiState, count: Int, now: Long): UiState {
 }
 
 /**
- * The overview's stage ([TabStage]) as the workspace draws it in the pane area, on the core's state of [conn]: its
- * strip has [state]'s sessions and build-server's ([rememberSceneStrip]). A tap or a move sends nothing.
+ * The overview's stage ([TabStage]) as the workspace draws it in the pane area, on the core's state of [conn], as a row or
+ * as a [grid]: its strip has [state]'s sessions and build-server's ([rememberSceneStrip]). A tap or a move sends nothing.
  */
 @Composable
-private fun SceneStage(conn: HostConnection, overview: OverviewState, state: UiState) {
+private fun SceneStage(conn: HostConnection, overview: OverviewState, state: UiState, grid: Boolean) {
     val live = conn.state
     val selected = live.windows.firstOrNull { it.id == live.window } ?: return
     val context = LocalContext.current
     val input = remember(context) { TerminalInputView(context) }
     TabStage(conn, live, selected, overview, live.focused, VeloTheme.sizes.gap, VeloTheme.radii.pane, input, controls = true, haptics = false,
-        handles = null, strip = rememberSceneStrip(state), onFocus = {}, onDismiss = {}, onMoved = { _, _, _ -> }, grid = false, fontSize = 13f)
+        handles = null, strip = rememberSceneStrip(state), onFocus = {}, onDismiss = {}, onMoved = { _, _, _ -> }, grid = grid, fontSize = 13f)
 }
 
 /** The zoomed pane, alone in the pane area: a card with the Pane board's agent text. */

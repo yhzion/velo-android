@@ -152,20 +152,22 @@ class MenuSpeechTest(private val width: ScanWidth) {
     private val Required = listOf("keyboard-double-tap-menu", "keyboard-triple-tap-menu", "appearance-minimized-menu", "alert-needs-response-sound-menu",
         "updates-channel-menu", "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row")
 
-    /** The scenes that draw the rail: each opens its popover and the pane menu, and the connected ones the paste prompt (#174). */
+    /** The scenes that draw the rail: each opens its popover and the pane menu, and the connected ones the paste prompt (#174, #188). */
     private val RailScenes = listOf("workspace-terminal", "workspace-sidebar", "workspace-docked", "workspace-panes", "workspace-pane-menu", "workspace-offline",
-        "workspace-wheel", "workspace-overview", "workspace-drum", "workspace-pane-move", "workspace-zoom")
+        "workspace-wheel", "workspace-overview", "workspace-drum", "workspace-pane-move", "workspace-zoom",
+        "workspace-overview-grid", "workspace-pane-move-alone", "workspace-move-undo", "workspace-zoom-covered", "workspace-pane-picker")
 
     /**
      * Openers each width draws in one scene: the sidebar scene shows the remote's More button, as the
      * docked one does; the rail's scenes their rail; the Compose dialog, and the draft with a file,
-     * the attach control; the overview its session strip's chips; and the zoomed tab its minimap (#174).
+     * the attach control; the overview and its grid their session strip's chips; and the zoomed tabs their minimap (#174,
+     * #188), whose picker lists the pane under a floating one in a row of its own.
      */
     private val InScene = listOf("workspace-sidebar" to "remote-menu-", "workspace-docked" to "remote-menu-") +
         RailScenes.flatMap { listOf(it to "rail-connection", it to "rail-pane-menu") } +
         RailScenes.filter { it != "workspace-offline" }.map { it to "paste prompt of rail-pane-menu" } +
         listOf("workspace-compose" to "attach control", "compose-attachment" to "attach control", "workspace-overview" to "long press on a session chip",
-            "workspace-zoom" to "caption-minimap")
+            "workspace-zoom" to "caption-minimap", "workspace-overview-grid" to "long press on a session chip", "workspace-zoom-covered" to "caption-minimap")
 
     /**
      * Openers only the unfolded width draws, by scene and kind: settings' home shows Appearance beside

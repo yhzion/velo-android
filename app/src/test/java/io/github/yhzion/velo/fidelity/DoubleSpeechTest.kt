@@ -18,6 +18,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import io.github.yhzion.velo.ui.WheelName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -44,7 +47,9 @@ import org.robolectric.annotation.GraphicsMode
  *
  * The scenes of the screens no board draws (#174: the rail's window wheel, the overview, its drum, a pane move and a
  * zoomed tab's minimap) must say what [Heard] lists, so that a scene which did not draw its screen fails. The drum
- * says nothing, so its cards' name tags in the unmerged tree show it was drawn.
+ * says nothing, so its cards' name tags in the unmerged tree show it was drawn. So must the scenes of their other states
+ * (#188): the grid's close that waits for Undo, a move of a tab's only pane, a move's notice, the minimap's picker with
+ * a pane under a floating one, which the scan opens by a tap first ([Taps]), and the hardware keys' pane picker.
  *
  * The scan runs at each [ScanWidth], the phone's and the unfolded Fold8's (#175), and its name says which.
  * Unfolded, a scene draws its wide layout, and settings-remotes draws studio-mac's menu open. The
@@ -90,6 +95,12 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         for (name in names) {
             current = name
             compose.waitForIdle()
+            // A state only a tap opens, which a scene cannot make: the tap, then the scan.
+            // A scene that drew no such node fails below, by what it does not say.
+            Taps[name]?.takeIf { compose.onAllNodesWithTag(it).fetchSemanticsNodes().isNotEmpty() }?.let { tag ->
+                compose.onNodeWithTag(tag).performClick()
+                compose.waitForIdle()
+            }
             val said = compose.runOnIdle { utterances(view) }
             heard[name] = said
             // The drum's cards say nothing, so their names' tags, kept in the unmerged tree, show the drum was drawn.
@@ -98,11 +109,11 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         }
         assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
         // The screens no board draws were drawn and heard (#174), so the scan is not empty by a screen that did not draw.
-        for (must in Heard) {
-            val said = heard[must.scene].orEmpty()
-            assertTrue("${must.scene} ${if (must.heard) "says" else "never says"} ${must.what} at $width, among:\n" + said.joinToString("\n"),
-                said.any(must.test) == must.heard)
+        // Each one missed is named, so a scan that misses several says them all at once.
+        val missed = Heard.filter { must -> heard[must.scene].orEmpty().any(must.test) != must.heard }.map { must ->
+            "${must.scene} ${if (must.heard) "says" else "never says"} ${must.what}, among:\n" + heard[must.scene].orEmpty().joinToString("\n")
         }
+        assertTrue("At $width:\n" + missed.joinToString("\n\n"), missed.isEmpty())
         assertTrue("workspace-drum draws its cards' names (card-name-*) at $width, among tags:\n" + drumTags.joinToString("\n"),
             drumTags.any { it.startsWith("card-name-") })
     }
@@ -114,7 +125,8 @@ class DoubleSpeechTest(private val width: ScanWidth) {
      * What each scene of a screen no board draws (#174) says at every width: the rail's window wheel its slider with the
      * window in front, the zoomed tab its minimap with the pane it marks, the overview a tab's card and its session
      * strip, and a pane move its capsule and Cancel. No pane is named here: the scan reads pane names as they are. The
-     * drum's cards say nothing, for the rail's slider names its tabs: a card would say a tab again.
+     * drum's cards say nothing, for the rail's slider names its tabs: a card would say a tab again. Then the other states
+     * of those screens (#188), each by the words the app says for it.
      */
     private val Heard = listOf(
         MustHear("workspace-wheel", "the window wheel's slider and its window") { it.parts.size == 2 && it.parts[0] == WheelName },
@@ -126,7 +138,22 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         // A pane's place to pick says the pane's name alone and offers its places as actions; the name is not pinned.
         MustHear("workspace-pane-move", "a pane's place to pick, with its places") { it.parts.size == 1 && it.actions > 0 && !it.node.startsWith("rail-") },
         MustHear("workspace-drum", "a card's selection", heard = false) { it.parts.lastOrNull() in setOf("Selected", "Not selected") },
+        // The other states (#188). The grid's close says Undo is there, and Undo is a button of its own.
+        MustHear("workspace-overview-grid", "the close that waits for Undo") { it.parts.size == 1 && it.parts[0].endsWith(". Undo is available") },
+        MustHear("workspace-overview-grid", "the close's Undo") { it.parts == listOf("Undo") },
+        MustHear("workspace-overview-grid", "a tab's card, not selected") { it.parts.size == 2 && it.parts[1] == "Not selected" && !it.parts[0].startsWith("Session ") },
+        // The moved pane's tab closes with it, and the New Tab card cannot take a pane that is alone already.
+        MustHear("workspace-pane-move-alone", "the card of the tab the move closes") { it.parts.size == 2 && it.parts[1] == "Tab closes" },
+        MustHear("workspace-pane-move-alone", "the New Tab card, with why it takes no pane") { it.parts == listOf("New Tab", "Already alone in its tab") },
+        MustHear("workspace-move-undo", "the swap's notice") { it.parts.size == 1 && it.parts[0].startsWith("Swapped ") },
+        MustHear("workspace-move-undo", "the notice's Undo") { it.parts == listOf("Undo") },
+        // The pane under a floating one is said in the row under the picker's map, by its capsule.
+        MustHear("workspace-zoom-covered", "a covered pane's capsule") { it.node.startsWith("minimap-picker-covered-") && it.parts.isNotEmpty() },
+        MustHear("workspace-pane-picker", "the picker's focused pane") { it.parts.size == 1 && it.parts[0].contains(" (focused)") },
     )
+
+    /** The scenes whose state a tap opens ([Taps]), by the tag tapped: the minimap's picker over the covered pane's row (#188). */
+    private val Taps = mapOf("workspace-zoom-covered" to "caption-minimap")
 
     /** Each focusable node that says something, with the words it says. */
     private fun utterances(view: View): List<Said> =
