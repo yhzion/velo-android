@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.ui.theme.TabTile
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.tileBrand
@@ -75,6 +76,16 @@ import kotlin.math.sin
  * shows ([icon], [TabActivity.icon]).
  */
 internal data class WheelWindow(val id: String, val name: String, val icon: String?)
+
+/**
+ * The wheel's windows for the selected session's tabs, in [UiState.windows]' order. Each tile is the tab's activity's
+ * icon, as the sidebar row's: the agent a report names, else the program ([ActivityReadState.activity]).
+ */
+internal fun wheelWindows(state: UiState, reads: ActivityReadState, connected: Boolean): List<WheelWindow> =
+    state.windows.map { w ->
+        val row = w.row(state, state.session.orEmpty(), w.id == state.window)
+        WheelWindow(w.id, row.name, reads.activity(row, connected).icon)
+    }
 
 /** What a screen reader calls the strip. */
 internal const val WheelName = "Windows"
