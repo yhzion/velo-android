@@ -4,6 +4,7 @@ import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.geometry.Offset
 import io.github.yhzion.velo.HostConnection
+import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.theme.Feel
 
@@ -972,6 +973,16 @@ fun layoutIntentWait(intent: LayoutIntent, timeMs: Long): Long? {
  */
 fun liftOp(toward: LayoutPinch?, intent: LayoutIntent, connected: Boolean, cut: Boolean): String? =
     toward?.takeIf { intent.on && connected && !cut }?.op
+
+/**
+ * The step of the ladder a pinch on [block] of [tab] that began able to take [toward] can still take as its fingers
+ * lift. The server may have changed the tab while they were down (another device zoomed it, the pane closed, another
+ * tab was selected): the tab must still be the one shown ([UiState.window]) and [layoutPinch] still give that step.
+ */
+fun stepAtLift(toward: LayoutPinch?, state: UiState, tab: String?, block: String, connected: Boolean): LayoutPinch? {
+    val window = state.windows.firstOrNull { it.id == tab }?.takeIf { it.id == state.window } ?: return null
+    return toward?.takeIf { layoutPinch(window, block, connected) == it }
+}
 
 /**
  * How far toward its other place the preview takes the pane, 0 to 1, with the fingers [lnRatio] apart: [PREVIEW_REACH]

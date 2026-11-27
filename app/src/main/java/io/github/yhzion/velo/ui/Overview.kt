@@ -2124,7 +2124,12 @@ private suspend fun PointerInputScope.stageGestures(overview: OverviewState, con
         fun endPinch(cut: Boolean) {
             val pane = block ?: return
             if (!moving) return
-            if (toward != null) overview.endPreview(blockScale, liftOp(toward, intent, conn.connected, cut))
+            if (toward != null) {
+                val op = liftOp(stepAtLift(toward, conn.state, tab, pane, conn.connected), intent, conn.connected, cut)
+                // A preview that goes with nothing sent lets go of the step, as fingers that slow down do.
+                if (op == null) layoutIntentFeel(intent, LayoutIntent())?.let(ends.feel)
+                overview.endPreview(blockScale, op)
+            }
             overview.pinchEnd(pane, blockScale, speed.perSecond(time))
         }
 

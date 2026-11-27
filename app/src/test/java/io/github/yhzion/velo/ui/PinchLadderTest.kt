@@ -3,6 +3,7 @@ package io.github.yhzion.velo.ui
 import io.github.yhzion.velo.HostConnection
 import io.github.yhzion.velo.core.FloatingLayer
 import io.github.yhzion.velo.core.LayoutNode
+import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.theme.Feel
 import org.junit.Assert.assertEquals
@@ -143,6 +144,20 @@ class PinchLadderTest {
         assertNull(liftOp(LayoutPinch.Zoom, on, connected = false, cut = false))
         assertNull(liftOp(null, on, connected = true, cut = false))
         assertNull(liftOp(LayoutPinch.Unzoom, LayoutIntent(), connected = true, cut = false))
+    }
+
+    @Test fun aTabThatChangedWhileTheFingersWereDownTakesNoStepAsTheyLift() {
+        val shown = UiState(windows = listOf(split, WindowInfo("v", layout = LayoutNode(block = "c"))), window = "w")
+        assertEquals(LayoutPinch.Zoom, stepAtLift(LayoutPinch.Zoom, shown, "w", "a", connected = true))
+        assertNull("another device zoomed the tab", stepAtLift(LayoutPinch.Zoom, shown.copy(windows = listOf(split.copy(zoomed = "b"))), "w", "a", connected = true))
+        assertNull("the pane closed", stepAtLift(LayoutPinch.Zoom, shown.copy(windows = listOf(split.copy(layout = LayoutNode(block = "b")))), "w", "a", connected = true))
+        assertNull("another tab is shown", stepAtLift(LayoutPinch.Zoom, shown.copy(window = "v"), "w", "a", connected = true))
+        assertNull("the tab closed", stepAtLift(LayoutPinch.Zoom, shown.copy(windows = shown.windows.drop(1)), "w", "a", connected = true))
+        assertNull("no server", stepAtLift(LayoutPinch.Zoom, shown, "w", "a", connected = false))
+        val zoomed = shown.copy(windows = listOf(split.copy(zoomed = "a")))
+        assertEquals(LayoutPinch.Unzoom, stepAtLift(LayoutPinch.Unzoom, zoomed, "w", "a", connected = true))
+        assertNull("another device split it again", stepAtLift(LayoutPinch.Unzoom, shown, "w", "a", connected = true))
+        assertNull(stepAtLift(null, shown, "w", "a", connected = true))
     }
 
     @Test fun theLadderHasAStepForATiledPaneOfASplitTabAndForTheFullScreenPane() {
