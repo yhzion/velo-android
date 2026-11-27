@@ -77,22 +77,32 @@ internal object Speech {
     /**
      * Whether a focusable node that says [said] says a thing twice (#147, #167): a part of it (split at
      * ", ", " · " and ": ") comes again, ignoring case and a short or full name of one thing ([sameThing]),
-     * or one of its words is said whole inside another: in the same case, or by another name of one
-     * thing ("Send Escape", "Esc"). One description that repeats a part of itself ("zsh, zsh") says it
+     * or one of its words is said whole inside another: in the same case, or by another name of a part
+     * of it ("Send Escape", "Esc"; "Open nvim", "Neovim, 2 panes"). One description that repeats a part of itself ("zsh, zsh") says it
      * twice too.
      */
     fun saysTwice(said: List<String>): Boolean {
         val parts = said.flatMap { it.split(", ", " · ", ": ") }.map { sameThing(it.trim()) }.filter { it.length >= 2 }
         if (parts.size != parts.toSet().size) return true
-        for ((a, x) in said.withIndex()) for ((b, y) in said.withIndex())
-            if (a != b && y.length >= 2 &&
-                (Regex("(^|\\W)" + Regex.escape(y) + "(\\W|$)").containsMatchIn(x) || namesIn(x).any { otherNameOf(it, y) })) return true
+        for ((a, x) in said.withIndex()) for ((b, y) in said.withIndex()) {
+            if (a == b || y.length < 2) continue
+            if (Regex("(^|\\W)" + Regex.escape(y) + "(\\W|$)").containsMatchIn(x)) return true
+            val names = namesIn(x)
+            if (partsOf(y).any { part -> names.any { otherNameOf(it, part) } }) return true
+        }
         return false
     }
 
-    /** The words of [said], and each two side by side ("Page Up"): the names it may say a thing by. */
+    /** A folder, said as a path ("~/.config/nvim"): a fact of its own, not a name of the program in it. */
+    private fun isPath(token: String) = '/' in token || token.startsWith("~")
+
+    /** The parts of [said], as [saysTwice] splits it, but folders. */
+    private fun partsOf(said: String) = said.split(", ", " · ", ": ").map { it.trim() }.filter { it.length >= 2 && !isPath(it) }
+
+    /** The words of [said] but its folders, and each two side by side ("Page Up"): the names it may say a thing by. */
     private fun namesIn(said: String): List<String> {
-        val words = Regex("[\\w-]+").findAll(said).map { it.value }.toList()
+        val prose = said.split(Regex("\\s+")).filterNot(::isPath).joinToString(" ")
+        val words = Regex("[\\w-]+").findAll(prose).map { it.value }.toList()
         return words + words.zipWithNext { a, b -> "$a $b" }
     }
 

@@ -85,6 +85,9 @@ class MenuSpeechTest {
 
     /** One menu opened: where, by what (its tag, or the kind of button), and what each option it adds says. */
     private class Opened(val scene: String, val button: String, val by: String, val options: List<List<String>>) {
+        /** Whether a button of the kind [must] opened it: a tag that starts with it, or the one kind with no tag by its name. */
+        fun isBy(must: String) = button.startsWith(must) || by == must
+
         override fun toString() = "$scene, $by: " + if (options.isEmpty()) "(opened nothing)" else options.joinToString(" / ") { it.joinToString(" | ") }
     }
 
@@ -99,7 +102,16 @@ class MenuSpeechTest {
         val openers = opened.filter { it.options.isNotEmpty() }.map { it.by }
         for (must in listOf("keyboard-double-tap-menu", "keyboard-triple-tap-menu", "appearance-minimized-menu", "alert-needs-response-sound-menu",
             "updates-channel-menu", "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row"))
-            assertTrue("A menu opened by $must, among:\n" + openers.joinToString("\n"), openers.any { must in it })
+            assertTrue("A menu opened by $must, among:\n" + openers.joinToString("\n"), opened.any { it.options.isNotEmpty() && it.isBy(must) })
+    }
+
+    @Test fun theKindCheckMatchesATagFromItsStart() {
+        val saved = Opened("settings-remotes", "saved-remote-menu-studio-mac", "saved-remote-menu-studio-mac (More or Actions button)", listOf(listOf("Edit")))
+        val key = Opened("settings-keys", "imported key row", "imported key row", listOf(listOf("Copy")))
+        assertTrue(!saved.isBy("remote-menu-"))
+        assertTrue(saved.isBy("saved-remote-menu-"))
+        assertTrue(key.isBy("imported key row"))
+        assertTrue(!key.isBy("key row"))
     }
 
     /**

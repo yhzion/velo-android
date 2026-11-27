@@ -107,10 +107,14 @@ class DoubleSpeechTest {
         assertTrue(twice(listOf("Press ESC", "Escape")))
         assertTrue(twice(listOf("Scroll Page Up", "PgUp")))
         assertTrue(twice(listOf("Open Neovim", "nvim")))
+        // ... and against a part of the other: a tile of two panes or more names them after the brand.
+        assertTrue(twice(listOf("Neovim, 2 panes", "Open nvim")))
         assertTrue(!twice(listOf("Escape")))
         assertTrue(!twice(listOf("Send Escape", "Tab")))
         assertTrue(!twice(listOf("Neovim, 2 panes", "Edit the parser", "~/src/api")))
         assertTrue(!twice(listOf("zsh, 4 panes", "~/src/web")))
+        // A folder is a fact of its own, not another name of the program it is named after.
+        assertTrue(!twice(listOf("Neovim", "Working · 2s since report · ~/.config/nvim")))
     }
 
     @Test fun theCheckFindsOneDescriptionThatRepeatsAPart() {
