@@ -73,11 +73,12 @@ internal class SidebarHost private constructor(
 
 /**
  * Status of the local phone, shown above (not as part of) the remote list: its [name], the [line]
- * under it, the node's [state] word, and what its dot says ([spoken]).
+ * under it, the node's [state] word, and its dot ([chip]): the Tailscale page's words and colour.
  */
-data class DeviceRow(val name: String, val line: String, val state: String, val spoken: String)
+data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip)
 
-fun deviceRow(state: TailnetState): DeviceRow {
+/** The This Device row of the node's [state]; while Android holds the network back ([paused]) its dot is Paused. */
+fun deviceRow(state: TailnetState, paused: Boolean): DeviceRow {
     val word = when (state) {
         TailnetState.Off -> "Off"
         TailnetState.Starting -> "Starting"
@@ -90,8 +91,8 @@ fun deviceRow(state: TailnetState): DeviceRow {
     val name = running?.name?.trim()?.takeUnless { it.isEmpty() }
         ?: "This Device"
     val ip = running?.ips?.firstOrNull()
-    // The dot says the state in the Tailscale page's words, so a screen reader hears one name for it.
-    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, tailnetChip(state, paused = false).text)
+    // The dot is the Tailscale page's chip, so its words and colour agree with that page in every state.
+    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, tailnetChip(state, paused))
 }
 
 /**
@@ -485,12 +486,6 @@ fun FoundServerRow(server: DiscoveredServer, modifier: Modifier = Modifier, onAd
 private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
-    val status = when (device.state) {
-        "Running" -> Status.Ok
-        "Starting", "Needs login" -> Status.Warning
-        "Error" -> Status.Danger
-        else -> Status.Off
-    }
     val line = VeloTheme.sizes.edge
     // A compact two-line control above the scrolling remote list, not a full-height list row.
     Row(Modifier.padding(horizontal = 12.bd).testTag("this-device-row").fillMaxWidth()
@@ -508,7 +503,7 @@ private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
             Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth(), color = c.secondary, style = type.caption.naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        StatusMark(status, device.spoken, Modifier.testTag("this-device-dot"))
+        StatusMark(device.chip.status, device.chip.text, Modifier.testTag("this-device-dot"))
     }
 }
 

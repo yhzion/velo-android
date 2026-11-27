@@ -25,6 +25,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.ui.theme.Status
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import org.junit.Assert.assertEquals
@@ -60,7 +61,7 @@ class SidebarDockPinTest {
                 val gap = VeloTheme.sizes.gap
                 val fit = sidebarFit(settings.sidebarDocked, gap, gap)
                 Row(Modifier.fillMaxSize()) {
-                    if (open) Sidebar(DeviceRow("velo-phone", "Running", "Running", "Connected"), emptyList(), sidebarSlot(fit.place),
+                    if (open) Sidebar(DeviceRow("velo-phone", "Running", "Running", TailnetChip("Connected", Status.Ok)), emptyList(), sidebarSlot(fit.place),
                         actions { open = toggleSidebarDock(settings.sidebarDocked, settings::saveSidebarDocked) },
                         docked = dockSwitch(fit.dockable, settings.sidebarDocked))
                     if (!open || fit.place == SidebarPlace.Beside) Box(Modifier.testTag("panes").weight(1f).fillMaxHeight())

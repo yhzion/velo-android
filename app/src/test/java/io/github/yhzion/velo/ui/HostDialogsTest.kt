@@ -3,6 +3,7 @@ package io.github.yhzion.velo.ui
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.remoteWithUrl
+import io.github.yhzion.velo.ui.theme.Status
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -151,29 +152,29 @@ class HostDialogsTest {
     @Test
     fun deviceSummaryShowsTheNodeNameFirstAddressAndState() {
         val running = TailnetState.Running("velo.tailnet.example", listOf("192.0.2.40", "2001:db8:1::1"))
-        assertEquals(DeviceRow("velo.tailnet.example", "192.0.2.40 · Running", "Running", "Connected"), deviceRow(running))
+        assertEquals(DeviceRow("velo.tailnet.example", "192.0.2.40 · Running", "Running", TailnetChip("Connected", Status.Ok)), deviceRow(running, paused = false))
     }
 
     @Test
     fun deviceSummaryKeepsItsNameWithoutAnAddressAndDoesNotShortenLongNames() {
         val name = "a-very-long-node-name-that-needs-ellipsis-on-a-narrow-sidebar.tailnet.example"
-        assertEquals(DeviceRow(name, "Running", "Running", "Connected"), deviceRow(TailnetState.Running(name, emptyList())))
-        assertEquals(DeviceRow(name, "Running", "Running", "Connected"), deviceRow(TailnetState.Running(name, listOf(""))))
+        assertEquals(DeviceRow(name, "Running", "Running", TailnetChip("Connected", Status.Ok)), deviceRow(TailnetState.Running(name, emptyList()), paused = false))
+        assertEquals(DeviceRow(name, "Running", "Running", TailnetChip("Connected", Status.Ok)), deviceRow(TailnetState.Running(name, listOf("")), paused = false))
     }
 
     @Test
     fun deviceSummaryUsesTheFallbackForBlankNames() {
         for (name in listOf("", "  ")) {
-            assertEquals(name, DeviceRow("This Device", "192.0.2.40 · Running", "Running", "Connected"),
-                deviceRow(TailnetState.Running(name, listOf("192.0.2.40"))))
+            assertEquals(name, DeviceRow("This Device", "192.0.2.40 · Running", "Running", TailnetChip("Connected", Status.Ok)),
+                deviceRow(TailnetState.Running(name, listOf("192.0.2.40")), paused = false))
         }
     }
 
     @Test
     fun deviceSummaryShowsUnknownAsAValidName() {
         for ((name, expected) in listOf("unknown" to "unknown", " Unknown " to "Unknown")) {
-            assertEquals(name, DeviceRow(expected, "192.0.2.40 · Running", "Running", "Connected"),
-                deviceRow(TailnetState.Running(name, listOf("192.0.2.40"))))
+            assertEquals(name, DeviceRow(expected, "192.0.2.40 · Running", "Running", TailnetChip("Connected", Status.Ok)),
+                deviceRow(TailnetState.Running(name, listOf("192.0.2.40")), paused = false))
         }
     }
 
@@ -184,7 +185,7 @@ class HostDialogsTest {
             TailnetState.NeedsLogin("https://login.example/abc") to "Needs login",
             TailnetState.LoggedOut to "Logged out",
             TailnetState.Error("the node is stopped") to "Error", TailnetState.Running("", emptyList()) to "Running",
-        )) assertEquals(DeviceRow("This Device", word, word, tailnetChip(state, paused = false).text), deviceRow(state))
+        )) assertEquals(DeviceRow("This Device", word, word, tailnetChip(state, paused = false)), deviceRow(state, paused = false))
     }
 
     @Test
@@ -196,9 +197,23 @@ class HostDialogsTest {
             TailnetState.Error("the node is stopped") to "Error",
             TailnetState.Running("velo", listOf("192.0.2.40")) to "Connected",
         )) {
-            assertEquals(said, deviceRow(state).spoken)
-            assertEquals(tailnetChip(state, paused = false).text, deviceRow(state).spoken)
+            assertEquals(said, deviceRow(state, paused = false).chip.text)
+            for (paused in listOf(false, true)) assertEquals("$state paused=$paused", tailnetChip(state, paused), deviceRow(state, paused).chip)
         }
+    }
+
+    @Test
+    fun theDeviceDotIsPausedWhileAndroidHoldsTheNetworkBack() {
+        val running = TailnetState.Running("velo", listOf("192.0.2.40"))
+        assertEquals(TailnetChip("Paused", Status.Warning), deviceRow(running, paused = true).chip)
+        // The line under the name keeps the node's own state; only the dot says Paused.
+        assertEquals("192.0.2.40 · Running", deviceRow(running, paused = true).line)
+        assertEquals(TailnetChip("Off", Status.Off), deviceRow(TailnetState.Off, paused = true).chip)
+    }
+
+    @Test
+    fun theDeviceDotWhileStartingHasTheTailscalePagesColour() {
+        assertEquals(TailnetChip("Starting", Status.Active), deviceRow(TailnetState.Starting, paused = false).chip)
     }
 
     @Test

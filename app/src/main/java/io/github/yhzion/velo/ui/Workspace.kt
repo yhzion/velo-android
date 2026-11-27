@@ -657,7 +657,7 @@ internal fun Workspace(
                     SidebarHost(remote, it, active = remote == activeRemote, removed = remote == app.removed, needsAnswer = remote.url in needsAnswer)
                 }
             }
-            val device = deviceRow(Tailnet.state)
+            val device = deviceRow(Tailnet.state, Tailnet.paused)
             Sidebar(device, hosts, sidebarSlot(fit.place), SidebarActions(
                 toggleSidebar = { sidebar = false },
                 openSettings = onSettings,

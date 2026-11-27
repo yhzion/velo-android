@@ -47,6 +47,7 @@ import io.github.yhzion.velo.ui.SidebarActions
 import io.github.yhzion.velo.ui.SidebarHost
 import io.github.yhzion.velo.ui.SidebarPlace
 import io.github.yhzion.velo.ui.SidebarState
+import io.github.yhzion.velo.ui.TailnetChip
 import io.github.yhzion.velo.ui.captionSlot
 import io.github.yhzion.velo.ui.connectionMark
 import io.github.yhzion.velo.ui.keyBarSlot
@@ -54,6 +55,7 @@ import io.github.yhzion.velo.ui.paneColumnSlot
 import io.github.yhzion.velo.ui.paneFrame
 import io.github.yhzion.velo.ui.sidebarSlot
 import io.github.yhzion.velo.ui.tabOf
+import io.github.yhzion.velo.ui.theme.Status
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
@@ -129,7 +131,7 @@ private fun WorkspaceScene(sidebar: SidebarPlace?) = VeloTheme(UiSize.Medium) {
     Row(Modifier.testTag("screen-workspace").fillMaxSize().background(VeloTheme.colors.backdrop.surface).padding(gap)) {
         if (sidebar != null) {
             val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), state, readState, active = true, removed = false)
-            Sidebar(DeviceRow("velo-phone", "100.101.12.7 · Running", "Running", "Connected"), listOf(host), sidebarSlot(sidebar), NoActions,
+            Sidebar(DeviceRow("velo-phone", "100.101.12.7 · Running", "Running", TailnetChip("Connected", Status.Ok)), listOf(host), sidebarSlot(sidebar), NoActions,
                 // Only the docked board's window can dock: its pin is on (WsOpenDocked).
                 settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null, state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
             if (sidebar == SidebarPlace.Beside) Spacer(Modifier.width(gap))
