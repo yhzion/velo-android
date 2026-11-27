@@ -20,7 +20,8 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 // Where the notices of the pane column go (#165, #169): the move's Undo, the upload toast and the error notice.
-// Where the sidebar covers the panes there is no pane column: the sidebar holds them under its Filter field.
+// Where the sidebar covers the panes there is no pane column: the sidebar holds them under its Filter field, with the
+// keyboard up too ([sidebarBodyHeight], #195).
 
 /**
  * The top of the notices, in px of the pane column: [padding] above the pane area's lower edge and [lift] over the
@@ -158,4 +159,17 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
             }
         }
     }
+}
+
+/**
+ * The height of the sidebar's body (the list, with the Filter field at its foot) when the sidebar that covers the
+ * panes holds notices [notices] px tall with their padding (#165, #195): its column is [height] px tall and its head
+ * (the toolbar and This Device) [head] px. The notices go under the body, which grows shorter, while it keeps [least]
+ * px beside them (the Filter's band, whole). Else the body keeps all the height under the head and the notices lie
+ * over its foot: landscape with the keyboard up, where the Filter field itself has no room. Either way they end at
+ * the column's foot, so the keyboard only places them again and never composes them elsewhere.
+ */
+internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int): Int {
+    val left = (height - head).coerceAtLeast(0)
+    return if (left - notices >= least) left - notices else left
 }

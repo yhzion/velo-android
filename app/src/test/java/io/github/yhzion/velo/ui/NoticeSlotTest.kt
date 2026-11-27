@@ -80,6 +80,24 @@ class NoticeSlotTest {
         assertTrue("toast $toast has its height", toast.bottom - toast.top >= 48.dp)
     }
 
+    @Test fun aSidebarTooShortForItsFilterBandBesideTheNoticesHasThemWholeOverItsFoot() {
+        // Landscape with the keyboard up on the Velvet: the sidebar about 130 dp tall, its toolbar and This Device about
+        // 125 (#165's review). The notices keep their own height, over the sidebar's foot and inside it (#195).
+        compose.setContent {
+            VeloTheme {
+                Box(Modifier.width(800.dp).height(130.dp)) {
+                    Sidebar(DeviceRow("velo-phone", "Running", "Running", TailnetChip("Connected", Status.Ok)), emptyList(),
+                        Modifier.fillMaxSize(), actions(), notices = { ToastSurface("Uploading x…") })
+                }
+            }
+        }
+        val toast = compose.onNodeWithTag("toast").getBoundsInRoot()
+        val sidebar = compose.onNodeWithTag("sidebar").getBoundsInRoot()
+        assertTrue("toast $toast has its height", toast.bottom - toast.top >= 48.dp)
+        assertTrue("toast $toast in the sidebar $sidebar, 12 dp above its foot",
+            toast.top >= sidebar.top && toast.bottom <= sidebar.bottom - 12.dp + 0.5.dp)
+    }
+
     @Test fun aShortPaneAreaHasTheToastAtPaddingWithItsWholeHeight() {
         // In px of the column: first a tall pane area, which shows the toast's own height, then a one-line one.
         var pane by mutableStateOf(Rect(0f, 0f, 1000f, 2000f))

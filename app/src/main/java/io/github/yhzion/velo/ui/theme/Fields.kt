@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -137,6 +138,10 @@ fun VeloTextField(
     }
 }
 
+/** The least height of a [SearchField]: the Sidebar board's filter is 52 high, and a touch target at least. */
+internal val searchFieldHeight: Dp
+    @Composable @ReadOnlyComposable get() = VeloTheme.medium(52.dp).coerceAtLeast(MinTouch)
+
 /**
  * The search field of a list, as on the Duo: a glass capsule with a magnifier and "Search".
  * It floats at the bottom of the list it filters; the list scrolls under it. With text in it,
@@ -153,7 +158,7 @@ fun SearchField(
     VeloTextField(
         query, onQueryChange, modifier, placeholder = placeholder, icon = rememberVectorPainter(Icons.Default.Search),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        minHeight = VeloTheme.medium(52.dp).coerceAtLeast(MinTouch), iconGap = VeloTheme.space.s12, inputModifier = inputModifier,
+        minHeight = searchFieldHeight, iconGap = VeloTheme.space.s12, inputModifier = inputModifier,
         trailing = if (query.isEmpty()) null else {
             {
                 Box(Modifier.size(s.field - s.cellInset * 2).clip(Capsule).clickable(role = Role.Button) { onQueryChange("") }, contentAlignment = Alignment.Center) {

@@ -121,4 +121,33 @@ class NoticePlaceTest {
         assertNull(noticeRowWidths(listOf(600, 600, 600), 1363, 22, 440))
         assertEquals(listOf(440, 440, 440), noticeRowWidths(listOf(600, 600, 600), 1364, 22, 440))
     }
+
+    // The sidebar that covers the panes (#195), in px at the Velvet's density: its toolbar and This Device 344 (125 dp),
+    // the Filter's band 209 (76 dp) and one notice with its padding 220 (80 dp).
+    private val head = 344
+    private val band = 209
+    private val notices = 220
+
+    @Test
+    fun aTallSidebarGivesItsNoticesRoomUnderTheFilterField() {
+        // Upright without the keyboard (2400 px) and with it (1400): the list grows shorter by the notices.
+        assertEquals(2400 - head - notices, sidebarBodyHeight(height = 2400, head = head, notices = notices, least = band))
+        assertEquals(1400 - head - notices, sidebarBodyHeight(1400, head, notices, band))
+        // Nothing to hold: the body has the whole height under the head.
+        assertEquals(1400 - head, sidebarBodyHeight(1400, head, 0, band))
+    }
+
+    @Test
+    fun aSidebarThatJustKeepsTheFilterBandBesideTheNoticesStillGivesThemRoom() {
+        assertEquals(band, sidebarBodyHeight(head + band + notices, head, notices, band))
+        // One px less, and the body keeps the whole height: the notices lie over its foot.
+        assertEquals(band + notices - 1, sidebarBodyHeight(head + band + notices - 1, head, notices, band))
+    }
+
+    @Test
+    fun aSidebarShorterThanItsHeadGivesTheBodyNothing() {
+        // Landscape with the keyboard up: 358 px (130 dp) leaves 14 under the head; a split screen may leave less.
+        assertEquals(14, sidebarBodyHeight(358, head, notices, band))
+        assertEquals(0, sidebarBodyHeight(300, head, notices, band))
+    }
 }

@@ -153,7 +153,7 @@ internal fun Workspace(
     val dockable = fit.dockable
     val covers = fit.place == SidebarPlace.Covers
     val panesHidden = covers && sidebar
-    // Where the notices go without the panes ([Sidebar]'s notices, or the window's box with the keyboard up).
+    // Whether the sidebar that covers the panes holds notices ([Sidebar]'s notices), with the keyboard up or not (#195).
     // Read as whether some notice shows, so that a new upload or error text composes the notices and not the workspace (#335).
     val anyNotice by remember(conn) { derivedStateOf { conn.uploading != null || conn.error != null } }
     /** The palette's docking command and the sidebar's pin (sidebar-dock): [toggleSidebarDock]. */
@@ -699,9 +699,10 @@ internal fun Workspace(
                 toggleDock = ::toggleDock,
             ), settingsBadge = updateDot(), docked = dockSwitch(dockable, s.sidebarDocked),
                 // Without the panes there is no pane area to hold the notices: the sidebar that covers them does, under
-                // its Filter field, so that they lie over none of its controls nor the rail's (#165). Not with the
-                // keyboard up: the sidebar is then too short to hold them under its toolbar, and the window's box does.
-                notices = if (panesHidden && !keyboard && anyNotice) {
+                // its Filter field, so that they lie over none of its controls nor the rail's (#165). With the keyboard
+                // up too: they stay where they are, so the keyboard neither covers the Filter field with them nor makes
+                // a screen reader read them again (#195). A sidebar too short for them lays them over its foot.
+                notices = if (panesHidden && anyNotice) {
                     {
                         UploadToast(conn)
                         ErrorNotice(conn, text = ::noticeText)
@@ -1138,15 +1139,6 @@ internal fun Workspace(
         else LaunchedEffect(asked) { sshDetailsFor = null }
     }
     ErrorNoticeTimer(conn)
-    // The sidebar covers the panes and the keyboard is up (its Filter field): the sidebar is too short to hold the
-    // notices, and the field in it is squeezed to a few px. The window's safe area holds them, bottom centre, over the keyboard.
-    if (panesHidden && keyboard && anyNotice) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.screenSafeDrawing).padding(sizes.overlayPadding)) {
-        Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
-            UploadToast(conn)
-            ErrorNotice(conn, text = ::noticeText)
-        }
-    }
 }
 
 /** A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109). */

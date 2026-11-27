@@ -27,7 +27,11 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -208,7 +212,8 @@ internal fun Sidebar(
     var collapsedSessions by state::collapsedSessions
     var revealed by state::revealed
 
-    Column(modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface)) {
+    // The Filter's band: the field and the board's 12 around it. The notices go under it while the list keeps that much.
+    SidebarColumn(searchFieldHeight + 24.bd, modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface), head = { Column {
         // Rex for Mac lights the eye's dot only while some tab's row draws its unread dot (a
         // finished, failed or waiting report not yet seen); seeing the last one puts it out.
         val anyUnread = hosts.any { host ->
@@ -245,7 +250,8 @@ internal fun Sidebar(
         }
 
         DeviceHeader(device, actions.openDevice)
-        Box(Modifier.weight(1f)) {
+    } }, body = {
+        Box {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
                 for (host in hosts) {
                     val remote = host.remote
@@ -330,10 +336,42 @@ internal fun Sidebar(
                 .background(c.surface).padding(12.bd).testTag("sidebar-filter"), placeholder = "Filter",
                 inputModifier = Modifier.testTag("sidebar-filter-input").heightIn(min = 21.bd))
         }
-        // On the band under the field, the board's 12 from its edges: the list above grows shorter.
-        notices?.let {
+    }, notices = notices?.let { content ->
+        {
+            // On the band under the field, the board's 12 from its edges: the list above grows shorter.
             Column(Modifier.fillMaxWidth().padding(start = 12.bd, end = 12.bd, bottom = 12.bd), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(VeloTheme.sizes.gap), content = it)
+                verticalArrangement = Arrangement.spacedBy(VeloTheme.sizes.gap), content = content)
+        }
+    })
+}
+
+/**
+ * The sidebar's column: its [head] (the toolbar and This Device), then its [body] (the list, the Filter field at its
+ * foot) in the height left, and the [notices] at its foot, which the body makes room for while it keeps [least] beside
+ * them ([sidebarBodyHeight]); else they lie over the body's foot. They are the same children whichever way they lie,
+ * so a keyboard that opens from the Filter field only places them again (#195): they are not composed elsewhere,
+ * which a screen reader would read again, nor over the field, which Compose then leaves out of what a screen reader
+ * sees, taking the field's focus away. The notices keep their own height: only the body is cut.
+ */
+@Composable
+private fun SidebarColumn(least: Dp, modifier: Modifier, head: @Composable () -> Unit, body: @Composable () -> Unit,
+                          notices: (@Composable () -> Unit)?) {
+    Layout(listOf(head, body, notices ?: {}), modifier) { (heads, bodies, notes), constraints ->
+        val width = constraints.maxWidth
+        val top = heads.map { it.measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight)) }
+        val topHeight = top.sumOf { it.height }
+        val stack = notes.map { it.measure(Constraints(maxWidth = width)) }
+        val stackHeight = stack.sumOf { it.height }
+        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else topHeight + least.roundToPx() + stackHeight
+        val bodyHeight = sidebarBodyHeight(height, topHeight, stackHeight, least.roundToPx())
+        val inside = bodies.map { it.measure(Constraints(maxWidth = width, minHeight = bodyHeight, maxHeight = bodyHeight)) }
+        val all = top + inside + stack
+        layout(constraints.constrainWidth(all.maxOfOrNull { it.width } ?: 0), constraints.constrainHeight(height)) {
+            var y = 0
+            (top + inside).forEach { it.placeRelative(0, y); y += it.height }
+            // Placed last, so over the body's foot when it keeps the height under them.
+            var at = (height - stackHeight).coerceAtLeast(0)
+            stack.forEach { it.placeRelative(0, at); at += it.height }
         }
     }
 }
