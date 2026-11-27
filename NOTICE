@@ -68,12 +68,12 @@ Program logos (app/src/main/res/drawable/ic_brand_*.xml)
 Most logos on the tab tiles (all but Velo's own drawings of omp's and pi's
 marks, named below) and the Tailscale logo come from
 Simple Icons 16.38.1 (https://simpleicons.org). Simple Icons releases its SVG
-data under CC0 1.0: Claude, Google Gemini, Docker, Zsh, htop, Python and
-Tailscale. Simple Icons records two of the logos used here under licenses of
-their own, which apply instead: Git (CC BY 3.0; Git Logo by Jason Long) and
-Neovim (CC BY-SA 3.0). Each path is copied unchanged onto a 24 by 24 grid. The
-Tailscale logo is shown on the start screen's login card and in Settings, to
-name the Tailscale network that Velo's own node logs in to.
+data under CC0 1.0: Claude, Google Gemini, OpenCode, Docker, Zsh, htop,
+Python and Tailscale. Simple Icons records two of the logos used here under
+licenses of their own, which apply instead: Git (CC BY 3.0; Git Logo by Jason
+Long) and Neovim (CC BY-SA 3.0). Each path is copied unchanged onto a 24 by
+24 grid. The Tailscale logo is shown on the start screen's login card and in
+Settings, to name the Tailscale network that Velo's own node logs in to.
 
 The logos are trademarks of their owners. Velo uses them only to identify the
 program running in a tab and the Tailscale network that Velo's own node logs

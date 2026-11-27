@@ -816,7 +816,8 @@ face's size at Medium and are unit-tested (`TabTileTest`):
 orange gradient; white to `#E3E3E3` with a black C in Roboto Bold, as the Tile board sets it);
 omp and pi, which the board does not show, keep their fills (omp's gradient, pi's `#30556B`)
 with Velo's own drawings of their marks (`ic_agent_omp`, `ic_mark_pi`, NOTICE). The tools draw a Simple Icons 16.38.1 logo
-(`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass; Azure and Heroku are letter tiles;
+(`ic_brand_<slug>`, NOTICE) in its brand colour on dark glass, except OpenCode's, whose black would vanish
+there and which takes the text colour; Azure and Heroku are letter tiles;
 any other program is `>_`. A login shell (`-zsh`) has its shell's brand. The parts carry the
 canvas's test tags under `tag`: `-face`, `-logo`, `-letter`, `-layer-2` to `-layer-4`, `-badge`,
 `-pane-count`.

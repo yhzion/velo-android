@@ -11,7 +11,7 @@ pub fn agent(value: []const u8) ?[]const u8 {
         .{ "openai-codex", "codex" }, .{ "pi", "pi" },
         .{ "pi-coding-agent", "pi" }, .{ "omp", "omp" },
         .{ "oh-my-pi", "omp" },       .{ "gemini", "gemini" },
-        .{ "gemini-cli", "gemini" },
+        .{ "gemini-cli", "gemini" },  .{ "opencode", "opencode" },
     };
     inline for (aliases) |pair| if (std.ascii.eqlIgnoreCase(name, pair[0])) return pair[1];
     return null;
@@ -125,6 +125,10 @@ test "agent identity uses a launcher name or installed package, never a version 
         .{ "{\"name\":\"node\",\"cwd\":\"/work/codex\",\"path\":\"/bin/node\"}", null },
         .{ "{\"name\":\"node\",\"argv0\":\"node\",\"script\":\"/work/gemini/index.js\"}", null },
         .{ "{\"name\":\"python3\",\"script\":\"/home/u/bin/pi.py\"}", null },
+        // OpenCode is its own executable, which its npm package installs as bin/opencode.exe on every platform.
+        .{ "{\"name\":\"opencode.exe\",\"argv0\":\"opencode\",\"invoked_path\":\"/home/u/lib/node_modules/.bin/opencode\",\"path\":\"/home/u/lib/node_modules/opencode-ai/bin/opencode.exe\"}", "opencode" },
+        .{ "{\"name\":\"opencode.exe\",\"argv0\":\"oc\",\"path\":\"/home/u/lib/node_modules/opencode-ai/bin/opencode.exe\"}", "opencode" },
+        .{ "{\"name\":\"node\",\"argv0\":\"node\",\"cwd\":\"/work/opencode\",\"script\":\"/work/opencode/index.js\"}", null },
     }) |case| {
         const proc = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), case[0], .{});
         try std.testing.expectEqualStrings(case[1] orelse "", processAgent(proc) orelse "");

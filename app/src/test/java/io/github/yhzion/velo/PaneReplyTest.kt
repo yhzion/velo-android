@@ -40,7 +40,7 @@ class PaneReplyTest {
             assertTrue(permission.all { it.choices == null })
         }
 
-        // A Claude question without listed choices, omp, Codex questions, pi, Gemini, unknown programs.
+        // A Claude question without listed choices, omp, Codex questions, pi, Gemini, OpenCode, unknown programs.
         assertNull(plan("question", "claude", choices = null))
         assertNull(plan("question", "omp"))
         assertNull(plan("permission", "omp"))
@@ -48,6 +48,8 @@ class PaneReplyTest {
         assertNull(plan("question", "pi"))
         assertNull(plan("question", "gemini"))
         assertNull(plan("permission", "gemini-cli"))
+        assertNull(plan("question", "opencode"))
+        assertNull(plan("permission", "opencode"))
         assertNull(plan("permission", "vim"))
         assertNull(plan("permission", null))
         // Other blocked reasons and other states.

@@ -167,6 +167,7 @@ class PaneAlertsTest {
             val gemini = paneNoteText(PaneAlert(sub, PaneAlertKind.Done, null, "Draft plan", "Done", agent))
             assertEquals("Gemini", gemini.program)
         }
+        assertEquals("OpenCode", paneNoteText(PaneAlert(sub, PaneAlertKind.Done, null, "Draft plan", "Done", "opencode")).program)
         val bare = paneNoteText(PaneAlert(sub, PaneAlertKind.Done, null, title = "", message = "  "))
         assertEquals("Work completed", bare.title)
         assertEquals("rex · deploy · Build", bare.text)

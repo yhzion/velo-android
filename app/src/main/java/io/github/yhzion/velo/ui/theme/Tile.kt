@@ -79,6 +79,8 @@ enum class TileBrand(
     Omp("omp", logo = R.drawable.ic_agent_omp, ink = Color.White, filled = true),
     Pi("pi", logo = R.drawable.ic_mark_pi, ink = Color.White, filled = true),
     Gemini("Gemini", logo = R.drawable.ic_brand_googlegemini, ink = Color(0xFF8E75B2)),
+    // Simple Icons gives OpenCode black, which dark glass would hide: its mark takes the text colour, as the letter tiles do.
+    OpenCode("OpenCode", logo = R.drawable.ic_brand_opencode),
     Neovim("Neovim", logo = R.drawable.ic_brand_neovim, ink = Color(0xFF57A143)),
     Docker("Docker", logo = R.drawable.ic_brand_docker, ink = Color(0xFF2496ED)),
     Zsh("zsh", logo = R.drawable.ic_brand_zsh, ink = Color(0xFFF15A24)),
@@ -101,6 +103,7 @@ fun tileBrand(program: String?): TileBrand = when (program?.trim()?.removePrefix
     "omp", "oh-my-pi" -> TileBrand.Omp
     "pi", "pi-coding-agent" -> TileBrand.Pi
     "gemini", "gemini-cli" -> TileBrand.Gemini
+    "opencode" -> TileBrand.OpenCode
     "nvim", "neovim" -> TileBrand.Neovim
     "docker", "docker-compose" -> TileBrand.Docker
     "zsh" -> TileBrand.Zsh

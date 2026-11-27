@@ -9,7 +9,7 @@ import java.io.File
 /** The tab tiles' logos and Tailscale's: Simple Icons 16.38.1, one path each on a 24 by 24 grid, and their notice. */
 class BrandIconsTest {
     /** The slugs of Simple Icons that the redesign's tiles draw, and Tailscale, which the login card and Settings draw. */
-    private val slugs = listOf("claude", "googlegemini", "neovim", "docker", "zsh", "htop", "python", "git", "tailscale")
+    private val slugs = listOf("claude", "googlegemini", "opencode", "neovim", "docker", "zsh", "htop", "python", "git", "tailscale")
 
     // Unit tests run in the module's directory.
     private fun drawable(name: String) = File("src/main/res/drawable/$name.xml")

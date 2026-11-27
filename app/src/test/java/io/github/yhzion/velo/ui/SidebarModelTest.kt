@@ -317,6 +317,11 @@ class SidebarModelTest {
             TabInfo("window:g", block = "block:g", icon = "gemini-cli", title = "Draft plan", program = "node"),
         ))
         assertEquals(listOf("window:g"), groups(both.copy(sessions = listOf(gemini)), query = "Gemini").flatMap { it.rows }.map { it.tab })
+        // OpenCode runs as its own executable, so its process name and its label both find it.
+        val openCode = SessionInfo("session:o", "o", listOf(
+            TabInfo("window:o", block = "block:o", icon = "opencode", title = "Draft plan", program = "opencode.exe"),
+        ))
+        assertEquals(listOf("window:o"), groups(both.copy(sessions = listOf(openCode)), query = "OpenCode").flatMap { it.rows }.map { it.tab })
     }
 
     @Test

@@ -16,11 +16,11 @@ class TabMarksTest {
 
     @Test
     fun programMarksHaveDistinctTilesAndAccessibleNames() {
-        val hints = listOf("claude-code", "codex", "omp", "pi", "gemini")
-        assertEquals(listOf("Claude Code", "Codex", "omp", "pi", "Gemini"), hints.map { TabAgent.from(it)?.label })
+        val hints = listOf("claude-code", "codex", "omp", "pi", "gemini", "opencode")
+        assertEquals(listOf("Claude Code", "Codex", "omp", "pi", "Gemini", "OpenCode"), hints.map { TabAgent.from(it)?.label })
         assertEquals(TabAgent.Gemini, TabAgent.from("gemini-cli"))
         assertEquals(TabAgent.Gemini, TabAgent.from(" Gemini "))
-        assertEquals(5, hints.map(::tileBrand).distinct().size)
+        assertEquals(6, hints.map(::tileBrand).distinct().size)
         for (hint in listOf("2.1.329", "node", "bun", "my-codex-wrapper", "my-gemini-wrapper")) {
             assertNull(TabAgent.from(hint))
         }
@@ -30,6 +30,7 @@ class TabMarksTest {
         assertEquals("Claude Code", row(tab.copy(icon = "claude")).name)
         assertEquals("Claude Code", row(tab.copy(icon = "claude", title = "shell", titleIsLabel = true)).name)
         assertEquals("Gemini", row(tab.copy(icon = "gemini-cli")).name)
+        assertEquals("OpenCode", row(tab.copy(icon = "opencode", program = "opencode.exe")).name)
         assertEquals("node", row(tab.copy(program = "node")).name)
     }
 

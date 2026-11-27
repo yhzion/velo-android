@@ -29,6 +29,8 @@ class TabTilesTest {
             TabInfo("w", icon = "claude-code", program = "2.1.329") to TileBrand.Claude,
             TabInfo("w", program = "/usr/local/bin/codex") to TileBrand.Codex,
             TabInfo("w", program = "gemini") to TileBrand.Gemini,
+            // Rex names OpenCode's process opencode.exe, its npm package's file; the native core names the agent.
+            TabInfo("w", icon = "opencode", program = "opencode.exe") to TileBrand.OpenCode,
             TabInfo("w", program = "nvim") to TileBrand.Neovim,
             TabInfo("w", program = "docker") to TileBrand.Docker,
             // A login shell is named with a dash before it.

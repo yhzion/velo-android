@@ -139,7 +139,8 @@ class TabTileTest {
         val expected = mapOf(
             "claude" to TileBrand.Claude, "claude-code" to TileBrand.Claude, "Claude" to TileBrand.Claude,
             "codex" to TileBrand.Codex, "openai-codex" to TileBrand.Codex,
-            "gemini" to TileBrand.Gemini, "nvim" to TileBrand.Neovim, "neovim" to TileBrand.Neovim,
+            "gemini" to TileBrand.Gemini, "opencode" to TileBrand.OpenCode, "OpenCode" to TileBrand.OpenCode,
+            "nvim" to TileBrand.Neovim, "neovim" to TileBrand.Neovim,
             "docker" to TileBrand.Docker, "zsh" to TileBrand.Zsh, "htop" to TileBrand.Htop,
             "python" to TileBrand.Python, "python3" to TileBrand.Python, "git" to TileBrand.Git,
             "az" to TileBrand.Azure, "heroku" to TileBrand.Heroku,
@@ -155,8 +156,10 @@ class TabTileTest {
         assertEquals(setOf(TileBrand.Claude, TileBrand.Codex, TileBrand.Omp, TileBrand.Pi), TileBrand.entries.filter { it.filled }.toSet())
         // The tools draw a Simple Icons logo; the letter tiles and the default draw text.
         val logos = TileBrand.entries.filter { it.logo != null }.toSet()
-        assertEquals(setOf(TileBrand.Claude, TileBrand.Omp, TileBrand.Pi, TileBrand.Gemini, TileBrand.Neovim, TileBrand.Docker,
-            TileBrand.Zsh, TileBrand.Htop, TileBrand.Python, TileBrand.Git), logos)
+        assertEquals(setOf(TileBrand.Claude, TileBrand.Omp, TileBrand.Pi, TileBrand.Gemini, TileBrand.OpenCode, TileBrand.Neovim,
+            TileBrand.Docker, TileBrand.Zsh, TileBrand.Htop, TileBrand.Python, TileBrand.Git), logos)
+        // OpenCode's brand colour is black, which the glass would hide: its mark is drawn in the text colour.
+        assertNull(TileBrand.OpenCode.ink)
         // Codex is a black C in Roboto Bold, as the Tile board sets it (owner decision 5).
         assertEquals("C", TileBrand.Codex.letter)
         for (brand in TileBrand.entries) assertTrue("$brand", (brand.logo != null) != (brand.letter != null))
