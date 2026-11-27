@@ -12,7 +12,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Switching tabs shows the text sooner: characters one tab has drawn are not drawn again for another, or for the same tab when you come back to it. On a slow phone, coming back to a tab drew its text in about 100 ms, and now takes a few.
 
 ### Fixed
-- A tab whose report names an agent keeps that agent's tile after you have seen the report. Only its dot and badge go away, so a Claude tab no longer turns back into `node` once you have looked at it.
+- A tab whose report names an agent keeps that agent's tile after you have seen the report. Only its dot goes away, so a Claude tab no longer turns back into node once you have looked at it.
 
 ## 2.12.3 - 2026-11-27
 

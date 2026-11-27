@@ -105,6 +105,29 @@ class ActivityReadStateTest {
         state.hide(1)
         state.update(lead, emptyMap())
         assertEquals("node", state.activity(node, true).icon)
+        // The app removes a report by a tombstone that still names its agent.
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        state.update(lead, mapOf("turn" to SeenReport("clear", time, agent = "claude")))
+        assertEquals("node", state.activity(node, true).icon)
+    }
+
+    @Test fun aSeenAgentStaysWhenTheShownReportNamesNone() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("working", time)))
+        state.update(split, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(split to null))
+        state.hide(1)
+        val working = state.activity(node, true)
+        assertEquals("claude", working.icon)
+        assertEquals(TabIndicator.Working, working.indicator)
+        assertNull(working.badge)
+        // Both seen: the agentless Error outranks the Done, but only the Done names an agent.
+        state.update(lead, mapOf("turn" to SeenReport("error", time)))
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        assertEquals("claude", state.activity(node, true).icon)
     }
 
     @Test fun offlineShowsTheProgramEvenWhileAReportNamesAnAgent() {
