@@ -161,7 +161,8 @@ internal fun ComposerDialog(target: ComposerTarget, notificationPending: Boolean
                     if (notificationPending) Text("The notification will open when you send or close this draft.",
                         style = VeloTheme.type.caption, color = VeloTheme.surface.secondary)
                     OutlinedTextField(draft.text, { if (draft.editable && isCurrent()) draft.text = it }, readOnly = !editable,
-                        modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus).semantics { contentDescription = "Draft" },
+                        // Named by its label: a description of the same word was said with it (#174).
+                        modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
                         minLines = 2, maxLines = 5, label = { Text("Draft") }, textStyle = VeloTheme.type.body)
                     draft.problem(current)?.let {
                         Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite },

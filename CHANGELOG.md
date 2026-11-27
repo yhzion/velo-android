@@ -26,6 +26,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader says the release found on About's Updates row once, instead of also saying it as the row's state.
 - A pane whose drawing gets stuck no longer makes Velo stop responding when you leave the app or the pane closes, and the pane draws again when you come back.
 - Upload and error notices now show a whole line in landscape with the keyboard up, and sit under the sidebar's Filter field instead of over it and the rail.
+- A screen reader says Compose's Draft field once, instead of saying its name twice.
 
 ## 2.14.0 - 2026-11-27
 

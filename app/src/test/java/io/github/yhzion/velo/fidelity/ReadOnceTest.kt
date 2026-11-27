@@ -15,11 +15,17 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import io.github.yhzion.velo.core.LayoutNode
+import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.AttachControl
+import io.github.yhzion.velo.ui.ComposerDialog
+import io.github.yhzion.velo.ui.ComposerTarget
 import io.github.yhzion.velo.ui.DetailLine
 import io.github.yhzion.velo.ui.DetailRow
 import io.github.yhzion.velo.ui.PASSWORD_SAVED
@@ -49,11 +55,13 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
- * and the SSH key actions (#149), SSH details' Forget, and the sidebar's tab rows (#150). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * and the SSH key actions (#149), SSH details' Forget, the sidebar's tab rows (#150), and Compose's
+ * draft (#174). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi")
+@Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi",
+    shadows = [ShadowVeloCore::class], instrumentedPackages = [CorePackage])
 class ReadOnceTest {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
@@ -189,6 +197,25 @@ class ReadOnceTest {
         draft.attachment = ComposerAttachment("report.pdf", byteArrayOf(1))
         compose.waitForIdle()
         assertEquals(listOf("Attachment report.pdf"), compose.runOnIdle { Speech.focusableNodes(view).single().second })
+    }
+
+    /** Compose's draft is named by its label alone (#174): a description of the same word was said with it. */
+    @Test fun theComposeDraftIsNamedOnce() {
+        val state = UiState(status = "connected", server = "studio-mac", session = "session:dev", window = "build", focused = "block:build",
+            windows = listOf(WindowInfo("build", layout = LayoutNode(block = "block:build"))))
+        show {
+            val conn = rememberFakeConnection(state)
+            val target = remember(conn) { ComposerTarget(conn, "session:dev", "block:build", 1L, "studio-mac · build") }
+            val layer = remember { OverlayLayer() }
+            VeloTheme(UiSize.Medium) {
+                OverlayLayerBox(layer, Modifier.fillMaxSize().background(Color.Black)) {
+                    ComposerDialog(target, notificationPending = false, isCurrent = { true }, onClose = {})
+                }
+            }
+        }
+        compose.waitForIdle()
+        val field = compose.onNode(hasSetTextAction()).fetchSemanticsNode().id
+        assertEquals(listOf("Draft"), compose.runOnIdle { Speech.saidAt(view, field) })
     }
 
     @Test fun eachSshKeyActionIsSaidOnce() {
