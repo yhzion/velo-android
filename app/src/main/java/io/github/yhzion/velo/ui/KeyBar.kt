@@ -9,7 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
@@ -104,22 +105,34 @@ internal fun moveKey(saved: List<String>, key: String, delta: Int): List<String>
     return saved.toMutableList().apply { add(to, removeAt(from)) }
 }
 
+/** The caps' [widths] on the key bar and the [gap] between two of them ([keyCaps]). */
+internal data class KeyCaps(val widths: List<Int>, val gap: Int)
+
 /**
- * The caps' widths on a bar with [available] room inside it, [gap] between two caps (#142): a touch
- * bar's keys, every cap the same width and all of them across the bar. A cap needs the room in
- * [need] (its label and padding) and at least [floor]; before the bar scrolls, its label gives up
- * up to [give] of that padding, as on the folded Fold8. When the bar's share is less even then,
- * every cap takes the widest need and the bar scrolls. A pixel the share cannot split goes to the
- * first caps.
+ * The caps on a bar with [available] room inside it (#142): a touch bar's keys, every cap the same
+ * width and all of them across the bar. A cap needs the room in [need] (its label and padding) and
+ * at least [floor], with [gap] between two caps. When the bar is too narrow, it gives up room in
+ * this order: the labels' padding, up to [give]; the gap, down to [leastGap]; the floor, down to
+ * the widest label without its padding. Only when even that does not fit does every cap take the
+ * widest need, at [gap], and the bar scroll. A pixel the share cannot split goes to the first caps.
  */
-internal fun keyCapWidths(need: List<Int>, floor: Int, gap: Int, available: Int, give: Int = 0): List<Int> {
-    if (need.isEmpty()) return emptyList()
-    val least = maxOf(floor, need.max())
-    val room = available - gap * need.lastIndex
-    if (room < maxOf(floor, need.max() - give) * need.size) return List(need.size) { least }
+internal fun keyCaps(need: List<Int>, floor: Int, gap: Int, available: Int, give: Int = 0, leastGap: Int = gap): KeyCaps {
+    if (need.isEmpty()) return KeyCaps(emptyList(), gap)
+    val gaps = need.lastIndex
+    val label = need.max() - give
+    val least = maxOf(floor, label)
+    fun fits(cap: Int, gap: Int) = cap * need.size + gap * gaps <= available
+    val chosen = when {
+        fits(least, gap) -> gap
+        // The widest gap at which the caps keep the floor, or failing that the least gap.
+        gaps > 0 && fits(least, leastGap) -> (available - least * need.size) / gaps
+        fits(label, leastGap) -> leastGap
+        else -> return KeyCaps(List(need.size) { maxOf(floor, need.max()) }, gap)
+    }
+    val room = available - chosen * gaps
     val share = room / need.size
     val left = room % need.size
-    return List(need.size) { share + if (it < left) 1 else 0 }
+    return KeyCaps(List(need.size) { share + if (it < left) 1 else 0 }, chosen)
 }
 
 /** The test tag of [key]'s cap, as the KeyBar board names it: `key-slash`, `key-ctrl`, `key-left`. */
@@ -130,44 +143,52 @@ internal fun keyTestTag(key: String): String = "key-" + when (key) {
 
 /**
  * The keys in the saved order (KeyBar board), as a touch bar's keys (#142): caps of one width across
- * the bar, `sizes.keyGap` between them ([keyCapWidths]). Each key takes the taps up to halfway to
- * the next, and the first and the last up to the bar's ends. When their labels need more than the
- * bar has, the bar scrolls sideways and the edge with more keys beyond it fades out. A sticky key in
- * [armed] is lit until the next key uses it. While the bar is not [enabled] (the panes' input is
- * paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
+ * the bar, `sizes.keyGap` between them ([keyCaps]). Each key takes the taps up to halfway to the
+ * next, and the first and the last up to the bar's ends. A bar too narrow for its keys narrows the
+ * gap to `sizes.keyGapLeast` and the caps to their labels; when they need more even then, the bar
+ * scrolls sideways and the edge with more keys beyond it fades out. A sticky key in [armed] is lit
+ * until the next key uses it. While the bar is not [enabled] (the panes' input is paused:
+ * [paneInputPaused]) every key is drawn disabled and takes no tap.
  */
 @Composable
 internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, enabled: Boolean = true, onKey: (String, Boolean) -> Unit) {
     val sizes = VeloTheme.sizes
     val scroll = rememberScrollState()
-    // Half the gap on each side between two caps, in whole pixels: the gap is two of them.
-    val half = with(LocalDensity.current) { (sizes.keyGap / 2).roundToPx() }
-    val halfDp = with(LocalDensity.current) { half.toDp() }
+    val density = LocalDensity.current
+    // The gap is two halves of whole pixels, so that a bar with room to spare draws the same gap everywhere.
+    val gap = with(density) { (sizes.keyGap / 2).roundToPx() } * 2
+    val leastGap = with(density) { sizes.keyGapLeast.roundToPx() }
     // The room on each side of a label that the cap can give up before the bar scrolls.
-    val legendPadding = with(LocalDensity.current) { VeloTheme.medium(KeyLegendPadding).roundToPx() }
+    val legendPadding = with(density) { VeloTheme.medium(KeyLegendPadding).roundToPx() }
+    val legendPaddingDp = VeloTheme.medium(KeyLegendPadding)
+    val floor = with(density) { sizes.key.roundToPx() }
     KeyStrip(modifier.testTag("key-bar")) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val viewport = constraints.maxWidth
-            Layout(
-                modifier = Modifier.fillMaxSize().horizontalScroll(scroll),
-                content = {
+            SubcomposeLayout(Modifier.fillMaxSize().horizontalScroll(scroll)) { limits ->
+                // The labels alone first: how wide they are decides the gap the keys stand at.
+                val labels = subcompose(KeyBarSlot.Labels) {
+                    for (key in keys) KeyLegend(key, Color.Unspecified, Modifier.padding(horizontal = legendPaddingDp))
+                }
+                val need = labels.map { maxOf(floor, it.maxIntrinsicWidth(limits.maxHeight)) }
+                val caps = keyCaps(need, floor, gap, viewport, give = legendPadding * 2, leastGap = leastGap)
+                // Between two caps, the first takes half the gap and the second the rest.
+                fun start(i: Int) = if (i == 0) 0 else caps.gap - caps.gap / 2
+                fun end(i: Int) = if (i == keys.lastIndex) 0 else caps.gap / 2
+                val buttons = subcompose(KeyBarSlot.Keys) {
                     for ((i, key) in keys.withIndex()) {
                         key(key) {
                             // The cap stands inside the part of the bar it takes the taps in, half a gap from the next.
-                            val insets = PaddingValues(start = if (i == 0) 0.dp else halfDp, end = if (i == keys.lastIndex) 0.dp else halfDp)
+                            val insets = with(density) { PaddingValues(start = start(i).toDp(), end = end(i).toDp()) }
                             KeyCap(key, { onKey(key, false) }, armed = key in armed,
                                 contentDescription = spokenKeyName(key), enabled = enabled,
                                 holdRepeat = key in REPEAT_KEYS, onRepeat = { onKey(key, true) },
                                 capInsets = insets, capModifier = Modifier.testTag(keyTestTag(key)))
                         }
                     }
-                },
-            ) { buttons, limits ->
-                fun inset(i: Int) = (if (i > 0) half else 0) + (if (i < buttons.lastIndex) half else 0)
-                val need = buttons.mapIndexed { i, button -> button.maxIntrinsicWidth(limits.maxHeight) - inset(i) }
-                val caps = keyCapWidths(need, sizes.key.roundToPx(), half * 2, viewport, give = legendPadding * 2)
+                }
                 val children = buttons.mapIndexed { i, button ->
-                    val cell = caps[i] + inset(i)
+                    val cell = caps.widths[i] + start(i) + end(i)
                     button.measure(Constraints(minWidth = cell, maxWidth = cell, maxHeight = limits.maxHeight))
                 }
                 layout(maxOf(viewport, children.sumOf { it.width }), limits.maxHeight) {
@@ -190,3 +211,5 @@ internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, 
         }
     }
 }
+
+private enum class KeyBarSlot { Labels, Keys }

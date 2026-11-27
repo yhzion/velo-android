@@ -310,10 +310,11 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `rail` | 60 at Medium | The rail: a control and 6 on each side (Rail board); never narrower than that at any size. |
 | `keyBar` | 56 at Medium | The key bar strip (KeyBar board). |
 | `keyBarMax` | 560 at Medium | The widest the key bar grows, in the middle of a wide pane column (WsOpenPanes board). |
-| `key` | 32 at Medium | The least width of a key's cap (KeyBar board). Every cap takes the same share of the bar (#142); a key takes the taps up to halfway to the next key. |
+| `key` | 32 at Medium | The least width of a key's cap (KeyBar board), unless the bar is too narrow even at `keyGapLeast`. Every cap takes the same share of the bar (#142); a key takes the taps up to halfway to the next key. |
 | `keyHeight` | 48 at Medium | A key's height in the strip, the height that takes its taps (KeyBar board). |
 | `keyCap` | 40 at Medium, never above `keyHeight` | A key's cap inside the strip (#142; the latched pill's 40). |
 | `keyGap` | 5 at Medium | Between two caps on the key bar (#142; the pinch ladder mockup's 5). |
+| `keyGapLeast` | 2 at Medium | The least gap between two caps. A bar too narrow for its keys narrows the gap down to this, then lets the caps go below `key` down to the widest label, before it scrolls (#142). |
 | `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
 | `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style. |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |

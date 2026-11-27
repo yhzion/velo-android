@@ -182,9 +182,9 @@ class CompactLayoutTest {
     @Test fun compactBarsScrollOnlyWhenEveryKeyIsAtItsLeastWidth() {
         val least = List(8) { 32 }
         val fits = 8 * 32 + 7 * 4
-        assertEquals(least, keyCapWidths(least, 32, 4, fits))
+        assertEquals(least, keyCaps(least, 32, 4, fits).widths)
         // A pixel less and the caps keep the least: wider than the bar, which scrolls.
-        assertEquals(least, keyCapWidths(least, 32, 4, fits - 1))
-        assertTrue(keyCapWidths(least, 32, 4, fits - 1).sum() + 7 * 4 > fits - 1)
+        assertEquals(least, keyCaps(least, 32, 4, fits - 1).widths)
+        assertTrue(keyCaps(least, 32, 4, fits - 1).widths.sum() + 7 * 4 > fits - 1)
     }
 }

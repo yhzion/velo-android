@@ -57,7 +57,7 @@ class UiSizeTest {
             for (target in listOf(s.control, s.capsule, s.capsuleCell, s.row, s.sectionHeader, s.field, s.menuItem)) {
                 assertTrue("$size $target", target >= MinTouch)
             }
-            // A key's cap may be narrower (KeyBar board: 32); its cell takes the bar's room ([keyCapWidths]) and its height the taps.
+            // A key's cap may be narrower (KeyBar board: 32); its cell takes the bar's room ([keyCaps]) and its height the taps.
             assertTrue("$size keyHeight", s.keyHeight >= MinKey)
         }
     }

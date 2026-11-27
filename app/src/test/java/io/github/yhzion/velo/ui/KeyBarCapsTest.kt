@@ -40,7 +40,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The key bar's caps (#142) drawn: one width across the bar, taps and holds sent as before, the
+ * The key bar's caps (#142) drawn: one width across the bar, also the bar phone's, taps and holds sent as before, the
  * armed modifier selected and a paused bar taking no tap.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -78,6 +78,21 @@ class KeyBarCapsTest {
         assertTrue("${caps.last().right} > ${bar.right}", caps.last().right <= bar.right)
         val widths = caps.map { it.right - it.left }
         for (w in widths) assertEquals(widths.first().value, w.value, 0.5f)
+    }
+
+    @Test fun theBarPhoneBarHoldsEveryKeyAtOneWidth() {
+        // The bar phone (393 wide): the key bar is 308.6 wide, too narrow for nine caps of 32 and gaps of 5.
+        show(308.6.dp)
+        val bar = bounds("key-bar")
+        val caps = keys.map { bounds(keyTestTag(it)) }
+        assertTrue("${caps.last().right} > ${bar.right}", caps.last().right <= bar.right)
+        val widths = caps.map { it.right - it.left }
+        for (w in widths) assertEquals(widths.first().value, w.value, 0.5f)
+        // The caps give up the gap and go below 32, but every key still takes about 32 of the taps.
+        val cells = keys.map { key(it).getBoundsInRoot().let { b -> b.right - b.left } }
+        assertTrue("$cells", cells.all { it.value >= 31.5f })
+        // The keys reach the bar's ends: as far from the start as the last is from the end.
+        assertEquals(caps.first().left.value - bar.left.value, bar.right.value - caps.last().right.value, 0.5f)
     }
 
     @Test fun aTapSendsTheKeyAndAHoldRepeatsIt() {

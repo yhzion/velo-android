@@ -139,7 +139,7 @@ class VeloSizes(
     val keyBar: Dp = medium(56f),
     /** The widest the key bar grows: in the middle of a wide pane column (WsOpenPanes board: 560). */
     val keyBarMax: Dp = medium(560f),
-    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCapWidths]). */
+    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCaps]). */
     val key: Dp = medium(32f),
     /** A key's height in the strip, the height that takes its taps (KeyBar board: 48). */
     val keyHeight: Dp = medium(48f),
@@ -147,6 +147,8 @@ class VeloSizes(
     val keyCap: Dp = medium(40f),
     /** Between two caps on the key bar (#142, the mockup's 5). */
     val keyGap: Dp = medium(5f),
+    /** The least gap between two caps: a bar too narrow for its keys narrows the gap down to this before it scrolls (#142). */
+    val keyGapLeast: Dp = medium(2f),
     /** Between panes, and between panes and the screen's edge (Tokens board: 8). */
     val gap: Dp = medium(8f),
     /** Between pane cards and adjacent chrome in Compact style. */
@@ -307,6 +309,7 @@ fun veloSizes(size: UiSize): VeloSizes {
         keyHeight = keyHeight,
         keyCap = minOf(base.keyCap.s(), keyHeight),
         keyGap = base.keyGap.s(),
+        keyGapLeast = base.keyGapLeast.s(),
         gap = gap,
         gapCompact = base.gapCompact.s(),
         compactOuterPx = base.compactOuterPx,
