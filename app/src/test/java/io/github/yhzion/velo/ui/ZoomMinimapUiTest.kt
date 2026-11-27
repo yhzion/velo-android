@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import io.github.yhzion.velo.core.BlockInfo
+import io.github.yhzion.velo.core.FloatingLayer
 import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.SessionInfo
 import io.github.yhzion.velo.core.TabInfo
@@ -61,6 +62,7 @@ class ZoomMinimapUiTest {
     private val layout = LayoutNode(dir = "row", ratio = 0.56f, first = LayoutNode(block = "a"),
         second = LayoutNode(dir = "column", first = LayoutNode(block = "b"), second = LayoutNode(block = "c")))
     private var zoomed by mutableStateOf<String?>("b")
+    private var floating by mutableStateOf(emptyList<FloatingLayer>())
     private var connected by mutableStateOf(true)
     private var tab by mutableStateOf("w")
     private var compact by mutableStateOf(false)
@@ -69,11 +71,12 @@ class ZoomMinimapUiTest {
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
     private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true) = compose.setContent {
-        val window = WindowInfo(tab, layout = layout, zoomed = zoomed)
+        val window = WindowInfo(tab, layout = layout, zoomed = zoomed, floating = floating)
         val state = UiState(
             status = "connected", session = "s", window = tab, windows = listOf(window),
             sessions = listOf(SessionInfo("s", tabs = listOf(TabInfo(tab, label = "velo", program = "zsh", panes = 3)))),
-            blocks = mapOf("a" to BlockInfo(title = "claude"), "b" to BlockInfo(title = "build"), "c" to BlockInfo(title = "logcat")),
+            blocks = mapOf("a" to BlockInfo(title = "claude"), "b" to BlockInfo(title = "build"), "c" to BlockInfo(title = "logcat"),
+                "f" to BlockInfo(title = "htop")),
         )
         val row = sessionGroups(state, false, emptySet(), false, "").single().rows.single()
         val map = zoomMap(window, rtl) { block -> TabIndicator.Done.takeIf { block == "c" } }
@@ -100,6 +103,34 @@ class ZoomMinimapUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("caption-minimap").assertDoesNotExist()
         compose.onNodeWithTag("caption-zoom-label", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun aFloatingPaneMadeFullScreenSaysSo() {
+        // The menu made the floating pane full screen (#158): the caption says so, and the minimap leads back to the layout.
+        floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.1f, w = 0.4f, h = 0.4f))
+        zoomed = "f"
+        show()
+        compose.onNodeWithTag("caption-zoom-label", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("caption-minimap").assertIsDisplayed()
+            .assertContentDescriptionEquals("Full screen, pane 4 of 4. Show panes")
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-cell-f").assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assertContentDescriptionEquals("Pane 4 of 4, htop")
+        compose.onNodeWithTag("minimap-picker-cell-a").performClick()
+        assertEquals(listOf("a"), zoomedTo)
+    }
+
+    @Test fun aFloatingCellIsTouchedOverTheTiledOne() {
+        // The floating pane lies over the layout's first pane: a tap on it picks the floating pane, as on the panes.
+        floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.1f, w = 0.4f, h = 0.4f))
+        show()
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val f = compose.onNodeWithTag("minimap-picker-cell-f").getBoundsInRoot()
+        val a = compose.onNodeWithTag("minimap-picker-cell-a").getBoundsInRoot()
+        assertTrue("f over a", f.left > a.left && f.top > a.top && f.right < a.right && f.bottom < a.bottom)
+        compose.onNodeWithTag("minimap-picker-cell-f").performClick()
+        assertEquals(listOf("f"), zoomedTo)
     }
 
     @Test fun zoomingLeavesTheCaptionAsHighAsItWas() {

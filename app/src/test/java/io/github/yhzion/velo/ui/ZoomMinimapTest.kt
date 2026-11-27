@@ -51,10 +51,41 @@ class ZoomMinimapTest {
     }
 
     @Test
-    fun `a tab without a zoom on a tiled pane has no minimap`() {
+    fun `a tab without a zoom on one of its panes has no minimap`() {
         assertNull(zoomMap(tab.copy(zoomed = null), false) { null })
+        assertNull("a pane the tab does not have", zoomMap(tab.copy(zoomed = "x"), false) { null })
+    }
+
+    @Test
+    fun `floating panes are cells over the layout, in their own boxes`() {
+        val floating = tab.copy(floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.2f, w = 0.3f, h = 0.4f)))
+        val cells = zoomCells(floating, rtl = false)
+        assertEquals(listOf("a", "b", "c", "f"), cells.map { it.block })
+        assertRect(cells[3], 0.1f, 0.2f, 0.4f, 0.6f)
+        // Mirrored in RTL, as its offset is ([splitPlace]).
+        assertRect(zoomCells(floating, rtl = true).last(), 0.6f, 0.2f, 0.9f, 0.6f)
+        // A box reaching past the pane area stays inside the minimap.
+        val out = tab.copy(floating = listOf(FloatingLayer("f", x = 0.8f, y = -0.1f, w = 0.5f, h = 0.5f)))
+        assertRect(zoomCells(out, rtl = false).last(), 0.8f, 0f, 1f, 0.4f)
+        val map = zoomMap(floating, false) { null }!!
+        assertEquals(listOf(false, false, false, true), map.cells.map { it.floating })
+    }
+
+    @Test
+    fun `a floating pane made full screen has the minimap and its label`() {
         val floating = tab.copy(zoomed = "f", floating = listOf(FloatingLayer("f")))
-        assertNull(zoomMap(floating, false) { null })
+        val map = zoomMap(floating, false) { null }!!
+        assertEquals("f", map.zoomed)
+        assertEquals("Full Screen 4/4", zoomLabel(map))
+        assertEquals(paneLabel(tabBlocks(floating), "f"), "Pane ${map.number}")
+        // Next goes round to the layout's first pane, previous to its last.
+        assertEquals("a", map.step(1))
+        assertEquals("c", map.step(-1))
+        // A tab whose panes all float has no layout, and still a minimap.
+        val loose = WindowInfo("w", zoomed = "g", floating = listOf(FloatingLayer("f"), FloatingLayer("g", x = 0.4f)))
+        val all = zoomMap(loose, false) { null }!!
+        assertEquals(listOf("f", "g"), all.cells.map { it.block })
+        assertEquals("Full Screen 2/2", zoomLabel(all))
     }
 
     @Test
@@ -65,10 +96,11 @@ class ZoomMinimapTest {
         assertEquals(3, map.count)
         assertEquals("Full Screen 2/3", zoomLabel(map))
         assertEquals("Full screen, pane 2 of 3. Show panes", zoomMinimapDescription(map))
-        // A floating pane is no cell, but the tiled ones keep their numbers: they come first in the tab.
+        // A floating pane comes after the tiled ones, as in the pane menu: they keep their numbers.
         val withFloating = zoomMap(tab.copy(floating = listOf(FloatingLayer("f"))), false) { null }!!
-        assertEquals(listOf("a", "b", "c"), withFloating.cells.map { it.block })
+        assertEquals(listOf("a", "b", "c", "f"), withFloating.cells.map { it.block })
         assertEquals(paneLabel(tabBlocks(tab), "b"), "Pane ${withFloating.number}")
+        assertEquals("Full Screen 2/4", zoomLabel(withFloating))
     }
 
     @Test

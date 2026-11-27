@@ -65,19 +65,21 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /*
- * The minimap at the caption's end while the shown tab is zoomed (#141): a cell per tiled pane, where the layout
- * puts it without the zoom, the zoomed one filled. A tap opens a larger picker above the caption, a horizontal swipe
- * zooms the next or previous pane. Only the composables at the end touch Compose; the rules above them are tested.
+ * The minimap at the caption's end while the shown tab is zoomed (#141): a cell per pane, where the layout puts it
+ * without the zoom, the floating ones over it as they float over the panes (#158), the zoomed one filled. A tap opens
+ * a larger picker above the caption, a horizontal swipe zooms the next or previous pane. Only the composables at the
+ * end touch Compose; the rules above them are tested.
  */
 
 /**
- * A pane of a zoomed tab: its [rect] in a unit square and the [alert] of a report not yet seen. Its name is not
+ * A pane of a zoomed tab: its [rect] in a unit square, whether it is [floating] over the tiled ones, and the [alert]
+ * of a report not yet seen. Its name is not
  * here: the caption holds this all the time, and a hidden pane's title can change many times a second, so only
  * the open picker reads it ([zoomPaneName]).
  */
-internal data class ZoomCell(val block: String, val rect: PaneRect, val alert: TabIndicator?)
+internal data class ZoomCell(val block: String, val rect: PaneRect, val alert: TabIndicator?, val floating: Boolean = false)
 
-/** The zoomed [tab] as its minimap draws it: the [zoomed] pane among [cells], in layout order. */
+/** The zoomed [tab] as its minimap draws it: the [zoomed] pane among [cells], in layout order, the floating ones last. */
 internal data class ZoomMap(val tab: String, val zoomed: String, val cells: List<ZoomCell>) {
     /** The zoomed pane's number, from 1, as the pane menu numbers it ([paneLabel]): the tiled panes come first. */
     val number: Int get() = cells.indexOfFirst { it.block == zoomed } + 1
@@ -94,21 +96,36 @@ internal data class ZoomMap(val tab: String, val zoomed: String, val cells: List
 }
 
 /**
- * The rectangles of [window]'s tiled panes in a unit square, as [paneRects] lays them out without the zoom and
- * without gaps; floating panes have none. [rtl] mirrors them, as the panes are drawn.
+ * The rectangles of [window]'s panes in a unit square: the tiled ones as [paneRects] lays them out without the zoom
+ * and without gaps, then the floating ones in their own boxes, kept inside the square. [rtl] mirrors them, as the
+ * panes are drawn.
  */
-internal fun zoomCells(window: WindowInfo, rtl: Boolean): List<PaneRect> =
-    paneRects(window.copy(zoomed = null), 1f, 1f, 0f, rtl)
+internal fun zoomCells(window: WindowInfo, rtl: Boolean): List<PaneRect> {
+    val tiled = paneRects(window.copy(zoomed = null), 1f, 1f, 0f, rtl)
+    val placed = tiled.mapTo(mutableSetOf()) { it.block }
+    val floating = window.floating.filter { it.block !in placed }.distinctBy { it.block }.map { f ->
+        val left = f.x.coerceIn(0f, 1f)
+        val right = (f.x + f.w).coerceIn(left, 1f)
+        val top = f.y.coerceIn(0f, 1f)
+        val bottom = (f.y + f.h).coerceIn(top, 1f)
+        if (rtl) PaneRect(f.block, 1f - right, top, 1f - left, bottom) else PaneRect(f.block, left, top, right, bottom)
+    }
+    return tiled + floating
+}
 
 /**
- * The minimap of [window], or null while it is not zoomed on one of its tiled panes. [alert] gives the report of a
- * pane not yet seen ([TabActivity.badge] of its [paneRow]). The zoomed pane is on screen, so its cell shows none.
+ * The minimap of [window], or null while it is not zoomed on one of its panes, tiled or floating. [alert] gives the
+ * report of a pane not yet seen ([TabActivity.badge] of its [paneRow]). The zoomed pane is on screen, so its cell
+ * shows none.
  */
 internal fun zoomMap(window: WindowInfo, rtl: Boolean, alert: (String) -> TabIndicator?): ZoomMap? {
     val zoomed = window.zoomed ?: return null
     val rects = zoomCells(window, rtl)
     if (rects.none { it.block == zoomed }) return null
-    return ZoomMap(window.id, zoomed, rects.map { r -> ZoomCell(r.block, r, if (r.block == zoomed) null else alert(r.block)) })
+    val floating = window.floating.mapTo(mutableSetOf()) { it.block } - window.layout?.blocks().orEmpty().toSet()
+    return ZoomMap(window.id, zoomed, rects.map { r ->
+        ZoomCell(r.block, r, if (r.block == zoomed) null else alert(r.block), floating = r.block in floating)
+    })
 }
 
 /** The name of [block] of [window] in the picker: its pane's alone ([paneRow]), without the tab's label. */
@@ -223,7 +240,11 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
                     val box = Size(r.width * size.width - 2 * edge, r.height * size.height - 2 * edge)
                     if (box.width <= 0f || box.height <= 0f) continue
                     if (cell.block == map.zoomed) drawRoundRect(fill, topLeft, box, corner)
-                    else drawRoundRect(line, topLeft + Offset(edge / 2, edge / 2), Size(box.width - edge, box.height - edge), corner, Stroke(edge))
+                    else {
+                        // A floating cell hides the lines of the cells under it, as its pane hides theirs.
+                        if (cell.floating) drawRoundRect(ring, topLeft, box, corner)
+                        drawRoundRect(line, topLeft + Offset(edge / 2, edge / 2), Size(box.width - edge, box.height - edge), corner, Stroke(edge))
+                    }
                     val tint = cell.alert?.let(::tileDot)?.let { dotTint(it, sheet.accent, sheet.warning, sheet.danger) } ?: continue
                     // At the cell's upper end corner, ringed in the minimap's glass.
                     val x = if (rtl) r.left * size.width + dot / 2 else r.right * size.width - dot / 2
@@ -265,7 +286,8 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
 
 /**
  * The picker (`.pop`): its title, then a button per pane where the layout puts it, [width] by [height], named with
- * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL.
+ * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL; the floating ones come last, so they
+ * are drawn and touched over the tiled ones.
  */
 @Composable
 private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> String, onPick: (String) -> Unit) {

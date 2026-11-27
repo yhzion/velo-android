@@ -8,6 +8,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - An image inserted from the keyboard, such as one from Gboard's clipboard strip, is now sent to the remote, and its path is typed into the pane, as Paste does for a copied file.
 
 ### Fixed
+- A floating pane made full screen from the menu now shows Full Screen and the minimap in the caption. The minimap draws floating panes over the tab's layout, so you can pick them or swipe to them too.
 - A pane no longer stays blank, and Velo no longer stops responding, after you come back to it from another app while the keyboard was up.
 - The front of a tab's tile in the sidebar shows the program of the pane you have selected, such as zsh beside a Claude Code pane. A report from another pane still puts its dot on the tile.
 - A screen reader says each menu button in settings once, such as Sound: Attention, instead of also saying the choice shown.
