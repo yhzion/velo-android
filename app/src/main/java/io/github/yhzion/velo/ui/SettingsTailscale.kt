@@ -69,7 +69,7 @@ data class TailnetChip(val text: String, val status: Status)
 /** What the node's switch says it does when off, while nothing about the node needs saying. */
 const val NodeOffExplanation = "Off: Velo connects through the phone's network"
 
-/** The chip of the node's [state]; while Android holds the network back ([paused]) it is Paused, whatever the state. */
+/** The chip of the node's [state]; while Android holds the network back ([paused]) it is Paused, unless the node is off. */
 fun tailnetChip(state: TailnetState, paused: Boolean): TailnetChip = when {
     paused && state != TailnetState.Off -> TailnetChip("Paused", Status.Warning)
     state is TailnetState.Running -> TailnetChip("Connected", Status.Ok)

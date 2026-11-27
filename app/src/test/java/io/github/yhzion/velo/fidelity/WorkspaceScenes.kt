@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import io.github.yhzion.velo.DiscoveredServer
 import io.github.yhzion.velo.PaneAddress
 import io.github.yhzion.velo.Settings
+import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.SessionInfo
@@ -37,7 +38,7 @@ import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.ui.ActivityReadState
 import io.github.yhzion.velo.ui.BatteryState
 import io.github.yhzion.velo.ui.DeviceNetwork
-import io.github.yhzion.velo.ui.DeviceRow
+import io.github.yhzion.velo.ui.deviceRow
 import io.github.yhzion.velo.ui.KeyBar
 import io.github.yhzion.velo.ui.PaneCaption
 import io.github.yhzion.velo.ui.RailColumn
@@ -47,7 +48,6 @@ import io.github.yhzion.velo.ui.SidebarActions
 import io.github.yhzion.velo.ui.SidebarHost
 import io.github.yhzion.velo.ui.SidebarPlace
 import io.github.yhzion.velo.ui.SidebarState
-import io.github.yhzion.velo.ui.TailnetChip
 import io.github.yhzion.velo.ui.captionSlot
 import io.github.yhzion.velo.ui.connectionMark
 import io.github.yhzion.velo.ui.keyBarSlot
@@ -55,7 +55,6 @@ import io.github.yhzion.velo.ui.paneColumnSlot
 import io.github.yhzion.velo.ui.paneFrame
 import io.github.yhzion.velo.ui.sidebarSlot
 import io.github.yhzion.velo.ui.tabOf
-import io.github.yhzion.velo.ui.theme.Status
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
@@ -131,7 +130,7 @@ private fun WorkspaceScene(sidebar: SidebarPlace?) = VeloTheme(UiSize.Medium) {
     Row(Modifier.testTag("screen-workspace").fillMaxSize().background(VeloTheme.colors.backdrop.surface).padding(gap)) {
         if (sidebar != null) {
             val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), state, readState, active = true, removed = false)
-            Sidebar(DeviceRow("velo-phone", "100.101.12.7 · Running", "Running", TailnetChip("Connected", Status.Ok)), listOf(host), sidebarSlot(sidebar), NoActions,
+            Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), listOf(host), sidebarSlot(sidebar), NoActions,
                 // Only the docked board's window can dock: its pin is on (WsOpenDocked).
                 settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null, state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
             if (sidebar == SidebarPlace.Beside) Spacer(Modifier.width(gap))

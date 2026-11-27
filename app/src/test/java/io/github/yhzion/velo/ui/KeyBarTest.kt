@@ -32,7 +32,7 @@ class KeyBarTest {
     }
 
     @Test fun everyOfferedKeyIsSaidInWords() {
-        for (key in Settings.ALL_KEYS) spokenKeyName(key).let { assertTrue(key, it.isNotEmpty() && it.all { c -> c.isLetter() || c == ' ' }) }
+        for (key in Settings.ALL_KEYS) spokenKeyName(key).let { assertTrue(key, it.isNotBlank() && it.all { c -> c.isLetter() || c == ' ' }) }
     }
 
     @Test fun upgradesKeepTheOrderThatWasVisibleIncludingUnknownKeys() {

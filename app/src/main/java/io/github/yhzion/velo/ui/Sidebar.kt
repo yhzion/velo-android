@@ -77,7 +77,7 @@ internal class SidebarHost private constructor(
  */
 data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip)
 
-/** The This Device row of the node's [state]; while Android holds the network back ([paused]) its dot is Paused. */
+/** The This Device row of the node's [state]; while Android holds the network back ([paused]) its dot is Paused, unless the node is off. */
 fun deviceRow(state: TailnetState, paused: Boolean): DeviceRow {
     val word = when (state) {
         TailnetState.Off -> "Off"
