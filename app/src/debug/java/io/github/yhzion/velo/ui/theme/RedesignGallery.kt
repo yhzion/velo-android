@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.yhzion.velo.ui.spokenKeyName
 
 /**
  * The redesign's Controls, Overlays and tab tile samples, under the test tags the boards give
@@ -123,8 +124,8 @@ private fun Keys() {
     Label("Key bar keys and key chips")
     VeloSurface(VeloTheme.colors.chrome) {
         KeyStrip(Modifier.testTag("sample-key-strip")) {
-            KeyCap("Esc", {}, Modifier.testTag("sample-key"))
-            KeyCap("Ctrl", {}, Modifier.testTag("sample-key-latched"), armed = true)
+            KeyCap("Esc", {}, Modifier.testTag("sample-key"), contentDescription = spokenKeyName("Esc"))
+            KeyCap("Ctrl", {}, Modifier.testTag("sample-key-latched"), armed = true, contentDescription = spokenKeyName("Ctrl"))
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {

@@ -31,7 +31,7 @@ internal val KEY_CODES = mapOf(
 /** The key bar's modifiers: a tap arms one for the next key, another tap takes it back. */
 val StickyKeys = setOf("Ctrl", "Alt", "Shift")
 
-/** The name remains available to accessibility even when the button displays an arrow. */
+/** The text a key shows, in capitals for a named key; a screen reader says [spokenKeyName] instead. */
 internal fun keyName(key: String): String = if (key in KEY_CODES || key in StickyKeys) key.uppercase() else key
 
 /**
