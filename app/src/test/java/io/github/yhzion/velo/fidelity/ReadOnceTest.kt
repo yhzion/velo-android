@@ -169,6 +169,18 @@ class ReadOnceTest {
     }
 
     @Test fun eachTapGestureRowSaysItsLabelOnce() {
+        showTapGestureRows()
+        assertMenuRowSaysItsLabelOnce("keyboard-double-tap", "Double tap: Tab", "Tab")
+    }
+
+    @Test fun theTripleTapRowSaysItsLabelOnceAndItsMenuOpens() {
+        showTapGestureRows()
+        // Each row in a test of its own: the first menu opened would stay open over the other row.
+        assertMenuRowSaysItsLabelOnce("keyboard-triple-tap", "Triple tap: Enter", "Enter")
+    }
+
+    /** Keyboard settings with tap gestures on: double tap sends Tab, triple tap Enter. */
+    private fun showTapGestureRows() {
         show {
             val context = LocalContext.current
             val host = remember {
@@ -185,8 +197,6 @@ class ReadOnceTest {
                 }
             }
         }
-        assertEquals(listOf(listOf("Triple tap: Enter")), rowStops("keyboard-triple-tap"))
-        assertMenuRowSaysItsLabelOnce("keyboard-double-tap", "Double tap: Tab", "Tab")
     }
 
     /** What each focus stop of the row tagged `<tag>-row` says, in order. */
