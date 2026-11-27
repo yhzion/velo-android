@@ -180,8 +180,8 @@ internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int)
 /**
  * Where the sidebar's notices [notices] px tall start in its column, laid out as [sidebarBodyHeight] says (#195).
  * Under the body when it makes room for them. Else, while the body keeps the Filter's band ([least]), they end just
- * above the band, over the list: over the field, Compose would leave it out of what a screen reader sees and take its
- * focus away. They start at the column's top when they are taller than the room above the band. Only when the body
+ * above the band, over the list, or over the head where the list above the band is shorter than them (even the
+ * toolbar's buttons): over the field, Compose would leave it out of what a screen reader sees and take its focus away. They start at the column's top when they are taller than the room above the band. Only when the body
  * has no room for the band, where the field has none of its own (landscape with the keyboard up, #209), do they lie
  * at the column's foot.
  */

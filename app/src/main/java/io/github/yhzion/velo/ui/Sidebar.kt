@@ -348,7 +348,8 @@ internal fun Sidebar(
 /**
  * The sidebar's column: its [head] (the toolbar and This Device), then its [body] (the list, the Filter field at its
  * foot) in the height left, and the [notices] at its foot, which the body makes room for while it keeps [least] beside
- * them ([sidebarBodyHeight]); else they lie over the list, just above the Filter's band ([sidebarNoticesTop]). They
+ * them ([sidebarBodyHeight]); else they lie just above the Filter's band, over the list or, where it is shorter
+ * than them, over the head ([sidebarNoticesTop]). They
  * are the same children whichever way they lie, so a keyboard that opens from the Filter field only places them again
  * (#195): they are not composed elsewhere, which a screen reader would read again, nor over the field, which Compose
  * then leaves out of what a screen reader sees, taking the field's focus away. Only a body too short for the band,
