@@ -125,7 +125,7 @@ class ReadOnceTest {
         // also says Escape and Tab, so no option may say its words twice.
         for (option in listOf(listOf("Selected", "Escape"), listOf("Not selected", "Tab"), listOf("Not selected", "None")))
             assertTrue("$option said once, among $options", option in options)
-        for (twice in listOf(listOf("Escape", "Esc"), listOf("Tab", "Tab"), listOf("None", "None"))) assertFalse("$twice not said, among $options", twice in options)
+        assertFalse("No option says a thing twice, among $options", options.any(Speech::saysTwice))
     }
 
     @Test fun theMinimizedWindowsMenuSaysItsDescriptionOnce() {
@@ -148,11 +148,23 @@ class ReadOnceTest {
         assertStillActs("updates-channel-menu", Role.DropdownList)
     }
 
+    // #167: About's Updates row says the release by its text, and no state says it again.
+
+    @Test fun aboutsUpdatesRowSaysTheReleaseOnce() {
+        scene("settings-about")
+        assertEquals(listOf("Updates", "2.10.1 available", "Not seen yet"), said("about-updates-row"))
+        assertEquals(null, stateOf("about-updates-row"))
+        assertStillActs("about-updates-row", Role.Button)
+        compose.onNodeWithTag("about-updates-row").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("updates-channel-menu").assertExists()
+    }
+
     // #149: the rows.
 
     @Test fun anAlertRowSaysItsDescriptionOnce() {
         scene("settings-notif")
-        // The switch's state follows its words (#167).
+        // Speech.saidAt lists the row's own state first, then the words of its children (#167).
         assertEquals(listOf("On", "Background notification, Needs your response"), said("alert-needs-response-notification-row"))
         // The sound menu in the row is a control of its own, said apart.
         assertEquals(listOf("On", "Activity sound, Work completed"), said("alert-work-completed-sound-row"))

@@ -95,7 +95,20 @@ class DoubleSpeechTest {
         assertTrue(twice(listOf("Neovim, 2 panes", "nvim")))
         assertTrue(twice(listOf("Claude Code", "claude")))
         assertTrue(twice(listOf("Docker", "docker-compose")))
+        // The key bar draws a named key in capitals: ESC is Escape, in any case.
+        assertTrue(twice(listOf("Escape", "ESC")))
+        assertTrue(twice(listOf("Control", "CTRL")))
+        assertTrue(twice(listOf("Page Up", "PGUP")))
+        assertTrue(twice(listOf("Page Down", "PGDN")))
+        assertTrue(twice(listOf("Slash", "/")))
+        assertTrue(twice(listOf("Minus", "-")))
+        // A short or full name said whole inside other words.
+        assertTrue(twice(listOf("Send Escape", "Esc")))
+        assertTrue(twice(listOf("Press ESC", "Escape")))
+        assertTrue(twice(listOf("Scroll Page Up", "PgUp")))
+        assertTrue(twice(listOf("Open Neovim", "nvim")))
         assertTrue(!twice(listOf("Escape")))
+        assertTrue(!twice(listOf("Send Escape", "Tab")))
         assertTrue(!twice(listOf("Neovim, 2 panes", "Edit the parser", "~/src/api")))
         assertTrue(!twice(listOf("zsh, 4 panes", "~/src/web")))
     }

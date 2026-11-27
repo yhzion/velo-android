@@ -77,8 +77,14 @@ class MenuSpeechTest {
 
     private fun tagMatches(tag: Regex) = SemanticsMatcher("test tag ~ $tag") { it.config.getOrNull(SemanticsProperties.TestTag)?.matches(tag) == true }
 
-    /** One menu opened: where, by what, and what each option it adds says. */
-    private class Opened(val scene: String, val by: String, val options: List<List<String>>) {
+    /**
+     * The buttons a scene draws under a sheet, so a tap on them opens nothing: the saved remotes'
+     * Actions under Add remote. Every other button must open a menu.
+     */
+    private val Covered = setOf("settings-add-remote" to "saved-remote-menu-studio-mac", "settings-add-remote" to "saved-remote-menu-build-server")
+
+    /** One menu opened: where, by what (its tag, or the kind of button), and what each option it adds says. */
+    private class Opened(val scene: String, val button: String, val by: String, val options: List<List<String>>) {
         override fun toString() = "$scene, $by: " + if (options.isEmpty()) "(opened nothing)" else options.joinToString(" / ") { it.joinToString(" | ") }
     }
 
@@ -86,13 +92,14 @@ class MenuSpeechTest {
         val opened = openEachMenu(FidelityScenes)
         val twiceSaid = opened.flatMap { menu -> menu.options.filter(Speech::saysTwice).map { "${menu.scene}, ${menu.by}: \"${it.joinToString(" | ")}\"" } }
         assertTrue("Said twice in a menu (scene, button, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
-        // Each kind of menu the issue names was opened, so the scan is not empty by a missed button. A button
-        // under a sheet, such as a saved remote's under Add remote, opens nothing, and is listed as such.
-        val seen = opened.filter { it.options.isNotEmpty() }.joinToString("\n")
-        for (must in listOf("keyboard-double-tap-menu", "appearance-minimized-menu", "alert-needs-response-sound-menu", "updates-channel-menu",
-            "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row"))
-            assertTrue("A menu opened by $must, among:\n$seen", must in seen)
-        println("Menus scanned (${opened.count { it.options.isNotEmpty() }} of ${opened.size} buttons):\n" + opened.joinToString("\n"))
+        // Every button opens a menu, but those under a sheet ([Covered]), so none is skipped unseen.
+        val empty = opened.filter { it.options.isEmpty() && (it.scene to it.button) !in Covered }
+        assertTrue("Opened nothing (scene, button):\n" + empty.joinToString("\n"), empty.isEmpty())
+        // Each kind of menu the issue names was opened, so the scan is not empty by a missed button.
+        val openers = opened.filter { it.options.isNotEmpty() }.map { it.by }
+        for (must in listOf("keyboard-double-tap-menu", "keyboard-triple-tap-menu", "appearance-minimized-menu", "alert-needs-response-sound-menu",
+            "updates-channel-menu", "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row"))
+            assertTrue("A menu opened by $must, among:\n" + openers.joinToString("\n"), openers.any { must in it })
     }
 
     /**
@@ -133,7 +140,7 @@ class MenuSpeechTest {
                     // A node new since the tap is the menu's: a row's words may change meanwhile ("2s since report").
                     val added = compose.runOnIdle { Speech.focusableNodes(view) }
                         .filter { Speech.virtualId(it.first) !in before && it.second.isNotEmpty() }.map { it.second }
-                    opened += Opened(name, if (label == opener.name) label else "$label (${opener.name})", added)
+                    opened += Opened(name, label, if (label == opener.name) label else "$label (${opener.name})", added)
                 }
             }
         }

@@ -3,6 +3,8 @@ package io.github.yhzion.velo.fidelity
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeProvider
+import io.github.yhzion.velo.ui.KEY_CODES
+import io.github.yhzion.velo.ui.StickyKeys
 import io.github.yhzion.velo.ui.spokenKeyName
 import io.github.yhzion.velo.ui.theme.TileBrand
 import io.github.yhzion.velo.ui.theme.tileBrand
@@ -75,28 +77,42 @@ internal object Speech {
     /**
      * Whether a focusable node that says [said] says a thing twice (#147, #167): a part of it (split at
      * ", ", " · " and ": ") comes again, ignoring case and a short or full name of one thing ([sameThing]),
-     * or one of its words is said whole, in the same case, inside another. One description that repeats
-     * a part of itself ("zsh, zsh") says it twice too.
+     * or one of its words is said whole inside another: in the same case, or by another name of one
+     * thing ("Send Escape", "Esc"). One description that repeats a part of itself ("zsh, zsh") says it
+     * twice too.
      */
     fun saysTwice(said: List<String>): Boolean {
         val parts = said.flatMap { it.split(", ", " · ", ": ") }.map { sameThing(it.trim()) }.filter { it.length >= 2 }
         if (parts.size != parts.toSet().size) return true
         for ((a, x) in said.withIndex()) for ((b, y) in said.withIndex())
-            if (a != b && y.length >= 2 && Regex("(^|\\W)" + Regex.escape(y) + "(\\W|$)").containsMatchIn(x)) return true
+            if (a != b && y.length >= 2 &&
+                (Regex("(^|\\W)" + Regex.escape(y) + "(\\W|$)").containsMatchIn(x) || namesIn(x).any { otherNameOf(it, y) })) return true
         return false
     }
 
+    /** The words of [said], and each two side by side ("Page Up"): the names it may say a thing by. */
+    private fun namesIn(said: String): List<String> {
+        val words = Regex("[\\w-]+").findAll(said).map { it.value }.toList()
+        return words + words.zipWithNext { a, b -> "$a $b" }
+    }
+
+    /** Whether [name] is another name of the one thing [other] names ("Escape", "Esc"), not the same name in another case. */
+    private fun otherNameOf(name: String, other: String) = !name.equals(other, ignoreCase = true) && sameThing(name) == sameThing(other)
+
     /**
      * One name for a short and a full name of one thing, in lower case: a key as the key bar draws it
-     * and as a screen reader says it ([spokenKeyName]: Esc, Escape), and a program by its command or
-     * its brand ([tileBrand], [TileBrand.label]: nvim, Neovim).
+     * and as a screen reader says it ([spokenKeyName]: Esc, ESC, Escape), in any case, and a program by
+     * its command or its brand ([tileBrand], [TileBrand.label]: nvim, Neovim).
      */
     fun sameThing(part: String): String {
-        val key = spokenKeyName(part)
-        if (key != part) return key.lowercase()
+        val key = KeysByName[part.lowercase()]
+        if (key != null && key != part.lowercase()) return key
         val brand = BrandsByLabel[part.lowercase()] ?: tileBrand(part).takeIf { it != TileBrand.Terminal }
         return brand?.let { "brand:${it.name}" } ?: part.lowercase()
     }
+
+    /** Each key the key bar draws, by its name in lower case ("esc", as "ESC" is drawn), to what a screen reader says for it. */
+    private val KeysByName = (KEY_CODES.keys + StickyKeys + listOf("-", "|", "/", "~")).associate { it.lowercase() to spokenKeyName(it).lowercase() }
 
     private val BrandsByLabel = TileBrand.entries.filter { it != TileBrand.Terminal }.associateBy { it.label.lowercase() }
 }
