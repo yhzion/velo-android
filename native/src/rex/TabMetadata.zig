@@ -10,14 +10,16 @@ pub fn agent(value: []const u8) ?[]const u8 {
         .{ "codex", "codex" },        .{ "codex-cli", "codex" },
         .{ "openai-codex", "codex" }, .{ "pi", "pi" },
         .{ "pi-coding-agent", "pi" }, .{ "omp", "omp" },
-        .{ "oh-my-pi", "omp" },
+        .{ "oh-my-pi", "omp" },       .{ "gemini", "gemini" },
+        .{ "gemini-cli", "gemini" },
     };
     inline for (aliases) |pair| if (std.ascii.eqlIgnoreCase(name, pair[0])) return pair[1];
     return null;
 }
 
 pub fn processAgent(proc: std.json.Value) ?[]const u8 {
-    for ([_][]const u8{ "invoked_path", "argv0", "name", "path" }) |field| {
+    // An agent run by an interpreter such as node shows up only in script.
+    for ([_][]const u8{ "invoked_path", "argv0", "name", "path", "script" }) |field| {
         const path = model.str(model.get(proc, field)) orelse continue;
         if (agent(path)) |id| return id;
         // Native Claude installs resolve the executable symlink to a version number.
@@ -29,6 +31,7 @@ pub fn processAgent(proc: std.json.Value) ?[]const u8 {
             .{ "/node_modules/@mariozechner/pi-coding-agent/", "pi" },
             .{ "/node_modules/@earendil-works/pi-coding-agent/", "pi" },
             .{ "/node_modules/@oh-my-pi/pi-coding-agent/", "omp" },
+            .{ "/node_modules/@google/gemini-cli/", "gemini" },
         };
         inline for (packages) |pair| if (std.mem.find(u8, path, pair[0]) != null) return pair[1];
     }
@@ -114,6 +117,10 @@ test "agent identity uses a launcher name or installed package, never a version 
         .{ "{\"name\":\"bun\",\"path\":\"/bin/omp\"}", "omp" },
         .{ "{\"name\":\"node\",\"argv0\":\"/lib/node_modules/@mariozechner/pi-coding-agent/dist/cli.js\"}", "pi" },
         .{ "{\"name\":\"pi\",\"path\":\"/bin/node\"}", "pi" },
+        // Gemini CLI runs under node, so only the script names it: a bin link or the package's entry.
+        .{ "{\"name\":\"node\",\"path\":\"/bin/node\",\"argv0\":\"node\",\"script\":\"/usr/local/bin/gemini\"}", "gemini" },
+        .{ "{\"name\":\"node\",\"argv0\":\"node\",\"script\":\"/lib/node_modules/@google/gemini-cli/bundle/gemini.js\"}", "gemini" },
+        .{ "{\"name\":\"gemini-cli\",\"path\":\"/bin/node\"}", "gemini" },
         .{ "{\"name\":\"2.1.329\",\"path\":\"/bin/2.1.329\"}", null },
         .{ "{\"name\":\"node\",\"cwd\":\"/work/codex\",\"path\":\"/bin/node\"}", null },
     }) |case| {
