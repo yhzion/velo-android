@@ -4,7 +4,6 @@ import android.app.Application
 import android.graphics.Rect
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityNodeProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -55,15 +54,11 @@ class DoubleSpeechTest {
         Known("workspace-docked", "Claude Code", 150),
         Known("workspace-docked", "Codex, 2 panes", 150),
         Known("workspace-docked", "zsh, 4 panes", 150),
-        Known("settings-appearance", "Minimized windows: Bottom Left", 148),
-        Known("settings-keyboard", "Double tap: Tab", 148),
         Known("settings-key-order", "Tab", 149),
         Known("settings-notif", "Background notification, Needs your response", 149),
         Known("settings-notif", "Activity sound, Needs your response", 149),
-        Known("settings-notif", "Sound, Attention", 148),
         Known("settings-notif", "Background notification, Work completed", 149),
         Known("settings-notif", "Activity sound, Work completed", 149),
-        Known("settings-notif", "Sound, Success", 148),
         Known("settings-ssh", "Copy install command for this phone's key", 149),
         Known("settings-ssh", "Copy this phone's key", 149),
         Known("settings-ssh", "Share install command for this phone's key", 149),
@@ -111,37 +106,9 @@ class DoubleSpeechTest {
         assertTrue(!twice(listOf("Tailscale", "tailscale.com 1.104.1", "BSD-3-Clause")))
     }
 
-    private fun focusable(i: AccessibilityNodeInfo) =
-        i.isImportantForAccessibility && (i.isScreenReaderFocusable || i.isFocusable || i.isClickable || i.isCheckable || i.isLongClickable)
-
-    private fun words(i: AccessibilityNodeInfo): String? =
-        if (!i.isImportantForAccessibility) null else (i.contentDescription ?: i.text)?.toString()?.takeIf { it.isNotBlank() }
-
     /** Each focusable node that says two things or more, with the words it says. */
-    private fun utterances(view: View): List<Said> {
-        val provider = view.accessibilityNodeProvider ?: return emptyList()
-        val result = mutableListOf<Said>()
-        fun gather(info: AccessibilityNodeInfo, into: MutableList<String>) {
-            for (c in 0 until info.childCount) {
-                val child = provider.createAccessibilityNodeInfo(childVirtualId(info, c)) ?: continue
-                if (focusable(child)) continue
-                words(child)?.let(into::add)
-                gather(child, into)
-            }
-        }
-        fun walk(id: Int) {
-            val info = provider.createAccessibilityNodeInfo(id) ?: return
-            if (focusable(info)) {
-                val said = mutableListOf<String>()
-                words(info)?.let(said::add)
-                gather(info, said)
-                if (said.size >= 2) result += Said(nodeName(info), said)
-            }
-            for (c in 0 until info.childCount) walk(childVirtualId(info, c))
-        }
-        walk(AccessibilityNodeProvider.HOST_VIEW_ID)
-        return result
-    }
+    private fun utterances(view: View): List<Said> =
+        Speech.focusableNodes(view).filter { it.second.size >= 2 }.map { (info, said) -> Said(nodeName(info), said) }
 
     private fun nodeName(info: AccessibilityNodeInfo): String =
         info.viewIdResourceName ?: Rect().also(info::getBoundsInScreen).let { "node at ${it.toShortString()}" }
@@ -152,12 +119,5 @@ class DoubleSpeechTest {
         for ((a, x) in said.withIndex()) for ((b, y) in said.withIndex())
             if (a != b && y.length >= 2 && Regex("(^|\\W)" + Regex.escape(y) + "(\\W|$)").containsMatchIn(x)) return true
         return false
-    }
-
-    // AccessibilityNodeInfo keeps each child as a long whose high half is the virtual view id;
-    // getChildId is hidden, so it is read by reflection, as Robolectric allows.
-    private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int {
-        val id = AccessibilityNodeInfo::class.java.getMethod("getChildId", Int::class.javaPrimitiveType).invoke(info, index) as Long
-        return (id ushr 32).toInt()
     }
 }

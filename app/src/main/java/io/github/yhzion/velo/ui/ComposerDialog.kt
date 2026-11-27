@@ -198,7 +198,7 @@ internal fun ComposerDialog(target: ComposerTarget, notificationPending: Boolean
  * the attachment, and Remove.
  */
 @Composable
-private fun AttachControl(draft: ComposerDraft, enabled: Boolean, onAction: (AttachAction) -> Unit) {
+internal fun AttachControl(draft: ComposerDraft, enabled: Boolean, onAction: (AttachAction) -> Unit) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     var menu by remember { mutableStateOf(false) }

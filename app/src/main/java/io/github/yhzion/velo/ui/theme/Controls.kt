@@ -70,6 +70,7 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
@@ -563,9 +564,17 @@ private fun <T> SettingsChoices(
 }
 
 /**
+ * Hides visible words from a screen reader when [description], set on the control around them,
+ * says them already: Compose gives a merging control's description as a child beside its texts,
+ * so a service would say both (#134, #148). The words stay in the semantics tree for tests.
+ */
+fun Modifier.saidBy(description: String?): Modifier = if (description == null) this else semantics { hideFromAccessibility() }
+
+/**
  * A button that opens a menu of choices ([SelectMenu]) and shows the current one: a glass pill
  * with a chevron (Controls board, sample-menu-button: 44 high, kept at the least touch target).
- * [contentDescription] says what the choice is for, as "Sound, Attention".
+ * [contentDescription] says what the choice is for, as "Sound, Attention"; a screen reader says it
+ * in place of the shown choice.
  */
 @Composable
 fun MenuButton(
@@ -585,7 +594,8 @@ fun MenuButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(if (small) 4.dp else 6.dp)),
     ) {
-        Text(text, style = if (small) textAt(14f) else VeloTheme.type.value, color = if (enabled) c.onGlass else c.disabled, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, Modifier.saidBy(contentDescription), style = if (small) textAt(14f) else VeloTheme.type.value, color = if (enabled) c.onGlass else c.disabled,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
         Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(VeloTheme.medium(if (small) 14.dp else 16.dp)), tint = c.secondary)
     }
 }
