@@ -40,7 +40,11 @@ fn threadBuffer() ?*std.ArrayList(u8) {
 }
 
 pub const Glyphs = struct {
-    /// Global reference to the CoreListener. Owned by jni.zig, which outlives every pane.
+    /// Global reference to the CoreListener. Owned by jni.zig's `Handle`, which outlives every
+    /// pane but not every thread that calls the source: a render thread its pane gave up (#159)
+    /// may still be in a call when a disconnect frees the `Handle`. Such a thread makes no
+    /// further call (`Renderer.drawMissing`), and the call in flight touches only `env` and the
+    /// thread's own buffer once `CallObjectMethodA` has returned.
     listener: c.jobject,
     rasterize_glyph: c.jmethodID,
 

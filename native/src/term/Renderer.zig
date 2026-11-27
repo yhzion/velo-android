@@ -320,12 +320,16 @@ fn completeFrame(r: *R) !void {
 }
 
 /// The render thread's own work: the atlas is its, and the glyph source needs no lock. A glyph
-/// another pane's render thread drew already comes from the source's cache.
+/// another pane's render thread drew already comes from the source's cache. A thread its pane
+/// gave up asks the source for nothing more (#159): the source is Core's (jni.zig's `Handle`),
+/// which a disconnect frees right after it gave up the core's threads. A source call that
+/// waits on the platform is where a thread is given up here, and only that call finishes.
 fn drawMissing(r: *R) void {
     Trace.begin("Renderer.drawMissing");
     defer Trace.end();
     const g = r.glyphs;
     for (r.missing.items) |m| {
+        if (r.link.givenUp()) break;
         const key = r.missing_keys.items[m.start..][0..m.len];
         const utf8 = key[0 .. key.len - 1];
         if (g.cache) |cache| {
@@ -2109,6 +2113,39 @@ test "a thread its pane gave up while it drew glyphs builds nothing more with th
     try std.testing.expect(!t.r.link.waitEnd(0)); // the pane gives the thread up
     try std.testing.expectError(error.GivenUp, completeFrame(&t.r));
     try std.testing.expectEqual(@as(usize, 0), rowAt(&t.r, 0).?.fg.items.len); // the row still waits
+}
+
+test "a thread its pane gives up while the glyph source draws asks the source for no more glyphs" {
+    // #159: a disconnect gives the thread up, then frees the source (jni.zig's `Handle`) and the
+    // listener's reference. A thread that wakes in the source must not call it again.
+    const GivingUpSource = struct {
+        link: ?*PaneMod.RenderLink = null,
+        calls: usize = 0,
+        pixels: [96 * 96 * 3]u8 = @splat(255),
+
+        fn raster(ctx: *anyopaque, _: []const u8, _: bool, _: bool, w: u32, h: u32, columns: u32) ?PaneMod.GlyphBitmap {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.calls += 1;
+            // The pane gives the thread up while it waits here, outside the pane.
+            if (self.calls == 1) std.debug.assert(!self.link.?.waitEnd(0));
+            return .{ .w = w * columns, .h = h, .pixels = self.pixels[0 .. w * h * columns] };
+        }
+    };
+    var source: GivingUpSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = GivingUpSource.raster });
+    defer p.destroy();
+    p.setFontSizePx(10);
+    p.write("\xea\xb0\x80\xea\xb0\x80\xeb\x82\x98\r\nab");
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    source.link = t.r.link;
+    p.lock.lock();
+    try t.buildOnly();
+    p.lock.unlock();
+    try std.testing.expectEqual(@as(usize, 4), t.r.missing.items.len);
+
+    try std.testing.expectError(error.GivenUp, completeFrame(&t.r));
+    try std.testing.expectEqual(@as(usize, 1), source.calls); // the one in flight, and no other
 }
 
 test "a glyph drawn for one window is not drawn again for another: the panes share it" {

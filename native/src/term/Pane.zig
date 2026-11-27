@@ -195,6 +195,14 @@ pub const RenderLink = struct {
         return true;
     }
 
+    /// Whether the pane gave the thread up. Outside the pane the thread asks before it calls
+    /// what the pane's owner may free once the thread is given up: the glyph source.
+    pub fn givenUp(l: *RenderLink) bool {
+        l.lock.lock();
+        defer l.lock.unlock();
+        return l.given_up;
+    }
+
     pub fn leave(l: *RenderLink) void {
         l.lock.lock();
         defer l.lock.unlock();
