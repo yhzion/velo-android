@@ -86,17 +86,19 @@ class ZoomMinimapUiTest {
     private var size by mutableStateOf(UiSize.Medium)
     private val zoomedTo = mutableListOf<String>()
     private lateinit var view: View
+    private val blocks = mapOf("a" to BlockInfo(title = "claude"), "b" to BlockInfo(title = "build"), "c" to BlockInfo(title = "logcat"),
+        "f" to BlockInfo(title = "htop"))
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
     // [low]: the caption at the screen's bottom, under the panes, as in the app; else at its top, as over the keyboard.
     // [under]: the room under the caption, as the key bar's.
-    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true, low: Boolean = false, under: Dp = 0.dp) = compose.setContent {
+    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true, low: Boolean = false, under: Dp = 0.dp,
+                     blocks: Map<String, BlockInfo> = this.blocks) = compose.setContent {
         val window = WindowInfo(tab, layout = layout, zoomed = zoomed, floating = floating)
         val state = UiState(
             status = "connected", session = "s", window = tab, windows = listOf(window),
             sessions = listOf(SessionInfo("s", tabs = listOf(TabInfo(tab, label = "velo", program = "zsh", panes = 3)))),
-            blocks = mapOf("a" to BlockInfo(title = "claude"), "b" to BlockInfo(title = "build"), "c" to BlockInfo(title = "logcat"),
-                "f" to BlockInfo(title = "htop")),
+            blocks = blocks,
         )
         val row = sessionGroups(state, false, emptySet(), false, "").single().rows.single()
         val map = zoomMap(window, rtl) { block -> TabIndicator.Done.takeIf { block == "c" } }
@@ -192,6 +194,18 @@ class ZoomMinimapUiTest {
         show(line(2))
         compose.onNodeWithTag("caption-minimap").performClick()
         compose.onNodeWithTag("minimap-picker-cell-p0").assertContentDescriptionEquals("Pane 1 of 2, Terminal")
+    }
+
+    @Test fun aPaneTheServerLabelledFromItsIdIsNamedTerminalOnTheMapAndInTheRow() {
+        // Rex names a block with no label "Block <8 hex>" (#198): the picker's cell and its capsule under a floating
+        // pane name it as the palette does.
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.6f, h = 1f))
+        val auto = BlockInfo(title = "Block 9ac42573", titleIsLabel = true)
+        show(blocks = blocks + mapOf("a" to auto, "c" to auto.copy(title = "Block 0c0c0c0c")))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-covered-a").assertContentDescriptionEquals("Pane 1 of 4, Terminal")
+        // c is marked done in this scene ([show]).
+        compose.onNodeWithTag("minimap-picker-cell-c").assertContentDescriptionEquals("Pane 3 of 4, Terminal, Completed")
     }
 
     @Test fun aFloatingCellIsTouchedOverTheTiledOne() {

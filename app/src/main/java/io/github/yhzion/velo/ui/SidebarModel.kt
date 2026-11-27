@@ -51,10 +51,13 @@ data class TabRow(
  */
 data class SessionGroup(val id: String, val label: String, val collapsed: Boolean, val tabs: Int?, val rows: List<TabRow>)
 
-/** Labels the server makes from the tab's ID, such as "Window 89abcdef", are not names. */
-private val AutoTabLabel = Regex("^Window [0-9a-f]{8}$")
+/**
+ * Labels the server makes from an ID are not names: "Window 89abcdef" for a tab, "Block 89abcdef" for a block it
+ * has no label for (#198).
+ */
+private val AutoTabLabel = Regex("^(Window|Block) [0-9a-f]{8}$")
 
-/** The label a user gave a tab; "" for none or the server's automatic one. */
+/** The label a user gave a tab or a block; "" for none or the server's automatic one. */
 fun ownTabLabel(label: String): String = if (AutoTabLabel.matches(label)) "" else label
 
 /**
@@ -144,7 +147,7 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false):
     val name = own.ifEmpty { topic.orEmpty() }.ifEmpty { statusSummary.singleLine() }
         .ifEmpty { titles.firstOrNull { it.isNotEmpty() }.orEmpty() }
         .ifEmpty { agent?.label.orEmpty() }.ifEmpty { executable.takeUnless(VersionName::matches).orEmpty() }
-        .ifEmpty { title.takeIf { titleIsLabel }?.singleLine().orEmpty() }.ifEmpty { if (program.isEmpty() && !pane) "Tab" else "Terminal" }
+        .ifEmpty { title.takeIf { titleIsLabel }?.singleLine()?.let(::ownTabLabel).orEmpty() }.ifEmpty { if (program.isEmpty() && !pane) "Tab" else "Terminal" }
     val mark = when (activity) {
         "working" -> TabIndicator.Working
         "blocked" -> blockedIndicator(kind)

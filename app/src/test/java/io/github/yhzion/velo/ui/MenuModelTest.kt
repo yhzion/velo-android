@@ -424,6 +424,34 @@ class MenuModelTest {
     }
 
     @Test
+    fun aPaneTheServerLabelledFromItsIdIsATerminal() {
+        // Rex names a block it has no label for "Block <8 hex>" (#198), as it names such a tab "Window <8 hex>".
+        val window = tiled("a", "b").copy(zoomed = "a")
+        val state = UiState(session = "s", blocks = mapOf(
+            "a" to BlockInfo(program = "zsh"),
+            "b" to BlockInfo(title = "Block 9ac42573", titleIsLabel = true),
+        ))
+        assertEquals("Terminal", zoomPaneName(state, window, "b"))
+        val label = paneLabel(tabBlocks(window), "b")
+        assertEquals("Full Screen Pane: $label · Terminal", fullScreenPaneCommands(window, state).single().label)
+        assertEquals("Focus Pane: $label · Terminal", focusPaneCommands(window.copy(zoomed = null), state, focused = "a").single().label)
+        // A label the user gave the block still names it.
+        val named = state.copy(blocks = state.blocks + ("b" to BlockInfo(title = "Block notes", titleIsLabel = true)))
+        assertEquals("Block notes", zoomPaneName(named, window, "b"))
+    }
+
+    @Test
+    fun aTabLabelledBlockFromItsIdFallsBackAsAWindowOneDoes() {
+        assertEquals("", ownTabLabel("Block 9ac42573"))
+        assertEquals("Block 9ac4257", ownTabLabel("Block 9ac4257"))
+        for (label in listOf("Window 0b0b0b0b", "Block 0b0b0b0b")) {
+            assertEquals(label, "Tab", TabInfo("window:b", label).displayName("s"))
+            assertEquals(label, "zsh", TabInfo("window:b", label, program = "zsh").displayName("s"))
+            assertEquals(label, "Tab", tabTitle(UiState(session = "s"), WindowInfo("window:b", label, layout = LayoutNode(block = "b"))))
+        }
+    }
+
+    @Test
     fun thePaletteNamesAPaneAsTheMinimapsPickerDoes() {
         // No title and a version for a program, a title that is the tab's label, and a title of two lines (#172).
         val window = tiled("a", "b", "c").copy(zoomed = "a")
