@@ -72,8 +72,8 @@ import kotlin.math.sign
 import kotlin.math.sin
 
 /**
- * A window the rail's wheel turns past: its tab's [id], the [name] the sidebar shows, and the program its tile
- * shows ([icon], [TabActivity.icon]).
+ * A window the rail's wheel turns past: its tab's [id], the [name] the sidebar shows, and the icon its tile shows
+ * ([icon]: [TabActivity.icon], the agent a report names, else the program).
  */
 internal data class WheelWindow(val id: String, val name: String, val icon: String?)
 
