@@ -4,7 +4,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -68,6 +75,33 @@ internal fun noticeRowWidths(own: List<Int>, space: Int, gap: Int, least: Int): 
         wider--
     }
     return own
+}
+
+/**
+ * The space the error notice's own width ([ownWidth]) keeps on each side of its text: the Material Snackbar keeps
+ * 16 dp before its text and 8 after it, so the text fits whole with some room to spare.
+ */
+internal val SnackbarTextSide = 16.dp
+
+/**
+ * Answers [width] px when asked how wide the element is at most, and measures it as it is: a notice whose own width
+ * is not what its layout answers (the error notice's Snackbar answers its widest) tells a row of notices its real
+ * width ([noticeRowWidths]). Where it is measured, as in a stack, nothing changes.
+ */
+internal fun Modifier.ownWidth(width: Int): Modifier = this then OwnWidthElement(width)
+
+private data class OwnWidthElement(val width: Int) : ModifierNodeElement<OwnWidthNode>() {
+    override fun create() = OwnWidthNode(width)
+    override fun update(node: OwnWidthNode) { node.width = width }
+}
+
+private class OwnWidthNode(var width: Int) : Modifier.Node(), LayoutModifierNode {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = width
 }
 
 /** The least width each notice keeps in a row ([noticeRowWidths]): a few words of an error notice on one line. */

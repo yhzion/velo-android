@@ -1151,7 +1151,7 @@ internal fun Workspace(
 
 /** A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109). */
 @Composable
-private fun UploadToast(conn: HostConnection) {
+internal fun UploadToast(conn: HostConnection) {
     conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload) }
 }
 

@@ -9,10 +9,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import io.github.yhzion.velo.HostConnection
@@ -111,8 +113,13 @@ internal fun ErrorNotice(conn: HostConnection, modifier: Modifier = Modifier, te
     conn.error?.let { msg ->
         key(conn.errorReports) {
             VeloSurface(VeloTheme.colors.overlay) {
-                Snackbar(modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(text(msg)) }
+                val said = text(msg)
+                // The Snackbar answers its widest size (600 dp and more) when asked how wide it is, whatever its text:
+                // a row of notices asks its own width (#169). Its text style is the Snackbar's own.
+                val own = rememberTextMeasurer().measure(said, MaterialTheme.typography.bodyMedium).size.width +
+                    with(LocalDensity.current) { (SnackbarTextSide * 2).roundToPx() }
+                Snackbar(modifier.ownWidth(own).semantics { liveRegion = LiveRegionMode.Polite },
+                    containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(said) }
             }
         }
     }

@@ -25,6 +25,22 @@ import io.github.yhzion.velo.fidelity.HostActivityRule
 import io.github.yhzion.velo.ui.theme.Status
 import io.github.yhzion.velo.ui.theme.ToastSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.test.core.app.ApplicationProvider
+import io.github.yhzion.velo.HostConnection
+import io.github.yhzion.velo.core.LayoutNode
+import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.core.WindowInfo
+import io.github.yhzion.velo.fidelity.CorePackage
+import io.github.yhzion.velo.fidelity.ShadowVeloCore
+import io.github.yhzion.velo.fidelity.fakeConnection
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,10 +54,13 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Where the notices are drawn (#165): the sidebar's slot under its Filter field while it covers the panes, and
  * [PaneNotices] over the pane column, which measures them at their own height and keeps them inside the column.
+ * Two or three over a one-line pane go side by side above the key bar (#169): those scenes draw the real notices,
+ * with a fake connection over [ShadowVeloCore].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi")
+@Config(sdk = [34], application = Application::class, qualifiers = "w393dp-h894dp-420dpi",
+    shadows = [ShadowVeloCore::class], instrumentedPackages = [CorePackage])
 class NoticeSlotTest {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
@@ -104,62 +123,6 @@ class NoticeSlotTest {
         assertTrue("first toast still in the column", compose.onAllNodesWithTag("toast")[0].getBoundsInRoot().top >= column.top - 0.5.dp)
     }
 
-    // #169: the Velvet's pane column in landscape with the keyboard up, in dp: 786 wide and 137 tall, the pane one
-    // line (32 dp) at its top and the key bar from 83 dp. A notice is 48 dp, so two stacked would run into it.
-    private fun shortColumn(vararg notices: @Composable () -> Unit) {
-        compose.setContent {
-            VeloTheme {
-                val px = LocalDensity.current.density
-                Box(Modifier.testTag("column").width(786.dp).height(137.dp)) {
-                    PaneNotices({ Rect(0f, 0f, 786 * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, 786 * px, 120 * px) },
-                        padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
-                        notices.forEach { it() }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun assertOneRowAboveTheKeyBar(nodes: List<DpRect>) {
-        val keyBarTop = 83.dp
-        nodes.forEach { n ->
-            assertTrue("notice $n ends above the key bar ($keyBarTop)", n.bottom <= keyBarTop + 0.5.dp)
-            assertTrue("notice $n starts in the column", n.top >= (-0.5).dp)
-            assertTrue("notice $n has a control's height", n.bottom - n.top >= 48.dp - 0.5.dp)
-            assertTrue("notice $n inside the column's padding", n.left >= 16.dp - 0.5.dp && n.right <= 786.dp - 16.dp + 0.5.dp)
-        }
-        nodes.zipWithNext { a, b -> assertTrue("$a then $b, side by side in order", b.left >= a.right + 8.dp - 0.5.dp) }
-    }
-
-    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
-    @Test fun twoNoticesUnderAOneLinePaneLieSideBySideAboveTheKeyBar() {
-        shortColumn({ ToastSurface("Uploading 17957913871976106988482846832927.png…") }, { ToastSurface("Another send is still in progress.") })
-        val toasts = compose.onAllNodesWithTag("toast").fetchSemanticsNodes().indices.map { compose.onAllNodesWithTag("toast")[it].getBoundsInRoot() }
-        assertEquals(2, toasts.size)
-        assertOneRowAboveTheKeyBar(toasts)
-        // Each shows its whole line: the error's text is one line (about 40 dp with its padding), not cut or wrapped.
-        compose.onAllNodesWithTag("toast-message")[1].getBoundsInRoot().let { assertTrue("one line $it", it.bottom - it.top < 48.dp) }
-    }
-
-    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
-    @Test fun threeNoticesUnderAOneLinePaneLieSideBySideAboveTheKeyBar() {
-        shortColumn({ ToastSurface("Moved Pane 1", actionLabel = "Undo", onAction = {}) },
-            { ToastSurface("Uploading 17957915015754169069198214825020.png…") },
-            { Snackbar(Modifier.testTag("snackbar")) { Text("Another send is still in progress.") } })
-        val nodes = listOf(compose.onAllNodesWithTag("toast")[0], compose.onAllNodesWithTag("toast")[1], compose.onNodeWithTag("snackbar"))
-            .map { it.getBoundsInRoot() }
-        assertOneRowAboveTheKeyBar(nodes)
-    }
-
-    @Config(qualifiers = "w894dp-h393dp-land-420dpi")
-    @Test fun oneNoticeUnderAOneLinePaneKeepsItsPlace() {
-        // #165's place: from the pane's top down, padding below the column's top, over the caption.
-        shortColumn({ ToastSurface("Uploading x…") })
-        val toast = compose.onNodeWithTag("toast").getBoundsInRoot()
-        assertEquals(16f, toast.top.value, 0.5f)
-        assertEquals(786f, (toast.left + toast.right).value, 1f)
-    }
-
     /** Two toasts (104 dp with the gap) over a short pane under a search bar (from 20 dp to 52), the key bar from [keyBarTop] dp. */
     private fun underTheSearchBar(keyBarTop: Int): Pair<DpRect, DpRect> {
         compose.setContent {
@@ -193,6 +156,159 @@ class NoticeSlotTest {
         }
         assertTrue("side by side: $first then $last", last.left >= first.right)
     }
+
+    // The real notices of the pane column (#169), in their order in the Workspace: the move's Undo, the upload
+    // toast and the error notice, drawn by one fake connection. The Undo is for pane b, moved to a tab of its own.
+    private val before = listOf(WindowInfo("w1", layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"), second = LayoutNode(block = "b"))))
+    private val moved = UiState(status = "connected", server = "velo", session = "s",
+        windows = listOf(WindowInfo("w1", layout = LayoutNode(block = "a")), WindowInfo("w2", layout = LayoutNode(block = "b"))))
+    private val uploadName = "17957915015754169069198214825020.png"
+    private val errorText = "Another send is still in progress."
+    private var conn: HostConnection? = null
+
+    @After fun destroyConnection() { conn?.destroy() }
+
+    /**
+     * The real notices over a short column [width] dp wide, as on the Velvet in landscape with the keyboard up: 137 dp
+     * tall, the pane one line (32 dp) at its top and the key bar from 83 dp. Undo, upload and error show as [undo],
+     * [upload] and [error] say; the connection is returned to change them.
+     */
+    private fun realNotices(width: Int, undo: Boolean = true, upload: Boolean = true, error: Boolean = true,
+                            fontScale: Float = 1f, rtl: Boolean = false): HostConnection {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
+        val notice = MoveNotice("b", MovePlace.NewTab, before, undoFor(before, "b", MovePlace.NewTab) { it.label })
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale),
+                LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                VeloTheme {
+                    val px = LocalDensity.current.density
+                    Box(Modifier.testTag("column").width(width.dp).height(137.dp)) {
+                        PaneNotices({ Rect(0f, 0f, width * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, width * px, 120 * px) },
+                            padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                            if (undo) UndoNotice(c, notice, onDone = {}, Modifier.testTag("undo"))
+                            UploadToast(c)
+                            ErrorNotice(c, Modifier.testTag("error"))
+                        }
+                    }
+                }
+            }
+        }
+        // After the fake core's state is applied: a connected state clears the error notice.
+        compose.waitForIdle()
+        if (upload) c.uploading = "Uploading $uploadName…"
+        if (error) c.error = errorText
+        compose.waitForIdle()
+        return c
+    }
+
+    private fun bounds(tag: String) = compose.onNodeWithTag(tag).getBoundsInRoot()
+
+    /** The upload toast's text as it is laid out. */
+    private fun toastText(): TextLayoutResult {
+        val results = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("toast-message").fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        return results.single()
+    }
+
+    /** The notices end above the key bar (83 dp), inside the column's padding, side by side in [nodes]' order from the left. */
+    private fun assertOneRowAboveTheKeyBar(width: Int, nodes: List<DpRect>) {
+        nodes.forEach { n ->
+            assertTrue("notice $n ends above the key bar (83 dp)", n.bottom <= 83.dp + 0.5.dp)
+            assertTrue("notice $n starts in the column", n.top >= (-0.5).dp)
+            assertTrue("notice $n has a control's height", n.bottom - n.top >= 48.dp - 0.5.dp)
+            assertTrue("notice $n inside the column's padding", n.left >= 16.dp - 0.5.dp && n.right <= width.dp - 16.dp + 0.5.dp)
+        }
+        nodes.zipWithNext { a, b -> assertTrue("$a then $b, side by side in order", b.left >= a.right + 8.dp - 0.5.dp) }
+    }
+
+    /** The upload toast's file name is on one line, not split inside itself. */
+    private fun assertTheNameIsWhole() {
+        val t = toastText()
+        val start = t.layoutInput.text.text.indexOf(uploadName)
+        val lines = (0 until t.lineCount).map { t.layoutInput.text.text.substring(t.getLineStart(it), t.getLineEnd(it)) }
+        assertEquals("the name on one line: $lines", t.getLineForOffset(start), t.getLineForOffset(start + uploadName.length - 1))
+    }
+
+    /** The error notice is its text's width and the Snackbar's 16 dp on each side, its text one line. */
+    private fun assertTheErrorKeepsItsOwnWidth() {
+        val error = bounds("error")
+        val text = compose.onNodeWithText(errorText).getBoundsInRoot()
+        assertEquals("error $error around its text $text", (text.right - text.left + 32.dp).value, (error.right - error.left).value, 1f)
+        assertTrue("one line $text", text.bottom - text.top < 30.dp)
+    }
+
+    // Robolectric draws text about 1.43 times as wide as the Velvet: Undo 254 dp (177 on the Velvet), the upload toast
+    // 509 (355), the error notice's text 266 (190). A column of 1088 dp cuts the toast to 96 % of its own width, as the
+    // Velvet's 786 dp does (976 px to 934).
+    private val velvetColumn = 1088
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun twoNoticesUnderAOneLinePaneLieSideBySideAtTheirOwnWidths() {
+        realNotices(velvetColumn, undo = false)
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("toast"), bounds("error")))
+        assertEquals(1, toastText().lineCount)
+        assertTheErrorKeepsItsOwnWidth()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun threeNoticesUnderAOneLinePaneCutOnlyTheToastAndKeepItsNameWhole() {
+        val c = realNotices(velvetColumn, upload = false, error = false)
+        val ownUndo = bounds("undo")
+        c.uploading = "Uploading $uploadName…"
+        c.error = errorText
+        compose.waitForIdle()
+        val undo = bounds("undo")
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(undo, bounds("toast"), bounds("error")))
+        assertEquals("Undo $undo keeps its own width $ownUndo", (ownUndo.right - ownUndo.left).value, (undo.right - undo.left).value, 0.5f)
+        assertTheErrorKeepsItsOwnWidth()
+        assertEquals(2, toastText().lineCount)
+        assertTheNameIsWhole()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun threeNoticesInRtlGoFromTheRight() {
+        realNotices(velvetColumn, rtl = true)
+        // The first notice at the start, which is the right.
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("error"), bounds("toast"), bounds("undo")))
+        assertTheErrorKeepsItsOwnWidth()
+        assertTheNameIsWhole()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun oneNoticeUnderAOneLinePaneKeepsItsPlace() {
+        // #165's place: from the pane's top down, padding below the column's top, over the caption.
+        realNotices(velvetColumn, undo = false, error = false)
+        val toast = bounds("toast")
+        assertEquals(16f, toast.top.value, 0.5f)
+        assertEquals(velvetColumn.toFloat(), (toast.left + toast.right).value, 1f)
+    }
+
+    // A larger text size (#169 review, S2), a known limit: nothing checks the row's height yet, so a row taller than
+    // the room above the key bar covers it, and one taller than the column runs under the keyboard. These pin today's
+    // outcome in the scaled column, where the key bar starts at 83 dp and the column ends at 137 dp.
+
+    /** The row of the real notices at [fontScale] ends at [end] dp and wraps the toast's text to [lines] lines. */
+    private fun assertTheRowAt(fontScale: Float, three: Boolean, end: Float, lines: Int) {
+        realNotices(velvetColumn, undo = three, fontScale = fontScale)
+        val tags = if (three) listOf("undo", "toast", "error") else listOf("toast", "error")
+        val row = tags.map { bounds(it) }
+        row.zipWithNext { a, b -> assertTrue("$a then $b, side by side", b.left >= a.right) }
+        assertEquals("the row $row ends", end, row.maxOf { it.bottom }.value, 1f)
+        assertEquals(lines, toastText().lineCount)
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun twoNoticesAtFontScale1_3StayAboveTheKeyBar() = assertTheRowAt(1.3f, three = false, end = 64f, lines = 1)
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun threeNoticesAtFontScale1_3CoverTheKeyBar() = assertTheRowAt(1.3f, three = true, end = 96.8f, lines = 3)
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun twoNoticesAtFontScale2CoverTheKeyBar() = assertTheRowAt(2f, three = false, end = 126.5f, lines = 3)
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun threeNoticesAtFontScale2RunPastTheColumn() = assertTheRowAt(2f, three = true, end = 162.3f, lines = 4)
 
     private fun actions() = SidebarActions(
         toggleSidebar = {}, openSettings = {}, openPalette = {}, openDevice = {},
