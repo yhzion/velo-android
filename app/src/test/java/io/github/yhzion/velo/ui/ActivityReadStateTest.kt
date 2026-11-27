@@ -116,14 +116,22 @@ class ActivityReadStateTest {
         assertEquals("node", state.activity(node, false).icon)
     }
 
-    @Test fun amongSeenReportsTheAgentFollowsTheShownReportsRanking() {
+    /** Both panes hold one seen report; returns the tile's icon and checks the seen reports show no badge. */
+    private fun seenIcon(onLead: SeenReport, onSplit: SeenReport): String? {
         val state = ActivityReadState()
-        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
-        state.update(split, mapOf("turn" to SeenReport("error", later, agent = "codex")))
+        state.update(lead, mapOf("turn" to onLead))
+        state.update(split, mapOf("turn" to onSplit))
         state.show(1, mapOf(lead to null, split to null))
         state.hide(1)
-        // Error outranks Done, as it would if both were unseen.
-        assertEquals("codex", state.activity(node, true).icon)
         assertNull(state.activity(node, true).badge)
+        return state.activity(node, true).icon
+    }
+
+    @Test fun amongSeenReportsTheAgentFollowsTheShownReportsRanking() {
+        // Error outranks Done, as it would if both were unseen, although the Done report is newer and comes later.
+        assertEquals("codex", seenIcon(SeenReport("error", time, agent = "codex"), SeenReport("done", later, agent = "claude")))
+        // On equal rank the newer report wins, wherever its pane is.
+        assertEquals("claude", seenIcon(SeenReport("done", later, agent = "claude"), SeenReport("done", time, agent = "codex")))
+        assertEquals("codex", seenIcon(SeenReport("done", time, agent = "claude"), SeenReport("done", later, agent = "codex")))
     }
 }
