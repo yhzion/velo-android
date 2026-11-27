@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +49,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -68,6 +68,8 @@ import io.github.yhzion.velo.ui.theme.rememberFeel
 import io.github.yhzion.velo.ui.theme.rounded
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.first
 
 /*
  * The minimap at the caption's end while the shown tab is zoomed (#141): a cell per pane, where the layout puts it
@@ -78,9 +80,8 @@ import kotlin.math.max
 
 /**
  * A pane of a zoomed tab: its [rect] in a unit square, whether it is [floating] over the tiled ones, and the [alert]
- * of a report not yet seen. Its name is not
- * here: the caption holds this all the time, and a hidden pane's title can change many times a second, so only
- * the open picker reads it ([zoomPaneName]).
+ * of a report not yet seen. Its name is not here: the caption holds this all the time, and a hidden pane's title
+ * can change many times a second, so only the open picker reads it ([zoomPaneName]).
  */
 internal data class ZoomCell(val block: String, val rect: PaneRect, val alert: TabIndicator?, val floating: Boolean = false)
 
@@ -159,6 +160,28 @@ internal fun zoomPickerSize(cells: List<PaneRect>, width: Float, height: Float, 
     val w = cells.filter { it.width > 0f }.maxOfOrNull { least / it.width } ?: 0f
     val h = cells.filter { it.height > 0f }.maxOfOrNull { least / it.height } ?: 0f
     return max(width, w) to max(height, h)
+}
+
+/** A picker cell's place in a map [width] by [height] in dp: its left, top, width and height. */
+internal data class PickerBox(val left: Float, val top: Float, val width: Float, val height: Float)
+
+/**
+ * The map that [zoomPickerSize] gives [map]: grown for the tiled cells alone, so that a small floating box, or a sliver
+ * of one past the pane area, does not grow the whole map.
+ */
+internal fun zoomPickerSize(map: ZoomMap, width: Float, height: Float, least: Float): Pair<Float, Float> =
+    zoomPickerSize(map.cells.filter { !it.floating }.map { it.rect }, width, height, least)
+
+/**
+ * Where [cell] lies in the picker's map [width] by [height]: its rectangle scaled to it. A floating cell is at least
+ * [least] across, as the tiled ones are made, and kept inside the map: the map was not grown for it.
+ */
+internal fun zoomPickerBox(cell: ZoomCell, width: Float, height: Float, least: Float): PickerBox {
+    val r = cell.rect
+    if (!cell.floating) return PickerBox(width * r.left, height * r.top, width * r.width, height * r.height)
+    val w = max(width * r.width, least).coerceAtMost(width)
+    val h = max(height * r.height, least).coerceAtMost(height)
+    return PickerBox((width * r.left).coerceIn(0f, width - w), (height * r.top).coerceIn(0f, height - h), w, h)
 }
 
 /** The minimap's board size: 46 by 30 (`.mini`), its cells 4 inside its edge. */
@@ -250,6 +273,11 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
                         if (cell.floating) drawRoundRect(ring, topLeft, box, corner)
                         drawRoundRect(line, topLeft + Offset(edge / 2, edge / 2), Size(box.width - edge, box.height - edge), corner, Stroke(edge))
                     }
+                }
+                // The dots over every cell: a floating cell hides no report of a pane under it.
+                for (cell in map.cells) {
+                    val r = cell.rect
+                    if (r.width * size.width <= 2 * edge || r.height * size.height <= 2 * edge) continue
                     val tint = cell.alert?.let(::tileDot)?.let { dotTint(it, sheet.accent, sheet.warning, sheet.danger) } ?: continue
                     // At the cell's upper end corner, ringed in the minimap's glass.
                     val x = if (rtl) r.left * size.width + dot / 2 else r.right * size.width - dot / 2
@@ -261,8 +289,8 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
     )
     val density = LocalDensity.current
     // A cell's target is inside the room around it.
-    val (mapW, mapH) = zoomPickerSize(map.cells.map { it.rect }, VeloTheme.medium(PickerWidth.dp).value,
-        VeloTheme.medium(PickerHeight.dp).value, TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value)
+    val least = TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value
+    val (mapW, mapH) = zoomPickerSize(map, VeloTheme.medium(PickerWidth.dp).value, VeloTheme.medium(PickerHeight.dp).value, least)
     val padding = VeloTheme.sizes.overlayPadding
     // Above the caption, its end at the minimap's end: an anchor that reaches the screen's bottom leaves no room under it.
     val most = VeloTheme.sizes.dialogWidth
@@ -277,7 +305,7 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
     // It edits no text: the keyboard stays up for the full screen pane, which keeps its size.
     VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"),
         anchor = anchor, keepImeTarget = true) {
-        ZoomPicker(map, mapW.dp, mapH.dp, name) { block ->
+        ZoomPicker(map, mapW, mapH, least, name) { block ->
             openFor = null
             if (block != map.zoomed) zoom(block)
         }
@@ -292,31 +320,47 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
 }
 
 /**
- * The picker (`.pop`): its title, then a button per pane where the layout puts it, [width] by [height], named with
- * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL; the floating ones come last, so they
- * are drawn and touched over the tiled ones. A map larger than the popover scrolls, as the minimized panes' row
- * does, and opens on the zoomed cell.
+ * The picker (`.pop`): its title, then a button per pane where the layout puts it, [mapW] by [mapH] dp, named with
+ * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL, at least [least] across
+ * ([zoomPickerBox]); the floating ones come last, so they are drawn and touched over the tiled ones. A map larger than
+ * the popover scrolls, as the minimized panes' row does, and shows the zoomed cell, at once.
  */
 @Composable
-private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> String, onPick: (String) -> Unit) {
+private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, name: (String) -> String, onPick: (String) -> Unit) {
     val c = VeloTheme.surface
     val sheet = VeloTheme.colors.sheet
     val unit = VeloTheme.medium(1.dp)
     Text("Panes in this tab", Modifier.padding(bottom = unit * 8), color = c.secondary, style = VeloTheme.type.caption)
-    val shown = remember { BringIntoViewRequester() }
-    LaunchedEffect(Unit) { shown.bringIntoView() }
+    val width = mapW.dp
+    val height = mapH.dp
+    val across = rememberScrollState()
+    val down = rememberScrollState()
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val density = LocalDensity.current
+    // The zoomed cell in the middle of what shows, without a slide; again when another device zooms another pane.
+    LaunchedEffect(map.zoomed) {
+        val cell = map.cells.firstOrNull { it.block == map.zoomed } ?: return@LaunchedEffect
+        snapshotFlow { across.viewportSize > 0 && down.viewportSize > 0 }.first { it }
+        val box = zoomPickerBox(cell, mapW, mapH, least)
+        with(density) {
+            val middle = (box.left + box.width / 2).dp.toPx()
+            // In RTL the scroll starts at the map's right edge.
+            val x = if (rtl) width.toPx() - middle else middle
+            across.scrollTo((x - across.viewportSize / 2f).roundToInt())
+            down.scrollTo(((box.top + box.height / 2).dp.toPx() - down.viewportSize / 2f).roundToInt())
+        }
+    }
     // One scroll a node: a node keeps one scroll action, and a screen reader needs both.
-    Box(Modifier.testTag("minimap-picker-map").horizontalScroll(rememberScrollState())) {
-        Box(Modifier.testTag("minimap-picker-rows").verticalScroll(rememberScrollState())) {
+    Box(Modifier.testTag("minimap-picker-map").horizontalScroll(across)) {
+        Box(Modifier.testTag("minimap-picker-rows").verticalScroll(down)) {
             Box(Modifier.size(width, height)) {
                 for ((index, cell) in map.cells.withIndex()) {
-                    val r = cell.rect
+                    val box = zoomPickerBox(cell, mapW, mapH, least)
                     val on = cell.block == map.zoomed
                     val named = name(cell.block)
                     Box(
                         // From the left edge, not the line's start: the rectangles are mirrored already.
-                        Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset(width * r.left, height * r.top).size(width * r.width, height * r.height)
-                            .then(if (on) Modifier.bringIntoViewRequester(shown) else Modifier)
+                        Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset(box.left.dp, box.top.dp).size(box.width.dp, box.height.dp)
                             .padding(unit * PickerCellInset).testTag("minimap-picker-cell-${cell.block}")
                             .background(if (on) c.accent else c.glass, rounded(unit * 7))
                             .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
@@ -324,6 +368,8 @@ private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> St
                             .semantics {
                                 contentDescription = zoomCellDescription(map, index, cell, named)
                                 selected = on
+                                // In the panes' order, not where they lie: a floating cell lies among the tiled ones.
+                                traversalIndex = index.toFloat()
                             }
                             .padding(unit * 7),
                     ) {

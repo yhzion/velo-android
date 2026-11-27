@@ -158,6 +158,21 @@ class ZoomMinimapTest {
     }
 
     @Test
+    fun `a floating box neither grows the picker nor goes below a finger's target`() {
+        // A sliver past the pane area: 0.03 wide once kept inside the map.
+        val sliver = tab.copy(floating = listOf(FloatingLayer("f", x = 0.97f, y = 0.9f, w = 0.5f, h = 0.5f)))
+        val map = zoomMap(sliver, false) { null }!!
+        assertEquals(194f to 128f, zoomPickerSize(map, 194f, 128f, 52f))
+        val box = zoomPickerBox(map.cells.last(), 194f, 128f, 52f)
+        assertEquals(PickerBox(142f, 76f, 52f, 52f), box)
+        // A tiled cell is its rectangle scaled.
+        assertEquals(PickerBox(0f, 0f, 194f * 0.56f, 128f), zoomPickerBox(map.cells[0], 194f, 128f, 52f))
+        // A floating box larger than the least keeps its size and place.
+        val wide = zoomMap(tab.copy(floating = listOf(FloatingLayer("f", x = 0.1f, y = 0.25f, w = 0.5f, h = 0.5f))), false) { null }!!
+        assertEquals(PickerBox(19.4f, 32f, 97f, 64f), zoomPickerBox(wide.cells.last(), 194f, 128f, 52f))
+    }
+
+    @Test
     fun `the picker grows until its smallest cell is a finger's target`() {
         val cells = zoomCells(tab, false)
         // The board's 194 by 128 holds the mockup's cells: the shortest is 64 high, the narrowest 85 wide.

@@ -278,6 +278,34 @@ class ZoomMinimapUiTest {
         assertEquals(listOf("p11"), zoomedTo)
     }
 
+    @Test fun aRtlMapOpensOnAZoomedPaneAtItsEnd() {
+        // The last pane is on the left in RTL, past what shows first: the map opens there.
+        zoomed = "p11"
+        show(line(12), rtl = true)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-cell-p11").assertIsDisplayed()
+        compose.onNodeWithTag("minimap-picker-cell-p0").assertIsNotDisplayed()
+    }
+
+    @Config(qualifiers = "w900dp-h700dp-420dpi")
+    @Test fun aScrollingPickerStartsAtTheMinimapInRtl() {
+        zoomed = "p8"
+        show(line(9), rtl = true)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val mini = compose.onNodeWithTag("caption-minimap").getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertEquals(mini.left.value, picker.left.value, 1f)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-420dpi")
+    @Test fun aStackedMapOpensOnTheZoomedPane() {
+        zoomed = "p8"
+        show(line(9, "column"))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-cell-p8").assertIsDisplayed()
+        compose.onNodeWithTag("minimap-picker-cell-p0").assertIsNotDisplayed()
+    }
+
     @Config(qualifiers = "w894dp-h393dp-420dpi")
     @Test fun nineStackedScrollOnALowScreen() {
         // Nine rows of 48 dp are higher than a phone held sideways: the map scrolls up and down too.
