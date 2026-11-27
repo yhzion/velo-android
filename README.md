@@ -48,7 +48,7 @@ A file path opens the same way, through the app your phone already uses for that
 
 ## Open your first session
 
-You need a 64-bit ARM device running Android 11 or later and a computer running a Rex server. The phone connects to the server; it does not run one.
+You need a 64-bit ARM device running Android 11 or later and a computer running a Rex server. Velo connects to the server; it does not run one.
 
 1. Download `velo-<tag>-arm64-v8a.apk` from [GitHub Releases](https://github.com/yhzion/velo-android/releases/latest) and install it on your phone. The `.sha256` file beside it holds the APK's digest.
 2. Add the server, over Tailscale or by its address, as described below.
@@ -58,21 +58,21 @@ You need a 64-bit ARM device running Android 11 or later and a computer running 
 
 Velo runs its own Tailscale node, so the phone needs no Tailscale app or VPN.
 
-1. On the computer running Rex, run `rex server tailscale on`. The server then serves its API on your tailnet. The first time, it asks you to log in: the login link appears in the server log and in `rex server status`. The setting lasts until the server restarts; start the server with `--tailscale` to keep it.
-2. In **Velo**, tap **Log in to Tailscale** and log in once, in the browser, with the Tailscale account that owns the server's node. Other members of the tailnet get in only when the server's node allows them (`rex server tailscale on --allow-tailnet-members`).
-3. Velo lists the Rex servers it finds on that tailnet. Tap one to save it.
+1. On the computer running Rex, run `rex server tailscale on`. The server then serves its API on your tailnet. The first time, it asks you to log in: the login link appears in the server log and in `rex server status`. The setting lasts until the server restarts; start the server with `--tailscale` to keep it. To let other members of the tailnet in too, run `rex server tailscale on --allow-tailnet-members`; to keep that, start the server with `--tailscale-allow-tailnet-members`. Every member the tailnet's access rules admit can then reach the server.
+2. In Velo, tap **Log in to Tailscale** and log in once, in the browser, with the Tailscale account that owns the server's node.
+3. Velo lists the Rex servers it finds on that tailnet. Tap **Connect** beside one; Velo saves it and connects.
 
 Instead of step 3, you can scan the server's QR code. On the computer, run `rex server tailscale pair`. In Velo, choose **Add by QR code or address**, then **Scan QR code**. The code holds only the server's tailnet address, so the phone must be on the tailnet first (step 2).
 
-**Log in to Tailscale** and **Add by QR code or address** are on the start screen, which Velo shows only while no server is open. After that, log in under **Settings → Remotes → Tailscale**, and add a server with **Add Remote…** in the sidebar or in **Settings → Remotes**. The sidebar also lists the servers found on the tailnet.
+**Log in to Tailscale** and **Add by QR code or address** are on the start screen, which Velo shows only while no server is saved. After that, log in under **Settings → Remotes → Tailscale**, and add a server with **Add Remote…** in the sidebar or in **Settings → Remotes**. The sidebar also lists the servers found on the tailnet.
 
 ### By address
 
 On the start screen, choose **Add by QR code or address**; later, choose **Add Remote…**. Type the address and tap **Add**.
 
-While Velo's Tailscale node is running, Velo opens every `https://` and `http://` connection through it. In any other state, such as off or waiting for a login, Velo connects over the phone's own network. An `ssh://` address goes through the node only when its host is on the tailnet.
+While Velo's Tailscale node is running, Velo opens every `https://` and `http://` connection through it. The node passes a host outside the tailnet on to the phone's own network. In any other state, such as off or waiting for a login, Velo connects over the phone's own network. An `ssh://` address goes through the node only when its host is on the tailnet.
 
-An address outside a tailnet needs no Tailscale login. A tailnet name such as `rex.example.ts.net` resolves only on the tailnet: log in to Tailscale in Velo, or run the Tailscale app on the phone.
+An address outside a tailnet needs no Tailscale login. A tailnet name such as `rex.example.ts.net` resolves only on the tailnet: log in to Tailscale in Velo, or run the Tailscale app on the phone, with the account that owns the server's node.
 
 | You type | Velo connects to |
 | --- | --- |
