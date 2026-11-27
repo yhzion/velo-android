@@ -11,6 +11,7 @@
 #   title         30 title changes a second for 8 s and nothing else (state and redraw path)
 #   overview      the tab overview: four swipes each way, then back to a tab
 #   overview-out  the tab overview open while every tab prints at once (an atlas per preview)
+#   tabs          every tab holds its own Korean text; tabs 2, 3, 4, 5 and 1 shown in turn
 #
 # The perf session needs five tabs (`setup.sh`), shown by the device's Velo. The taps are for
 # the LG Velvet in landscape (2460 x 1080 px, 95 columns); set the PERF_* variables below for
@@ -31,11 +32,11 @@ export PERF_COLS PERF_TAP_PANE_MENU PERF_SWIPE_MENU PERF_TAP_LARGER PERF_TAP_RES
   PERF_TAP_OVERVIEW PERF_TAP_CARD PERF_SWIPE_NEXT PERF_SWIPE_BACK PERF_DIR ADB
 export -f perf_send
 
-[ $# -ge 1 ] || { sed -n '2,18p' "$0"; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,19p' "$0"; exit 2; }
 PREFIX=$1
 shift
 SCENES=("$@")
-[ ${#SCENES[@]} -gt 0 ] || SCENES=(ko2350 prose ascii textsize title overview overview-out)
+[ ${#SCENES[@]} -gt 0 ] || SCENES=(ko2350 prose ascii textsize title overview overview-out tabs)
 
 LOAD="python3 $PERF_DIR/load.py"
 # What the prose scenes print: SECONDS RATE.
@@ -97,7 +98,25 @@ overview_out_steps() {
   sleep 4
   "$ADB" shell "input tap $PERF_TAP_CARD"
 }
-export -f menu textsize_steps overview_steps overview_out_steps
+# Every tab prints its own text, before the trace: what a tab shows when it is shown.
+fill_tabs() {
+  local i ranges=("1,40" "20,60" "60,100" "100,140" "140,180")
+  for i in 1 2 3 4 5; do
+    if [ -n "${VELO_PERF_TEXT:-}" ]; then
+      perf_send "$i" "clear; sed -n '${ranges[i - 1]}p' $VELO_PERF_TEXT"
+    else
+      perf_send "$i" "clear; python3 $PERF_DIR/load.py lines $i 40 $PERF_COLS"
+    fi
+  done
+}
+tabs_steps() {
+  local i
+  for i in 2 3 4 5 1; do
+    rex window focus -s "$VELO_PERF_SESSION" "$i"
+    sleep 1.5
+  done
+}
+export -f menu textsize_steps overview_steps overview_out_steps tabs_steps
 
 for scene in "${SCENES[@]}"; do
   "$PERF_DIR/cold.sh"
@@ -113,6 +132,11 @@ for scene in "${SCENES[@]}"; do
     title) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 11 send1 "$LOAD title 8 30" ;;
     overview) find_overview; "$PERF_DIR/trace.sh" "$PREFIX-$scene" 16 overview_steps ;;
     overview-out) find_overview; "$PERF_DIR/trace.sh" "$PREFIX-$scene" 12 overview_out_steps ;;
+    tabs)
+      fill_tabs
+      sleep 3
+      "$PERF_DIR/trace.sh" "$PREFIX-$scene" 11 tabs_steps
+      ;;
     *) echo "unknown scene: $scene" >&2; exit 2 ;;
   esac
 done

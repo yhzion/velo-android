@@ -57,7 +57,8 @@ def analyze(path):
 
     print(" core sections (Zig, ATrace):")
     for name in ("Renderer.buildFrame", "Renderer.present", "Renderer.drawMissing", "Renderer.unchanged",
-                 "Renderer.rasterizeGlyph", "DataStream.feed", "Core.stateSnapshot", "Core.publishState"):
+                 "Renderer.rasterizeGlyph", "Renderer.findGlyph", "DataStream.feed", "Core.stateSnapshot",
+                 "Core.publishState"):
         row(name, [s.dur for s in by.get(name, [])])
 
     # A present with a Renderer.unchanged inside drew nothing: the window kept its frame.
