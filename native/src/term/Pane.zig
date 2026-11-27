@@ -989,7 +989,7 @@ pub const Pane = struct {
             self.quit = true;
             self.lock.signal();
             self.lock.unlock();
-            // After `quit`: a thread that stops drawing glyphs then finds it at once.
+            // After `quit`: a thread that stops drawing glyphs for this then finds `quit` in `run`.
             link.stop();
             const start = monoNow();
             if (link.waitEnd(stopBound(start))) {

@@ -214,7 +214,9 @@ const R = struct {
     }
 
     /// Touches the pane only through `link`: what waits on the platform waits here. False also
-    /// when the pane gave this thread up meanwhile, which `run` sees then.
+    /// when the pane gave this thread up meanwhile, which `run` sees then. True, with nothing
+    /// drawn, when the pane asked the thread to quit or gave it up while it drew glyphs
+    /// (`finishBuild`): `run` sees which.
     pub fn present(r: *R) bool {
         if (finishBuild(r)) |presented| return presented;
         if (r.same) {
@@ -334,11 +336,11 @@ fn completeFrame(r: *R) !void {
 
 /// The render thread's own work: the atlas is its, and the glyph source needs no lock. A glyph
 /// another pane's render thread drew already comes from the source's cache. A thread its pane
-/// asked to quit, or gave up, asks the source for nothing more (`RenderLink.stopAsked`): it
-/// ends within one glyph and is joined (#178), and once given up it leaves the source to its
-/// owner (#159), though the link's reference keeps the source alive. A source call that waits
-/// on the platform is where a thread is given up here, and only that call finishes. False: it
-/// stopped before the last glyph.
+/// asked to quit, or gave up, asks the source for nothing more (`RenderLink.stopAsked`). Asked
+/// to quit, it ends within one glyph and is joined (#178). Given up, it calls no further a
+/// source whose owner may be gone (#159), though the link's reference keeps the source valid
+/// (#178). A source call that waits on the platform is where a thread is given up here, and
+/// only that call finishes. False: it stopped before the last glyph.
 fn drawMissing(r: *R) bool {
     Trace.begin("Renderer.drawMissing");
     defer Trace.end();
