@@ -8,7 +8,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A tab running OpenCode now shows OpenCode's tile in the sidebar, under the panes, in the overview and on the rail's wheel.
 
 ### Changed
-- Velo's own code is now compiled ahead of time with the app's profile, as the libraries' code already was. Once Android has compiled the app (usually overnight while charging), screen updates take about a tenth to a quarter less of the main thread's time.
+- Velo's own code is now compiled ahead of time with the app's profile, as the libraries' code already was. Once Android has compiled the app (usually overnight while charging), screen updates take a few percent less of the main thread's time, and rebuilding the screen after a change takes about a fifth less.
 
 ## 2.12.4 - 2026-11-27
 

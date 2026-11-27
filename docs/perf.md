@@ -107,6 +107,10 @@ slower than a release build: compare counts, and times only with each other.
 - The scripts take the app's processes by its package name, or that name and `:` (its own
   processes). Another package whose name only starts the same, such as a test app, is not
   the app.
+- The scenes' taps and swipes are for landscape. In portrait the swipes start off the screen
+  and the scenes record something else without an error, so `scenes.sh` stops when the app is
+  not in landscape. `cmd window user-rotation lock 1` holds landscape. `monkey` unlocks the
+  rotation as it ends, so the scripts start the app with `am start`.
 - Traces and APKs fill `/tmp` quickly. When the user's quota is full, a signed APK is cut short
   without an error from the signer, and `adb install` fails with `INSTALL_PARSE_FAILED_NOT_APK`.
   Check it with `apksigner verify`.
@@ -239,23 +243,30 @@ sideloaded install. They cover the libraries; Velo's own composables, connection
 terminal views were left to the JIT. `app/src/main/baseline-prof.txt` now adds all of Velo's
 classes (`io/github/yhzion/velo/**`); the build rewrites the rule through R8's renaming.
 
-Same commit with and without the rule, two runs each, compiled with `speed-profile` after
-the app wrote its profile; `speed` (all of the app compiled) for the ceiling. Main thread
-CPU and recomposition, in ms:
+Same commit with and without the rule, compiled with `speed-profile` after the app wrote its
+profile; `speed` (all of the app compiled) for the ceiling. Two batches of two runs each,
+alternating the three states. Main thread CPU and recomposition, in ms:
 
 | Scene | Libraries' profiles | With Velo's rule | All compiled |
 |---|---|---|---|
-| `title`: main thread | 1209, 1158 | 1087, 978 | 894, 911 |
-| `title`: recomposition | 386, 360 | 294, 261 | 262, 263 |
-| `overview`: main thread | 453, 437 | 393, 407 | 355, 367 |
-| `overview`: recomposition | 52, 34 | 22, 28 | 25, 24 |
+| `title`, first batch: main thread | 1209, 1158 | 1087, 978 | 894, 911 |
+| `title`, first batch: recomposition | 386, 360 | 294, 261 | 262, 263 |
+| `title`, second batch: main thread | 1138, 1173 | 1092, 1092 | 921, 886 |
+| `title`, second batch: recomposition | 363, 379 | 312, 326 | 293, 263 |
+| `overview`, second batch: main thread | 2223, 2149 | 2182, 2043 | 1891, 1882 |
+| `overview`, second batch: recomposition | 101, 76 | 102, 82 | 67, 61 |
 | Compiled code | 5.5 MB | 9.3 MB | 17.0 MB |
 
-- With the rule, recomposition takes as long as with all of the app compiled, and the main
-  thread does about half of the difference less, for 3.9 MB more of compiled code.
+- With the rule, `title` takes 5 to 13 % less of the main thread and 14 to 26 % less
+  recomposition; `overview` 3 % less of the main thread. All of the app compiled takes 14 to
+  22 % less, for 7.7 MB more of compiled code than the rule.
+- The rule leaves out the library code that each frame calls a few times. The JIT compiled
+  only seven methods in a run of `title`, so that code runs in the interpreter.
+- The first batch ran with the Velvet in portrait: another session's test had turned it. The
+  `overview` swipes, which have landscape coordinates, then hardly moved the cards, and that
+  batch's `overview` (not shown) measured the overview opened and closed.
 - Android compiles a sideloaded app with its profiles when the phone is idle, usually
   overnight while charging. Until then, and again after every update, the app runs with the
   JIT, as `verify` does: in that state `title` took 1463 and 1421 ms of the main thread.
-- A test app of another session ran beside these runs, with a microphone service using about
-  4 % of one core, in every state alike.
-
+- In the first batch, a test app of another session ran beside the runs, with a microphone
+  service using about 4 % of one core, in every state alike.
