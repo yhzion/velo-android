@@ -129,21 +129,18 @@ val WorkspaceScenes: Map<String, @Composable () -> Unit> = linkedMapOf(
     "compose-attachment" to { AttachmentScene() },
     // The screens no board draws (#174): the rail's window wheel, the overview with its session strip, the overview as
     // the wheel's drum, a pane move's overview, and a zoomed tab's minimap.
-    "workspace-wheel" to { WorkspaceScene(sidebar = null, view = SceneView.Wheel) },
-    "workspace-overview" to { WorkspaceScene(sidebar = null, view = SceneView.Overview) },
-    "workspace-drum" to { WorkspaceScene(sidebar = null, view = SceneView.Drum) },
-    "workspace-pane-move" to { WorkspaceScene(sidebar = null, view = SceneView.PaneMove) },
-    "workspace-zoom" to { WorkspaceScene(sidebar = null, view = SceneView.Zoom) },
+    "workspace-wheel" to { ScreenScene(SceneView.Wheel) },
+    "workspace-overview" to { ScreenScene(SceneView.Overview) },
+    "workspace-drum" to { ScreenScene(SceneView.Drum) },
+    "workspace-pane-move" to { ScreenScene(SceneView.PaneMove) },
+    "workspace-zoom" to { ScreenScene(SceneView.Zoom) },
 )
 
 /**
- * What a workspace scene's pane column and the rail's strip show. The boards draw the pane cards and a blank strip; the
- * other views draw what no board does, with every tab of the agents session as a window ([withTabs]) and the strip
- * as the app draws it: the window wheel ([RailScrubber]), a slider a screen reader turns while the overview is shut.
+ * What a screen scene ([ScreenScene]) shows in the pane column: every tab of the agents session is a window ([withTabs]),
+ * and the rail's strip is the window wheel ([RailScrubber]), a slider a screen reader turns while the overview is shut.
  */
 private enum class SceneView {
-    /** The boards' pane cards, the rail's strip blank. */
-    Boards,
     /** The pane cards, and the rail's strip as the window wheel. */
     Wheel,
     /** The overview open on the session's tabs ([TabStage]), with its session strip. */
@@ -198,89 +195,152 @@ private fun sampleState(shown: String, devRows: Int, now: Long): UiState {
 }
 
 /**
- * A workspace board's screen. [paneMenu]: the rail's pane menu is open; [down]: the remote is down
- * with a failure that has a one-line fix, so the rail's popover offers Reconnect and Copy command.
+ * What every workspace scene starts from at the current [shape]: the tab it shows, the sidebar's sessions ([sampleState])
+ * and their read receipts. [threePanes]: the shown tab is the Claude tab with three panes; the bar phone's and the docked
+ * boards show the Codex tab with two.
  */
-@Composable
-private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, down: Boolean = false, view: SceneView = SceneView.Boards) {
-    val layer = remember { OverlayLayer() }
-    // Its own layer, as the settings scenes have: a menu or dialog opens in this window, where the scans read it.
-    OverlayLayerBox(layer, Modifier.fillMaxSize()) { WorkspaceBoard(sidebar, paneMenu, down, view) }
+private class SceneBasis(val shape: Shape, val threePanes: Boolean, val now: Long) {
+    val shown = if (threePanes) "review-release-notes" else "port-parser-tests"
+    val count = if (threePanes) 3 else 2
+    val state = sampleState(shown, devRows = if (shape == Shape.Bar) 2 else 4, now)
+    val readState = ActivityReadState().apply {
+        // The waiting tab's report has been seen: its row says it waits, its tile has no dot (Sidebar board).
+        show(Any(), mapOf(PaneAddress(Agents, "review-release-notes", "block:review-release-notes") to
+            BlockInfo(activity = "blocked", since = now - 40_000, kind = "question")))
+    }
 }
 
-/** What [WorkspaceScene] draws over its layer. */
 @Composable
-private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Boolean, view: SceneView) = VeloTheme(UiSize.Medium) {
+private fun rememberSceneBasis(sidebar: SidebarPlace?): SceneBasis {
     val shape = shape()
-    // The bar phone's and the docked boards show the Codex tab, the other two the Claude tab with three panes.
-    val threePanes = shape != Shape.Bar && sidebar == null
-    val shown = if (threePanes) "review-release-notes" else "port-parser-tests"
     val now = remember { System.currentTimeMillis() }
-    val state = remember(shape, shown) { sampleState(shown, devRows = if (shape == Shape.Bar) 2 else 4, now) }
-    // The core's state of the same sessions, with the shown tab's panes as the scene splits them; the boards' scenes
-    // have the shown tab alone, the others every tab of the session.
-    val panes = remember(state, threePanes, view) {
-        val count = if (threePanes) 3 else 2
-        when (view) {
-            SceneView.Boards -> withPanes(state, count)
-            SceneView.Zoom -> withTabs(state, count, now).let { s -> s.copy(windows = s.windows.map { if (it.id == shown) it.copy(zoomed = s.focused) else it }) }
-            else -> withTabs(state, count, now)
-        }
+    val threePanes = shape != Shape.Bar && sidebar == null
+    return remember(shape, threePanes) { SceneBasis(shape, threePanes, now) }
+}
+
+/** A scene over a layer of its own, as the settings scenes have: a menu or dialog opens in this window, where the scans read it. */
+@Composable
+private fun SceneLayer(content: @Composable () -> Unit) {
+    val layer = remember { OverlayLayer() }
+    OverlayLayerBox(layer, Modifier.fillMaxSize()) { content() }
+}
+
+/**
+ * A workspace board's screen: the shown tab's pane cards, the rail's strip blank. [paneMenu]: the rail's pane menu is
+ * open; [down]: the remote is down with a failure that has a one-line fix, so the rail's popover offers Reconnect and
+ * Copy command. These scenes are compared with the boards, so their captures change only with the boards.
+ */
+@Composable
+private fun WorkspaceScene(sidebar: SidebarPlace?, paneMenu: Boolean = false, down: Boolean = false) = SceneLayer {
+    VeloTheme(UiSize.Medium) {
+        val basis = rememberSceneBasis(sidebar)
+        // The core's state of the same sessions, with the shown tab alone and its panes as the scene splits them.
+        val panes = remember(basis) { withPanes(basis.state, basis.count) }
+        val conn = rememberFakeConnection(if (down) panes.copy(status = "error") else panes)
+        WorkspaceFrame(basis, sidebar, panes, conn, down = down, paneMenu = paneMenu, overviewOpen = false,
+            page = RailPage(if (basis.threePanes) 2 else 1, 4),
+            paneArea = { ScenePanes(basis.shape, basis.threePanes, sidebar == SidebarPlace.Beside) },
+            caption = { modifier ->
+                PaneCaption(tabOf(basis.state, Agents, basis.shown), connected = !down, basis.readState, host = Host, modifier = modifier)
+            },
+            strip = { Spacer(Modifier.weight(1f)) })
     }
-    val conn = rememberFakeConnection(if (down) panes.copy(status = "error") else panes)
-    val overview = rememberOverviewState(conn, remember { OverviewCarry() }) {}
-    // Opened once the core's state is in and the stage has its tabs, as a person or a screen reader opens it in the app.
-    // A screen that does not open fails the scene, so no scan reads a shut stage as the screen.
-    if (view.overview) LaunchedEffect(conn, view) {
-        snapshotFlow { conn.connected }.first { it }
-        // Its tabs are no snapshot state, so they are asked each frame, a bounded number of times.
-        repeat(120) { if (overview.tabs.isEmpty()) withFrameNanos {} }
-        check(overview.tabs.isNotEmpty()) { "The stage got no tabs" }
-        when (view) {
-            SceneView.Overview -> overview.open()
-            SceneView.Drum -> checkNotNull(overview.openWheel()) { "The drum did not open" }
-            else -> check(overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)) { "The pane move did not start" }
+}
+
+/**
+ * A screen no board draws (#174), with every tab of the agents session a window: the pane column shows [view], and the
+ * rail's strip is the window wheel as the workspace draws it.
+ */
+@Composable
+private fun ScreenScene(view: SceneView) = SceneLayer {
+    VeloTheme(UiSize.Medium) {
+        val basis = rememberSceneBasis(sidebar = null)
+        val shown = basis.shown
+        val panes = remember(basis, view) {
+            val tabs = withTabs(basis.state, basis.count, basis.now)
+            if (view != SceneView.Zoom) tabs else tabs.copy(windows = tabs.windows.map { if (it.id == shown) it.copy(zoomed = tabs.focused) else it })
         }
+        val conn = rememberFakeConnection(panes)
+        val overview = rememberOverviewState(conn, remember { OverviewCarry() }) {}
+        // Opened once the core's state is in and the stage has its tabs, as a person or a screen reader opens it in the app.
+        // A screen that does not open fails the scene, so no scan reads a shut stage as the screen.
+        if (view.overview) LaunchedEffect(conn, view) {
+            snapshotFlow { conn.connected }.first { it }
+            // Its tabs are no snapshot state, so they are asked each frame, a bounded number of times.
+            repeat(120) { if (overview.tabs.isEmpty()) withFrameNanos {} }
+            check(overview.tabs.isNotEmpty()) { "The stage got no tabs" }
+            when (view) {
+                SceneView.Overview -> overview.open()
+                SceneView.Drum -> checkNotNull(overview.openWheel()) { "The drum did not open" }
+                else -> check(overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)) { "The pane move did not start" }
+            }
+        }
+        val focused = panes.windows.single { it.id == shown }.layout!!.blocks().first()
+        // As the workspace hands the rail its state: from the overview, not from the scene's view.
+        WorkspaceFrame(basis, sidebar = null, panes, conn, down = false, paneMenu = false, overviewOpen = overview.showing && !overview.wheel,
+            // The shown tab's place among the session's, or the drum's front tab's.
+            page = railPage(panes.windows.map { it.id }, shown, front = if (overview.wheel) overview.wheelFront else -1),
+            paneArea = {
+                when {
+                    view.overview -> Box(Modifier.weight(1f).fillMaxWidth()) { if (conn.connected) SceneStage(conn, overview, basis.state) }
+                    view == SceneView.Zoom -> ZoomedPane(basis.shape)
+                    else -> ScenePanes(basis.shape, basis.threePanes, docked = false)
+                }
+            },
+            caption = { modifier ->
+                if (view == SceneView.Zoom) ZoomCaption(panes, basis.readState, modifier)
+                else PaneCaption(tabOf(basis.state, Agents, shown), connected = true, basis.readState, host = Host, modifier = modifier)
+            },
+            // As the workspace draws it: it turns only while the overview is shut, and a turn sends nothing here.
+            strip = {
+                RailScrubber(wheelWindows(conn.state, conn.activityReadState, conn.connected), shown = shown, scrolls = !overview.showing,
+                    turns = conn.connected && !overview.showing && overview.paneMove == null && !overview.pinching, haptics = false, pane = { focused }, touchEpoch = { 0 }, pressed = { false },
+                    onScroll = { _, _ -> false }, onOpen = { overview.openWheel() }, onTurn = overview::turnWheel,
+                    onPick = { overview.pickWheel(it, select = false) }, onSelect = {}, modifier = Modifier.weight(1f))
+            })
     }
+}
+
+/**
+ * The workspace's frame as both kinds of scene draw it: the sidebar at [sidebar]'s place, the pane column ([paneArea],
+ * the [caption] at its slot's modifier, the key bar), and the rail with [page] and [strip]. Its Pane menu opens the
+ * focused pane's menu (open from the start with [paneMenu]), whose Compose opens the Compose dialog over the frame.
+ */
+@Composable
+private fun WorkspaceFrame(
+    basis: SceneBasis, sidebar: SidebarPlace?, panes: UiState, conn: HostConnection, down: Boolean, paneMenu: Boolean,
+    overviewOpen: Boolean, page: RailPage?,
+    paneArea: @Composable ColumnScope.() -> Unit,
+    caption: @Composable (Modifier) -> Unit,
+    strip: @Composable ColumnScope.() -> Unit,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     // Opened once the core's state is in, as in the app: a menu open before it would keep the items it drew then.
     if (paneMenu) LaunchedEffect(conn) { snapshotFlow { conn.connected }.first { it }; menuOpen = true }
     var composer by remember { mutableStateOf<ComposerTarget?>(null) }
-    val readState = remember(state) {
-        ActivityReadState().apply {
-            // The waiting tab's report has been seen: its row says it waits, its tile has no dot (Sidebar board).
-            show(Any(), mapOf(PaneAddress(Agents, "review-release-notes", "block:review-release-notes") to
-                BlockInfo(activity = "blocked", since = now - 40_000, kind = "question")))
-        }
-    }
+    val shape = basis.shape
     val gap = VeloTheme.sizes.gap
     Row(Modifier.testTag("screen-workspace").fillMaxSize().background(VeloTheme.colors.backdrop.surface).padding(gap)) {
         if (sidebar != null) {
-            val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), state, readState, active = true, removed = false)
+            val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), basis.state, basis.readState, active = true, removed = false)
             Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), listOf(host), sidebarSlot(sidebar), NoActions,
                 // Only the docked board's window can dock: its pin is on (WsOpenDocked).
                 settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null, state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
             if (sidebar == SidebarPlace.Beside) Spacer(Modifier.width(gap))
         }
         if (sidebar != SidebarPlace.Covers) Column(paneColumnSlot()) {
-            when {
-                view.overview -> Box(Modifier.weight(1f).fillMaxWidth()) { if (conn.connected) SceneStage(conn, overview, state) }
-                view == SceneView.Zoom -> ZoomedPane(shape)
-                else -> ScenePanes(shape, threePanes, sidebar == SidebarPlace.Beside)
-            }
-            if (view == SceneView.Zoom) ZoomCaption(panes, readState, captionSlot(gap))
-            else PaneCaption(tabOf(state, Agents, shown), connected = !down, readState, host = Host, modifier = captionSlot(gap))
+            paneArea()
+            caption(captionSlot(gap))
             KeyBar(Settings.DEFAULT_KEY_BAR.split(','), emptySet(), keyBarSlot(gap)) { _, _ -> }
         }
         Spacer(Modifier.width(gap))
-        val window = panes.windows.single { it.id == shown }
+        val window = panes.windows.single { it.id == basis.shown }
         val focused = window.layout!!.blocks().first()
         RailColumn("9:41", BatteryState(80, charging = true, powerSave = false), DeviceNetwork.Wifi,
             connectionMark(if (down) "error" else "connected", removed = false), Host,
             failure = if (down) DownFailure else null, keyboard = false, onReconnect = {}, menuEnabled = true,
             fix = if (down) DownFix else null, onCopyCommand = {},
-            // As the workspace hands the rail its state: from the overview, not from the scene's view.
-            overviewOpen = overview.showing && !overview.wheel,
+            overviewOpen = overviewOpen,
             sidebarOpen = sidebar != null, keepScreenOn = false, onKeepScreenOn = {},
             keyboardAvailable = true, onMenu = { menuOpen = true }, onKeyboard = {}, onSidebar = {}, onOverview = {},
             // The focused pane's menu, as the workspace hands the rail: its Compose opens the dialog below.
@@ -289,17 +349,7 @@ private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Bool
                     onClose = {}, onCompose = { session, block -> composer = ComposerTarget(conn, session, block, 1L, composerTargetLabel(Host, panes)) },
                     showing = { it }, expanded = menuOpen, onMoveToTab = {}, onMoveToNewTab = {})
             },
-            // The boards' count, else the shown tab's place among the session's, or the drum's front tab's.
-            page = if (view == SceneView.Boards) RailPage(if (threePanes) 2 else 1, 4)
-            else railPage(panes.windows.map { it.id }, shown, front = if (overview.wheel) overview.wheelFront else -1),
-            strip = {
-                if (view == SceneView.Boards) Spacer(Modifier.weight(1f))
-                // As the workspace draws it: it turns only while the overview is shut, and a turn sends nothing here.
-                else RailScrubber(wheelWindows(conn.state, conn.activityReadState, conn.connected), shown = shown, scrolls = !overview.showing,
-                    turns = conn.connected && !overview.showing && overview.paneMove == null && !overview.pinching, haptics = false, pane = { focused }, touchEpoch = { 0 }, pressed = { false },
-                    onScroll = { _, _ -> false }, onOpen = { overview.openWheel() }, onTurn = overview::turnWheel,
-                    onPick = { overview.pickWheel(it, select = false) }, onSelect = {}, modifier = Modifier.weight(1f))
-            })
+            page = page, strip = strip)
     }
     composer?.let { target -> ComposerDialog(target, notificationPending = false, isCurrent = { true }, onClose = { composer = null }) }
 }
