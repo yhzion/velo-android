@@ -323,7 +323,7 @@ fun SelectMenuItem(text: String, selected: Boolean, onClick: () -> Unit, modifie
             .padding(start = VeloTheme.space.s20, end = VeloTheme.space.s16),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, Modifier.weight(1f), style = VeloTheme.type.body, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, Modifier.weight(1f).saidBy(contentDescription), style = VeloTheme.type.body, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (selected) Icon(Icons.Default.Check, null, Modifier.size(VeloTheme.medium(18.dp)), tint = c.accent)
     }
 }

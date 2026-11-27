@@ -73,5 +73,9 @@ internal fun tabRowTileSpeech(tile: TabTileLook, hint: String?, name: String, ba
     RowTileSpeech(
         tabTileDescription(tile, hint),
         badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" },
-        nameSaid = !tileProgram(tile, hint).equals(name.trim(), ignoreCase = true),
+        nameSaid = name.trim().let { n ->
+            // A tab without a name of its own is named by its command, such as nvim for Neovim. Every
+            // unknown name maps to Terminal, so a Terminal tile's name is compared as it is.
+            !(tileProgram(tile, hint).equals(n, ignoreCase = true) || (tile.brand != TileBrand.Terminal && tileBrand(n) == tile.brand))
+        },
     )

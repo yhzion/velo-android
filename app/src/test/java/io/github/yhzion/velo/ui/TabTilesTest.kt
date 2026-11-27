@@ -125,5 +125,11 @@ class TabTilesTest {
         assertEquals(RowTileSpeech("node, 2 panes", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 2, null), "node", "node", null, null))
         // The hint is trimmed as the name is: the tile says "node", and the name "node" is not said again.
         assertEquals(RowTileSpeech("node", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 1, null), " node ", "node", null, null))
+        // A tab named by its program's command, which the tile calls by its brand's name: the name is not said again.
+        assertEquals(RowTileSpeech("Neovim", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Neovim, 1, null), null, "nvim", null, null))
+        assertEquals(RowTileSpeech("Python", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Python, 1, null), null, "python3", null, null))
+        assertEquals(RowTileSpeech("Claude Code", null, false), tabRowTileSpeech(claude, null, "claude", null, null))
+        // Any other name maps to Terminal, so a Terminal tile's name is said unless it is the program's.
+        assertEquals(RowTileSpeech("Terminal", null, true), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 1, null), null, "notes", null, null))
     }
 }

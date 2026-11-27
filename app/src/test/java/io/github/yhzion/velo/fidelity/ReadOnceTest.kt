@@ -36,6 +36,7 @@ import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -99,6 +100,30 @@ class ReadOnceTest {
         assertEquals(listOf("Double tap: Escape"), said("keyboard-double-tap-menu"))
         assertEquals(listOf("Triple tap: Enter"), said("keyboard-triple-tap-menu"))
         assertStillActs("keyboard-double-tap-menu", Role.DropdownList)
+    }
+
+    @Test fun eachOptionOfATapGestureMenuIsSaidOnce() {
+        show {
+            val context = LocalContext.current
+            val host = remember {
+                FakeSettingsHost(context).apply {
+                    settings.saveTapGestures(true)
+                    settings.saveDoubleTapKey(TapKey.Esc)
+                }
+            }
+            val layer = remember { OverlayLayer() }
+            VeloTheme(UiSize.Medium) {
+                OverlayLayerBox(layer, Modifier.fillMaxSize().background(Color.Black)) {
+                    SettingsPanel(host, onClose = {}, start = SettingsRoute(SettingsCategory.Keyboard))
+                }
+            }
+        }
+        compose.onNodeWithTag("keyboard-double-tap-menu").performScrollTo().performClick()
+        compose.waitForIdle()
+        val options = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        // The drawn "Esc" is said as Escape, and never beside it. The key bar also says Escape and Tab, so no option may say its words twice.
+        for (option in listOf("Escape", "Tab", "None")) assertTrue("$option said once, among $options", listOf(option) in options)
+        for (twice in listOf(listOf("Escape", "Esc"), listOf("Tab", "Tab"), listOf("None", "None"))) assertFalse("$twice not said, among $options", twice in options)
     }
 
     @Test fun theMinimizedWindowsMenuSaysItsDescriptionOnce() {
