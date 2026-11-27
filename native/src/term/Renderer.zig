@@ -793,9 +793,10 @@ pub fn swapScaling(mode: ?Scaling, since_first_ns: i128, buffer_w: i32, buffer_h
     // A size that could not be read proves nothing: the buffers stay scaled.
     if (buffer_w <= 0 or buffer_h <= 0 or window_w <= 0 or window_h <= 0) return .scale_to_window;
     if (buffer_w != window_w or buffer_h != window_h) return .scale_to_window;
-    // A window that moved since the last check is resizing (the keyboard's animation moves it
-    // every frame): its next update can land between this check and the queue, and BLAST then
-    // rejects this very buffer. The swap-back waits for a window that held still.
+    // A window that moved since the last check is resizing (the keyboard's animation): its next
+    // update can land between this check and the queue, and BLAST then rejects this very buffer.
+    // The swap-back waits for a window that held still since the last check. That narrows the
+    // race but does not close it: a window still at two checks can still change right after.
     if (window_w != prev_window_w or window_h != prev_window_h) return .scale_to_window;
     return .freeze;
 }
@@ -2529,7 +2530,9 @@ test "swapScaling: the hold covers a return's first tens of ms and ends before t
     // earliest. A buffer that is scaled when the window changes size shows scaled until the next.
     // The swap that goes back to FREEZE is not kept away from a resize by the hold: it can come
     // after 193 ms, inside the keyboard's animation (80 of 250 threads; 9 of them had that very
-    // buffer rejected). That is what the window's size at the previous check guards against.
+    // buffer rejected). The window's size at the previous check narrows this but does not close
+    // it: the animation pauses between steps and ends with a jump, and 6 of 260 threads still had
+    // the swap-back buffer rejected (fix2 round). Without a window sync such a rejection is harmless.
     try std.testing.expect(scale_hold_ns > 52 * ms);
     try std.testing.expect(scale_hold_ns < 193 * ms);
     // The retries end within about half a second of the first swap.
@@ -2548,9 +2551,9 @@ test "swapScaling: after the hold a buffer of another size still goes out scaled
 }
 
 test "swapScaling: a window that changed size since the last check keeps the buffers scaled" {
-    // #117: the window moves every frame during the keyboard's animation, and its next update can
-    // land between this check and the queue; BLAST then rejects the FREEZE buffer, as 9 of 250
-    // threads showed. The swap-back waits for a window that held still since the last check.
+    // #117: the window moves during the keyboard's animation, and its next update can land between
+    // this check and the queue; BLAST then rejects the FREEZE buffer, as 9 of 250 threads showed.
+    // The swap-back waits for a window that held still since the last check.
     try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 200 * ms, 863, 995, 863, 995, 863, 993));
     try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 200 * ms, 863, 995, 863, 995, 860, 995));
     // Still since the last check: FREEZE.
