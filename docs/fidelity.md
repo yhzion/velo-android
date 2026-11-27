@@ -81,25 +81,27 @@ the middle half of each side. The band misses a 1 dp border and rounded corners.
 usually misses the children too. Both sides are sampled the same way.
 
 **Non-text SSIM.** Chromium and Robolectric's Skia anti-alias text differently (see Platform
-exceptions). On dark screens, thin anti-aliased strokes that differ by half a pixel score roughly
-0.40 to 0.65 locally, so whole-screen SSIM drops below 0.90 on matching prose-heavy screens
-(`start-2-empty`, `settings-updates` on a bar phone) even when geometry is 100% and every fill has
-ΔE 0. Instead of lowering the threshold on text-heavy screens — which would weaken detection of
-real layout or style regressions and require an arbitrary text-density cutoff — `boards.mjs` records
-the bounding boxes of visible text (`Range.getClientRects()` on text nodes plus the text content
-box of `<input>` and `<textarea>` controls, clipped to any overflow-clipping ancestor). `compare`
-computes the full SSIM map and judges the mean over pixels outside those text boxes, keeping card
-fills, borders, rounded corners, dividers, buttons, switches, icons and spacing unmasked. Because
-removing text anti-aliasing raises matching screens to 0.935–0.999 while real layout shifts, wrong
-fills or mismatched screens fall near or below 0.92, the non-text SSIM pass threshold is **≥ 0.92**
-(raised from 0.90). The report still records `ssim_text` (mean SSIM inside the text boxes, with
-`text_coverage`) and `ssim_raw` (whole-screen SSIM) separately, and the heatmap shows the full map.
-Missing text elements and size or position changes that move a box by more than 2 dp remain caught
-by missing tags and geometry, and text that spills outside the board's line box still lowers
-non-text SSIM. **Blind spot:** text colour, weight, copy and size changes that stay within the same
-board text box are not caught by the verdict or the score (`fidelity.py` does not compare element
-`text` or `color`, colour checks sample fills only, and `ssim_text` spans roughly 0.39–0.84 on
-matching captures, so it cannot serve as a floor).
+exceptions). On these dark screens, thin strokes that differ by half a pixel score about 0.40 to
+0.65 locally. Whole-screen SSIM therefore fell below 0.90 on matching screens with much text
+(`start-2-empty`, and `settings-updates` on the bar phone), with geometry at 100% and every fill at
+ΔE 0. A lower threshold for such screens would also pass real layout and style changes, and it
+would need a text-density cutoff. So the tool leaves the text out.
+
+`boards.mjs` records the boxes of the board's visible text: `Range.getClientRects()` on text nodes
+and the content box of text inputs and textareas, each clipped to its overflow-clipping ancestors.
+`compare` judges the mean of the SSIM map outside those boxes. Fills, borders, corners, dividers,
+buttons, switches, SVG icons and spacing stay in the measure. A symbol set as text, such as a
+step's ✓, leaves with the text. Without text, matching screens score 0.935 to 0.999. The measured
+regressions score 0.766 to 0.917: a wrong background, step or page, a card 8 dp off, a missing card
+fill. The threshold is therefore 0.92, up from 0.90. The report also gives `ssim_text` (inside the
+boxes, with `text_coverage`) and `ssim_raw` (the whole screen). The heatmap shows the whole map.
+
+Missing tags and geometry still catch a missing text element or a box that moves more than 2 dp.
+Text that spills out of the board's line box still lowers non-text SSIM. **Blind spot:** a change
+of text colour, weight, copy or size inside the board's text box is caught by neither the verdict
+nor the score. `fidelity.py` does not compare an element's `text` or `color`, and the colour check
+samples fills only. `ssim_text` spans about 0.39 to 0.84 on matching captures, so it cannot serve
+as a floor.
 
 **Score.** A capture's score is the mean of four rates, 0 to 100: tokens, geometry, the share of
 fills with ΔE < 3, and non-text SSIM. With no token result, tokens count as 0. A board without fills
@@ -107,7 +109,7 @@ leaves colour out. A screen's score is the mean over its devices; a device witho
 as 0. The overall **match rate** is the mean over every screen of the canvas, so an unimplemented
 screen counts as 0. The report also gives the mean over implemented screens.
 
-SSIM alone is weak on these dark screens: two unrelated settings pages score about 0.75–0.90,
+SSIM alone is weak on these dark screens: two unrelated settings pages score about 0.75 to 0.91,
 because large flat areas agree. Read it together with geometry, which carries most of the verdict.
 
 ## Platform exceptions

@@ -134,6 +134,15 @@ def load_png(path):
     return np.asarray(Image.open(path).convert("RGB"))
 
 
+def load_board(path):
+    """Loads a rendered board JSON and refuses stale renders from before text_boxes existed."""
+    with open(path) as fp:
+        board = json.load(fp)
+    if "text_boxes" not in board:
+        raise SystemExit(f"{os.path.basename(path)} predates text boxes; run without --skip-boards")
+    return board
+
+
 def compare(capture, board, app, board_img, app_img, exceptions, dsf):
     excluded = set(exceptions.get("elements", {}))
     board_els = [e for e in board["elements"] if e["name"] not in excluded and e["w"] > 0 and e["h"] > 0]
@@ -225,7 +234,9 @@ def main():
         elif not os.path.exists(app_file + ".json"):
             entry.update(status="no-scene")
         else:
-            board, app = json.load(open(board_file + ".json")), json.load(open(app_file + ".json"))
+            board = load_board(board_file + ".json")
+            with open(app_file + ".json") as fp:
+                app = json.load(fp)
             board_img, app_img = load_png(board_file + ".png"), load_png(app_file + ".png")
             if cap.get("clip"):
                 board, board_img = m.clip_board(board, board_img, cap["clip"], cap["clip_index"], board["dsf"])

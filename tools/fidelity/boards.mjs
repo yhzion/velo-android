@@ -170,7 +170,9 @@ const EXTRACT = `(() => {
       if (clipped) textBoxes.push(clipped);
     }
   }
+  const textInputTypes = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
   for (const el of document.querySelectorAll('input, textarea')) {
+    if (el.tagName !== 'TEXTAREA' && !textInputTypes.has((el.type || 'text').toLowerCase())) continue;
     if (!el.value && !el.placeholder) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;

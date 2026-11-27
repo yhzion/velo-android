@@ -89,6 +89,23 @@ class CompareTest(unittest.TestCase):
         r, _, _ = f.compare({}, copy.deepcopy(board), app, img, img.copy(), {"elements": {"label": "platform"}}, DSF)
         self.assertEqual((r["elements"], r["missing"]), (2, []))
 
+    def test_load_board_refuses_stale_render_without_text_boxes(self):
+        import json
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            stale = os.path.join(d, "StartBar2Empty.json")
+            fresh = os.path.join(d, "Main@0.json")
+            with open(stale, "w") as fp:
+                json.dump({"board": "StartBar2Empty", "elements": []}, fp)
+            with open(fresh, "w") as fp:
+                json.dump({"board": "Main@0", "elements": [], "text_boxes": []}, fp)
+            with self.assertRaises(SystemExit) as ctx:
+                f.load_board(stale)
+            self.assertIn("StartBar2Empty.json", str(ctx.exception))
+            self.assertIn("--skip-boards", str(ctx.exception))
+            self.assertEqual(f.load_board(fresh)["text_boxes"], [])
+
     def test_screens_and_devices_from_canvas_boards(self):
         canvas = {"boards": {
             "SetBarUpdates.dc.html": {"w": 393, "h": 1240, "title": "t"},
