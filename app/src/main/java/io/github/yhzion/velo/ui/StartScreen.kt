@@ -844,12 +844,12 @@ private val NothingFoundSteps = listOf(
 )
 
 /**
- * What to check when Rex is installed but still not found: the server serves its API on the tailnet only after
+ * What else to check when the search finds nothing: the server serves its API on the tailnet only after
  * `rex server tailscale on`, and Velo lists a server only once its `https://` address answers, which takes the
  * tailnet's MagicDNS and HTTPS certificates (README "Over Tailscale").
  */
 private const val TailnetHttpsHint =
-    "On the computer, run rex server tailscale on. The tailnet also needs MagicDNS and HTTPS certificates."
+    "On the computer, run `rex server tailscale on`. The tailnet also needs MagicDNS and HTTPS certificates."
 
 /**
  * A search ended and found nothing: say so, announced without a tap, say what to do about it, and offer to get Rex

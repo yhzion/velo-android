@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
@@ -41,11 +41,17 @@ class NoComputerCardTest {
             compose.waitForIdle()
             val hint = compose.onNodeWithTag("tailnet-https-hint").performScrollTo().assertIsDisplayed()
             hint.assertTextEquals(
-                "On the computer, run rex server tailscale on. The tailnet also needs MagicDNS and HTTPS certificates.")
-            // The hint wraps inside the card rather than running past its edge.
-            val card = compose.onNodeWithTag("no-computer-card").getBoundsInRoot()
-            val bounds = hint.getBoundsInRoot()
-            assertTrue("$each: $bounds inside $card", bounds.left >= card.left && bounds.right <= card.right)
+                "On the computer, run `rex server tailscale on`. The tailnet also needs MagicDNS and HTTPS certificates.")
+            // The hint sits inside the card, between the first step and Get Rex for Mac. Unclipped bounds, because the
+            // page scrolls and a neighbour can lie partly outside the window at the Large size.
+            val card = compose.onNodeWithTag("no-computer-card").getUnclippedBoundsInRoot()
+            val step = compose.onNodeWithTag("no-computer-hint").getUnclippedBoundsInRoot()
+            val getRex = compose.onNodeWithTag("get-rex-button").getUnclippedBoundsInRoot()
+            val bounds = hint.getUnclippedBoundsInRoot()
+            assertTrue("$each: $bounds inside $card", bounds.top >= card.top && bounds.bottom <= card.bottom &&
+                bounds.left >= card.left && bounds.right <= card.right)
+            assertTrue("$each: after the first step", bounds.top >= step.bottom)
+            assertTrue("$each: before Get Rex for Mac", bounds.bottom <= getRex.top)
         }
     }
 }
