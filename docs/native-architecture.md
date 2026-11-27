@@ -161,6 +161,15 @@ Closing a draft that holds text or an attachment asks first, with `Keep` and `Di
 The key bar groups the saved keys into Modifiers, Editing and Navigation without changing
 the stored key names.
 
+**Paste** in the long-press toolbar and in the pane menu sends a clipboard file instead of
+text when the clip's first item is a `content:` URI with no text. The file goes through the
+same upload as Compose's attachment (`com.superlogical.terminal.upload_begin`,
+`rex.data.bytes.v1`), up to 8 MiB, and the server types its path into the pane without Enter.
+It uses the provider's display name when usable, or `clipboard-yyyyMMdd-HHmmss.<ext>`
+(omitting the extension when the MIME type maps to none). Only the clip's first item is sent.
+A toast shows while the upload runs, and failures appear in the connection's error notice.
+The keyboard's own clipboard is not covered.
+
 ## Port forwards
 
 A tap on a link to the remote's own loopback (`localhost`, `127.0.0.1`, `[::1]`, `0.0.0.0`,

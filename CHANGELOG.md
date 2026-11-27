@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- Paste now sends an image or file copied in another app, such as a browser, the gallery or a file manager, to the pane and types its path on the remote, as Compose's attachment does.
+
 ### Changed
 - Swiping through the tab overview is smoother on Android 14 and later: while the cards move, each shows a picture of its panes, and the phone puts the screen together with much less work. The panes are live again as soon as the cards stop.
 
