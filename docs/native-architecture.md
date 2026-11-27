@@ -175,6 +175,7 @@ ends with an error. A toast shows while the upload runs, and failures appear in 
 connection's error notice. An image that the keyboard inserts (#160), for example from Gboard's
 clipboard strip, goes the same way: the editor declares `image/*` and common image types in
 `EditorInfo.contentMimeTypes`, takes `commitContent`, and holds the read grant until the read ends.
+A refused insert answers `false`, so the keyboard may show its own message beside the error notice.
 
 ## Port forwards
 

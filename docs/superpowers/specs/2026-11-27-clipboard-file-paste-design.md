@@ -19,7 +19,7 @@ should attach such a file to the pane as it pastes text: one tap, no extra scree
 ## Non-goals
 
 - Several files at once: only the clip's first item is used, as a draft holds one attachment.
-- The keyboard's own clipboard (Gboard image insert, `commitContent`): a later change.
+- The keyboard's own clipboard (Gboard image insert, `commitContent`): a later change (#160).
 - A preview or a confirmation dialog.
 - Changes to the native core or the server. The 8 MiB limit stays (`native/src/rex/Upload.zig`).
 
