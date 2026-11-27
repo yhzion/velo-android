@@ -1,6 +1,9 @@
 package io.github.yhzion.velo.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -167,9 +170,50 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
  * (the toolbar and This Device) [head] px. The notices go under the body, which grows shorter, while it keeps [least]
  * px beside them (the Filter's band, whole). Else the body keeps all the height under the head and the notices lie
  * over its foot: landscape with the keyboard up, where the Filter field itself has no room. Either way they end at
- * the column's foot, so the keyboard only places them again and never composes them elsewhere.
+ * the column's foot, so the keyboard only places them again and never composes them elsewhere ([HeardNotices]).
  */
 internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int): Int {
     val left = (height - head).coerceAtLeast(0)
     return if (left - notices >= least) left - notices else left
+}
+
+/**
+ * The notices a screen reader has heard, kept per connection beside them as [ErrorNoticeTimer] keeps their time
+ * (#195). A notice moves between the pane column and the sidebar that covers the panes, and each move composes it
+ * anew: TalkBack reads out a live region whose node is new, so the same words would be read again. So a node made
+ * for a notice that another node shows already is no live region ([liveNotice]). A notice is known by a key, such as
+ * its words; once no node shows it, it is forgotten, and the same words shown later are read again.
+ */
+@Stable
+internal class HeardNotices {
+    // How many nodes show each notice now: a move makes the new node before the old one goes.
+    private val showing = mutableMapOf<Any, Int>()
+
+    /** Whether a node made now for the notice [key] reads it out: no node shows it yet. */
+    fun isNew(key: Any): Boolean = key !in showing
+
+    fun shown(key: Any) {
+        showing[key] = (showing[key] ?: 0) + 1
+    }
+
+    fun gone(key: Any) {
+        val left = (showing[key] ?: return) - 1
+        if (left > 0) showing[key] = left else showing -= key
+    }
+}
+
+/**
+ * Whether this node of the notice [key] is a live region ([HeardNotices]). It is decided once, when the node is made
+ * for the key, so a node keeps it while it shows the notice, and a node made later for the same notice has none.
+ * New words are a new key: they are read. Without [heard] every node is one.
+ */
+@Composable
+internal fun liveNotice(heard: HeardNotices?, key: Any): Boolean {
+    if (heard == null) return true
+    val live = remember(heard, key) { heard.isNew(key) }
+    DisposableEffect(heard, key) {
+        heard.shown(key)
+        onDispose { heard.gone(key) }
+    }
+    return live
 }

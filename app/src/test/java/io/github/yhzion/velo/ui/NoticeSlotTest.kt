@@ -248,10 +248,13 @@ class NoticeSlotTest {
         assertEquals("the name on one line: $lines", t.getLineForOffset(start), t.getLineForOffset(start + uploadName.length - 1))
     }
 
-    /** The error notice is its text's width and the Snackbar's 16 dp on each side, its text one line. */
+    /**
+     * The error notice is its text's width and the Snackbar's 16 dp on each side, its text one line. The notice says
+     * its words as one node ("Error: …", #195), so its text is found in the tree as it is laid out.
+     */
     private fun assertTheErrorKeepsItsOwnWidth() {
         val error = bounds("error")
-        val text = compose.onNodeWithText(errorText).getBoundsInRoot()
+        val text = compose.onNodeWithText(errorText, useUnmergedTree = true).getBoundsInRoot()
         assertEquals("error $error around its text $text", (text.right - text.left + 32.dp).value, (error.right - error.left).value, 1f)
         assertTrue("one line $text", text.bottom - text.top < 30.dp)
     }

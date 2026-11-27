@@ -517,13 +517,15 @@ const val ToastMillis = 3000L
 /**
  * A short note at the bottom of the screen (Overlays board, toast): an optional [icon] in
  * [iconTint] (the ok green unless given), the [message], and an optional action in the accent.
- * It is a polite live region, so a screen reader reads it out. Its test tags are the board's:
- * `toast`, `toast-message`, `toast-action`. The caller places it ([VeloToast] times it).
+ * It is a polite live region, so a screen reader reads it out, unless [live] is false: a toast
+ * that only moved to another place has been read already (io.github.yhzion.velo.ui.HeardNotices).
+ * Its test tags are the board's: `toast`, `toast-message`, `toast-action`. The caller places it
+ * ([VeloToast] times it).
  */
 @Composable
 fun ToastSurface(
     message: String, modifier: Modifier = Modifier, icon: ImageVector? = null, iconTint: Color? = null,
-    actionLabel: String? = null, onAction: (() -> Unit)? = null,
+    actionLabel: String? = null, onAction: (() -> Unit)? = null, live: Boolean = true,
 ) {
     val c = VeloTheme.colors.overlay
     val s = VeloTheme.sizes
@@ -531,7 +533,7 @@ fun ToastSurface(
         Row(
             modifier.testTag("toast").shadow(s.overlayShadow, Capsule, clip = false).heightIn(min = s.control).clip(Capsule)
                 .background(c.surface).border(s.edge, c.divider, Capsule)
-                .semantics { liveRegion = LiveRegionMode.Polite }
+                .semantics { if (live) liveRegion = LiveRegionMode.Polite }
                 .padding(start = VeloTheme.medium(18.dp), end = VeloTheme.space.s8),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(10.dp)),

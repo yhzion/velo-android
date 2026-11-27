@@ -11,8 +11,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.input.ImeAction
@@ -100,27 +101,44 @@ internal fun ErrorNoticeTimer(conn: HostConnection) {
  * is a polite live region so a screen reader reads it out when it appears. It needs an
  * [ErrorNoticeTimer] for the same connection beside it, which clears the error after its time on
  * screen: the notice itself never does. [text] is what it says for the error: an SSH login that
- * only went unanswered is not called canceled ([errorNotice]).
+ * only went unanswered is not called canceled ([errorNotice]). A screen reader hears it as an error
+ * ([errorNoticeSaid]).
  *
  * A live region is read out when it appears or its text changes, not when the same text is set
  * again. The failure that answers the user's Reconnect renews it ([HostConnection.errorReports])
  * whatever its text; the notice is then made anew, so a screen reader reads it even when the
  * notice on screen already says the same (#280). The core's own retries do not renew it, so they
- * are read as before.
+ * are read as before. A notice that only moved to another place, which [heard] knows, is made anew
+ * there too, but it is no live region: it was read where it first showed (#195).
  */
 @Composable
-internal fun ErrorNotice(conn: HostConnection, modifier: Modifier = Modifier, text: (String) -> String = { it }) {
+internal fun ErrorNotice(conn: HostConnection, modifier: Modifier = Modifier, text: (String) -> String = { it }, heard: HeardNotices? = null) {
     conn.error?.let { msg ->
-        key(conn.errorReports) {
+        val reports = conn.errorReports
+        key(reports) {
             VeloSurface(VeloTheme.colors.overlay) {
                 val said = text(msg)
+                val live = liveNotice(heard, ErrorNoticeKey(reports, said))
                 // The Snackbar answers its widest size (600 dp and more) when asked how wide it is, whatever its text:
                 // a row of notices asks its own width (#169). Its text style is the Snackbar's own.
                 val own = rememberTextMeasurer().measure(said, MaterialTheme.typography.bodyMedium).size.width +
                     with(LocalDensity.current) { (SnackbarTextSide * 2).roundToPx() }
-                Snackbar(modifier.ownWidth(own).semantics { liveRegion = LiveRegionMode.Polite },
-                    containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(said) }
+                // One node says it all, as a live region whose words name the error.
+                Snackbar(modifier.ownWidth(own).clearAndSetSemantics {
+                    if (live) liveRegion = LiveRegionMode.Polite
+                    contentDescription = errorNoticeSaid(msg, said)
+                }, containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(said) }
             }
         }
     }
 }
+
+/** One showing of the error notice ([HeardNotices]): its words, at the renewal that made it (#280). */
+private data class ErrorNoticeKey(val reports: Long, val said: String)
+
+/**
+ * What a screen reader hears of the error notice that shows [said] for the error [error]: "Error: " before it, as
+ * Tailscale's status line says its errors (#195). Not where [said] is other words than the error: the note that an
+ * SSH login waits for the user's answer ([needsAnswerText]) is no failure.
+ */
+internal fun errorNoticeSaid(error: String, said: String): String = if (said == error) "Error: $said" else said

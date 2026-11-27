@@ -156,6 +156,8 @@ internal fun Workspace(
     // Whether the sidebar that covers the panes holds notices ([Sidebar]'s notices), with the keyboard up or not (#195).
     // Read as whether some notice shows, so that a new upload or error text composes the notices and not the workspace (#335).
     val anyNotice by remember(conn) { derivedStateOf { conn.uploading != null || conn.error != null } }
+    // What a screen reader has heard of the notices that move between the pane column and that sidebar (#195).
+    val heard = remember(conn) { HeardNotices() }
     /** The palette's docking command and the sidebar's pin (sidebar-dock): [toggleSidebarDock]. */
     fun toggleDock() { sidebar = toggleSidebarDock(s.sidebarDocked, s::saveSidebarDocked) }
     /**
@@ -704,8 +706,8 @@ internal fun Workspace(
                 // a screen reader read them again (#195). A sidebar too short for them lays them over its foot.
                 notices = if (panesHidden && anyNotice) {
                     {
-                        UploadToast(conn)
-                        ErrorNotice(conn, text = ::noticeText)
+                        UploadToast(conn, heard)
+                        ErrorNotice(conn, text = ::noticeText, heard = heard)
                     }
                 } else null)
             if (!covers) Spacer(Modifier.width(gap))
@@ -884,8 +886,8 @@ internal fun Workspace(
             PaneNotices({ paneBox.value }, { if (keyBarShown) keyBarBox.value else null }, sizes.overlayPadding, sizes.gap,
                 lift = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap), modifier = Modifier.matchParentSize()) {
                 UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
-                UploadToast(conn)
-                ErrorNotice(conn, text = ::noticeText)
+                UploadToast(conn, heard)
+                ErrorNotice(conn, text = ::noticeText, heard = heard)
             }
         }
         Spacer(Modifier.width(gap))
@@ -1141,11 +1143,17 @@ internal fun Workspace(
     ErrorNoticeTimer(conn)
 }
 
-/** A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109). */
+/**
+ * A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109).
+ * A toast that only moved there, which [heard] knows, is no live region: it was read where it first showed (#195).
+ */
 @Composable
-internal fun UploadToast(conn: HostConnection) {
-    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload) }
+internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null) {
+    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload, live = liveNotice(heard, UploadToastKey(it))) }
 }
+
+/** One showing of the upload toast ([HeardNotices]): its words. */
+private data class UploadToastKey(val said: String)
 
 // Where each part of the workspace goes in its row (WsBar*, WsClosed*, WsOpen* boards): the open sidebar, the pane
 // column, and under the panes the caption and the key bar, [gap] apart. The fidelity scenes place their parts with these too.
