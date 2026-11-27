@@ -24,8 +24,9 @@ pub const GlyphBitmap = struct {
 };
 
 /// Implemented by Core (calls CoreListener.rasterizeGlyph over JNI). Called only from
-/// the pane's render thread, only on atlas misses. Returned memory is valid until the
-/// next call on the same thread.
+/// the pane's render thread, only on atlas misses, after the frame's build and without
+/// the pane lock (`Renderer.completeFrame`). Returned memory is valid until the next call
+/// on the same thread.
 pub const GlyphSource = struct {
     ctx: *anyopaque,
     rasterize: *const fn (ctx: *anyopaque, utf8: []const u8, bold: bool, italic: bool, cell_w: u32, cell_h: u32, columns: u32) ?GlyphBitmap,

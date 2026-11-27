@@ -169,3 +169,25 @@ runs (first tab named by its label) and of four runs each (first tab named by it
   they (`composables.py`). The frames still miss their deadline: each needs about 10 ms of the
   main thread and 7 ms of RenderThread on the Velvet's little cores at a low clock.
 
+### 2026-11-27: missing glyphs are drawn without the pane lock
+
+A frame that met a glyph missing from the atlas drew it through `Canvas.drawText` while
+building the frame, with the pane lock held. The data thread could not write the next output
+then, nor the main thread reach the pane. The build now notes the missing glyphs, once each,
+and lets the rows that need them wait. `present` draws them without the lock
+(`Renderer.drawMissing`), then builds those rows again with it (`Renderer.completeFrame`).
+Same commit with and without the change, two runs each (`prose`: one):
+
+| Scene | Lock held, longest | Data thread waited, longest | Render frame, longest |
+|---|---|---|---|
+| `ko2350` | 47 and 38 → 5.3 and 5.6 ms | 46 and 5.0 → 0.8 and 1.4 ms | 48 and 42 → 38 and 32 ms |
+| `prose` | 14 → 3.2 ms | 11 → 5.3 ms | 21 → 57 ms |
+| `textsize` | 49 and 45 → 0.5 and 1.2 ms | 4.7 and 1.9 → 0.7 and 1.1 ms | 51 and 47 → 51 and 57 ms |
+| `overview-out` | 95 and 32 → 0.7 and 1.6 ms | 57 and 27 → 0.6 and 0.3 ms | 96 and 34 → 37 and 64 ms |
+
+- In `ko2350`, no build holds the lock over 16.7 ms any more (42 and 38 before).
+- The render thread's own frames take as long as before: the glyphs are still drawn before
+  the frame is shown, so that no cell shows empty.
+- The main thread waits less for the panes: frames over 16.7 ms in `overview-out` 9 and 6 → 4
+  and 3, the longest main-thread frame in `textsize` 98 → 84 to 86 ms.
+

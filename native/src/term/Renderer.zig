@@ -167,6 +167,20 @@ const R = struct {
     same: bool = false,
     /// When the last frame began to build (`PaneMod.monoNow`).
     build_ns: i128 = 0,
+    /// True on a render thread: a glyph the atlas lacks is drawn after the build, without the
+    /// pane lock (`completeFrame`), and the cell waits for it. False (a test that builds a row
+    /// alone): it is drawn at once.
+    glyphs_later: bool = false,
+    /// The glyphs the frame lacks, each once, their atlas keys in `missing_keys`.
+    missing: std.ArrayList(Missing) = .empty,
+    missing_keys: std.ArrayList(u8) = .empty,
+    /// By the index of `rows`: the rows that lack a glyph, built again once it is drawn.
+    waiting: std.ArrayList(bool) = .empty,
+    /// The index in `rows` of the row being built; null while the frame is assembled.
+    building: ?usize = null,
+    /// What `buildRows` read for the frame, for building rows of it again (`buildWaiting`).
+    colors: c.GhosttyRenderStateColors = std.mem.zeroes(c.GhosttyRenderStateColors),
+    top: i64 = 0,
 
     /// `run`'s drawing. `build` is called with the pane lock held.
     pub fn build(r: *R) bool {
@@ -175,6 +189,8 @@ const R = struct {
     }
 
     pub fn present(r: *R) bool {
+        // A frame that lacks glyphs cannot be drawn as built: an error leaves those cells empty.
+        completeFrame(r) catch logWarn("renderer could not draw missing glyphs");
         if (r.same) {
             Trace.begin("Renderer.unchanged");
             defer Trace.end();
@@ -233,6 +249,69 @@ fn paceUntil(due_ns: i128) void {
     if (left <= 0) return;
     var ts: std.c.timespec = .{ .sec = 0, .nsec = @intCast(left) };
     _ = std.c.nanosleep(&ts, null);
+}
+
+/// A glyph a frame lacks: its atlas key is `R.missing_keys[start..][0..len]`, the text and then
+/// the flags byte.
+const Missing = struct { start: u32, len: u32, bold: bool, italic: bool, columns: u32 };
+
+/// Called with the pane lock held, while a frame is built: `key` waits to be drawn, once, and
+/// the row being built waits for it (the keyboard's composition is assembled again anyway).
+fn noteMissing(r: *R, key: []const u8, bold: bool, italic: bool, columns: u32) !void {
+    if (r.building) |index| r.waiting.items[index] = true;
+    for (r.missing.items) |m| if (std.mem.eql(u8, r.missing_keys.items[m.start..][0..m.len], key)) return;
+    const start = r.missing_keys.items.len;
+    try r.missing_keys.appendSlice(r.gpa, key);
+    try r.missing.append(r.gpa, .{ .start = @intCast(start), .len = @intCast(key.len), .bold = bold, .italic = italic, .columns = columns });
+}
+
+/// Called without the pane lock, after a build: draws the glyphs the frame lacks into the
+/// atlas, then builds again, with the lock, the rows that wait for them, and the frame. The
+/// lock is not held while the glyph source draws: the data thread writes and a finger pans
+/// meanwhile, where a frame full of new glyphs used to stop them for tens of milliseconds.
+fn completeFrame(r: *R) !void {
+    if (r.missing.items.len == 0) return;
+    drawMissing(r);
+    r.same = false;
+    const p = r.pane;
+    p.lock.lock();
+    defer p.lock.unlock();
+    try buildWaiting(r);
+}
+
+/// The render thread's own work: the atlas is its, and the glyph source needs no lock.
+fn drawMissing(r: *R) void {
+    Trace.begin("Renderer.drawMissing");
+    defer Trace.end();
+    const g = r.pane.glyphs;
+    for (r.missing.items) |m| {
+        const key = r.missing_keys.items[m.start..][0..m.len];
+        const utf8 = key[0 .. key.len - 1];
+        Trace.begin("Renderer.rasterizeGlyph");
+        const bm = g.rasterize(g.ctx, utf8, m.bold, m.italic, r.glyph_w, r.glyph_h, m.columns);
+        Trace.end();
+        // A glyph the atlas cannot take is looked for again by the next frame.
+        _ = (if (bm) |b| r.atlas.put(key, b.pixels, b.w, b.h) else r.atlas.put(key, null, 0, 0)) catch {};
+    }
+    r.missing.clearRetainingCapacity();
+    r.missing_keys.clearRetainingCapacity();
+}
+
+/// Called with the pane lock held: the rows that wait for glyphs are built again from the
+/// render state, which the build left as it was, and the frame is assembled again. A glyph
+/// still missing (the atlas could not take it) waits for the next frame.
+fn buildWaiting(r: *R) !void {
+    if (std.mem.indexOfScalar(bool, r.waiting.items, true) != null) {
+        if (c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, @ptrCast(&r.rows_it)) != c.GHOSTTY_SUCCESS) return error.Update;
+        while (c.ghostty_render_state_row_iterator_next(r.rows_it)) {
+            var y: i32 = 0;
+            _ = c.ghostty_render_state_row_get(r.rows_it, c.GHOSTTY_RENDER_STATE_ROW_DATA_VIEWPORT_Y, &y);
+            const index = rowIndex(r, y) orelse break;
+            if (r.waiting.items[index]) try buildRowAt(r, index, y);
+        }
+    }
+    try assembleFrame(r, r.colors);
+    if (r.missing.items.len > 0) r.pane.wake = true;
 }
 
 /// Called with the pane lock held, once a frame is built: whether it draws what the window
@@ -307,7 +386,7 @@ fn logLife(what: []const u8, pane: *Pane, window: ?*anyopaque) void {
 
 pub fn threadMain(pane: *Pane) void {
     Trace.nameThread("velo-draw-", pane.threadTag());
-    var r: R = .{ .pane = pane, .gpa = pane.gpa, .atlas = .init(pane.gpa) };
+    var r: R = .{ .pane = pane, .gpa = pane.gpa, .atlas = .init(pane.gpa), .glyphs_later = true };
     // Every way out of this thread gives up what the thread owns, here and once: the EGL
     // surface and context and the GL objects. The window's reference is the pane's.
     defer teardown(&r);
@@ -519,6 +598,9 @@ fn teardown(r: *R) void {
     r.shown_frame.deinit(r.gpa);
     r.shown_images.deinit(r.gpa);
     r.shown_image_tex.deinit(r.gpa);
+    r.missing.deinit(r.gpa);
+    r.missing_keys.deinit(r.gpa);
+    r.waiting.deinit(r.gpa);
     r.scratch.deinit(r.gpa);
     r.atlas.deinit();
 }
@@ -587,7 +669,8 @@ fn buildFrame(r: *R) !bool {
     try assembleFrame(r, colors);
     // The offset rests on rows, a frame at a time: the next frame asks for itself.
     if (p.scrollStepLocked(PaneMod.monoNow())) p.wake = true;
-    r.same = drawsShown(r, settling);
+    // A frame that lacks glyphs is drawn: they come before it is (`completeFrame`).
+    r.same = drawsShown(r, settling) and r.missing.items.len == 0;
     return true;
 }
 
@@ -596,6 +679,9 @@ fn buildFrame(r: *R) !bool {
 /// their places, and the colors it is drawn with.
 fn buildRows(r: *R) !c.GhosttyRenderStateColors {
     const p = r.pane;
+    // What the last frame could not draw is looked for again in the rows that waited for it.
+    r.missing.clearRetainingCapacity();
+    r.missing_keys.clearRetainingCapacity();
     // The surface or the terminal width may have changed since the last drag.
     p.clampPanLocked();
     const origin = p.originLocked();
@@ -614,6 +700,7 @@ fn buildRows(r: *R) !c.GhosttyRenderStateColors {
     var colors: c.GhosttyRenderStateColors = .{ .size = @sizeOf(c.GhosttyRenderStateColors) };
     _ = c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
     r.clear_rgb = .{ colors.background.r, colors.background.g, colors.background.b };
+    r.colors = colors;
 
     var nrows: u16 = 0;
     _ = c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_ROWS, &nrows);
@@ -628,6 +715,10 @@ fn buildRows(r: *R) !c.GhosttyRenderStateColors {
         try r.rows.appendNTimes(r.gpa, .{}, count);
         full = true;
     }
+    if (r.waiting.items.len != count) {
+        try r.waiting.resize(r.gpa, count);
+        @memset(r.waiting.items, false);
+    }
     // The viewport's rows as the frame draws them, in px of the grid (0 is where the pane has
     // the top of its first row now): its offset shifted them, so the first and the last lose
     // what left the viewport, and the rows about them show what came in.
@@ -638,15 +729,15 @@ fn buildRows(r: *R) !c.GhosttyRenderStateColors {
     if (c.ghostty_render_state_get(r.state, c.GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, @ptrCast(&r.rows_it)) != c.GHOSTTY_SUCCESS) return error.Update;
     var scroll: c.GhosttyTerminalScrollbar = .{};
     if (p.search_hit != null or p.link_mark != null) _ = c.ghostty_terminal_get(p.term, c.GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
-    const top: i64 = @intCast(scroll.offset);
+    r.top = @intCast(scroll.offset);
     while (c.ghostty_render_state_row_iterator_next(r.rows_it)) {
         var y: i32 = 0;
         _ = c.ghostty_render_state_row_get(r.rows_it, c.GHOSTTY_RENDER_STATE_ROW_DATA_VIEWPORT_Y, &y);
-        const row = rowAt(r, y) orelse break;
-        var row_dirty = full;
+        const index = rowIndex(r, y) orelse break;
+        var row_dirty = full or r.waiting.items[index];
         if (!row_dirty) _ = c.ghostty_render_state_row_get(r.rows_it, c.GHOSTTY_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty);
         if (!row_dirty) continue;
-        try buildRow(r, row, y, top + y, colors);
+        try buildRowAt(r, index, y);
         const clean = false;
         _ = c.ghostty_render_state_row_set(r.rows_it, c.GHOSTTY_RENDER_STATE_ROW_OPT_DIRTY, &clean);
     }
@@ -658,10 +749,24 @@ fn buildRows(r: *R) !c.GhosttyRenderStateColors {
 /// The row `viewport_y` places under the top of the viewport (a negative place is above
 /// it): what the last update captured of it, or null when it did not.
 fn rowAt(r: *const R, viewport_y: i32) ?*Row {
+    return if (rowIndex(r, viewport_y)) |index| &r.rows.items[index] else null;
+}
+
+/// Where in `rows` the row `viewport_y` places is (`rowAt`).
+fn rowIndex(r: *const R, viewport_y: i32) ?usize {
     const i = viewport_y + r.overscan_above;
     if (i < 0) return null;
     const index: usize = @intCast(i);
-    return if (index < r.rows.items.len) &r.rows.items[index] else null;
+    return if (index < r.rows.items.len) index else null;
+}
+
+/// Called with the pane lock held, the row iterator on the row: builds row `index` of `rows`,
+/// at viewport place `y`, from the frame's colors. It waits again if a glyph of it is missing.
+fn buildRowAt(r: *R, index: usize, y: i32) !void {
+    r.waiting.items[index] = false;
+    r.building = index;
+    defer r.building = null;
+    try buildRow(r, &r.rows.items[index], y, r.top + y, r.colors);
 }
 
 /// Called with the pane lock held, after `buildImages`: the frame's instances in the order
@@ -1046,6 +1151,10 @@ fn glyphSlot(r: *R, utf8: []const u8, flags: c.GhosttyStyleFlags, columns: u32) 
         try r.scratch.resize(r.gpa, n);
         _ = BoxDraw.render(cp, r.scratch.items, glyph_w, r.glyph_h);
         slot = try r.atlas.put(key, r.scratch.items, glyph_w, r.glyph_h);
+    } else if (r.glyphs_later) {
+        // Drawn after the build, without the pane lock (`completeFrame`): the cell waits.
+        try noteMissing(r, key, fl.bold, fl.italic, columns);
+        return null;
     } else {
         const g = r.pane.glyphs;
         Trace.begin("Renderer.rasterizeGlyph");
@@ -1505,7 +1614,7 @@ const TestRenderer = struct {
 
     fn init(p: *Pane) !TestRenderer {
         const gpa = std.testing.allocator;
-        var t: TestRenderer = .{ .r = .{ .gpa = gpa, .pane = p, .atlas = .init(gpa) } };
+        var t: TestRenderer = .{ .r = .{ .gpa = gpa, .pane = p, .atlas = .init(gpa), .glyphs_later = true } };
         errdefer t.deinit();
         if (c.ghostty_render_state_new(null, &t.r.state) != c.GHOSTTY_SUCCESS) return error.OutOfMemory;
         requestOverscan(t.r.state);
@@ -1534,11 +1643,20 @@ const TestRenderer = struct {
         t.r.shown_frame.deinit(gpa);
         t.r.shown_images.deinit(gpa);
         t.r.shown_image_tex.deinit(gpa);
+        t.r.missing.deinit(gpa);
+        t.r.missing_keys.deinit(gpa);
+        t.r.waiting.deinit(gpa);
     }
 
     /// One frame without a window, as `buildFrame` makes it when the buffer does not answer:
     /// the pane's surface is the view. Without the images: their textures need GL.
     fn build(t: *TestRenderer) !void {
+        try t.buildOnly();
+        try completeFrame(&t.r);
+    }
+
+    /// The build alone, as `buildFrame` makes it with the pane lock held: missing glyphs wait.
+    fn buildOnly(t: *TestRenderer) !void {
         t.r.view_w = t.r.pane.surface_w;
         t.r.view_h = t.r.pane.surface_h;
         const colors = try buildRows(&t.r);
@@ -1634,6 +1752,78 @@ test "the window gets a frame that draws the same after an attach in place, whil
     try t.build();
     p.surface_w = 320;
     try std.testing.expect(!drawsShown(&t.r, false));
+}
+
+/// A glyph source that says whether the pane lock was held while it drew, and draws every
+/// glyph as a full cell of ink.
+const LockWatchingSource = struct {
+    pane: ?*Pane = null,
+    calls: usize = 0,
+    under_lock: usize = 0,
+    pixels: [96 * 96 * 3]u8 = @splat(255),
+
+    fn raster(ctx: *anyopaque, _: []const u8, _: bool, _: bool, w: u32, h: u32, columns: u32) ?PaneMod.GlyphBitmap {
+        const self: *@This() = @ptrCast(@alignCast(ctx));
+        self.calls += 1;
+        if (self.pane) |p| {
+            if (std.c.pthread_mutex_trylock(&p.lock.m) == .SUCCESS) {
+                _ = std.c.pthread_mutex_unlock(&p.lock.m);
+            } else self.under_lock += 1;
+        }
+        return .{ .w = w * columns, .h = h, .pixels = self.pixels[0 .. w * h * columns] };
+    }
+};
+
+test "missing glyphs are drawn after the build, once each, without the pane lock" {
+    var source: LockWatchingSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = LockWatchingSource.raster });
+    defer p.destroy();
+    source.pane = p;
+    p.setFontSizePx(10);
+    p.write("\xea\xb0\x80\xea\xb0\x80\xeb\x82\x98\r\nab");
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+
+    // The build, with the pane lock held as `run` holds it: nothing is drawn, the rows wait.
+    p.lock.lock();
+    try t.buildOnly();
+    p.lock.unlock();
+    try std.testing.expectEqual(@as(usize, 0), source.calls);
+    try std.testing.expectEqual(@as(usize, 4), t.r.missing.items.len); // the first syllable twice: once
+    try std.testing.expectEqual(@as(usize, 0), rowAt(&t.r, 0).?.fg.items.len);
+    try std.testing.expect(!drawsShown(&t.r, false)); // a frame that lacks glyphs is never the shown one
+
+    // The frame is completed without the lock: every glyph drawn once, the rows built again.
+    try completeFrame(&t.r);
+    try std.testing.expectEqual(@as(usize, 4), source.calls);
+    try std.testing.expectEqual(@as(usize, 0), source.under_lock);
+    try std.testing.expectEqual(@as(usize, 0), t.r.missing.items.len);
+    try std.testing.expectEqual(@as(usize, 3), rowAt(&t.r, 0).?.fg.items.len);
+    try std.testing.expectEqual(@as(usize, 2), rowAt(&t.r, 1).?.fg.items.len);
+    try std.testing.expectEqual(@as(usize, 5), t.r.frame.items.len - 1); // and the frame, with the cursor
+
+    // Drawn once: the next frame finds them all.
+    p.write("\xea\xb0\x80");
+    try t.build();
+    try std.testing.expectEqual(@as(usize, 4), source.calls);
+}
+
+test "the keyboard's composition waits for its glyph as a row does" {
+    var source: LockWatchingSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = LockWatchingSource.raster });
+    defer p.destroy();
+    p.setFontSizePx(10);
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    try t.build();
+    const before = t.r.frame.items.len;
+    _ = p.setPreedit("\xed\x95\x9c");
+    p.setPreeditVisible(true);
+    try t.buildOnly();
+    try std.testing.expectEqual(@as(usize, 1), t.r.missing.items.len);
+    try completeFrame(&t.r);
+    try std.testing.expectEqual(@as(usize, 1), source.calls);
+    try std.testing.expect(t.r.frame.items.len > before);
 }
 
 test "a frame whose quads are the same is drawn when a glyph or an image under them is new" {

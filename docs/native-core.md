@@ -425,7 +425,8 @@ Behaviour:
   pipe), and per pane `velo-data-<tag>` and `velo-draw-<tag>`, where `<tag>` is the end of
   the block id (`Trace.blockTag`: four bytes at most). ATrace sections
   (`native/src/term/Trace.zig`, inactive off Android) include `Renderer.buildFrame`,
-  `Renderer.present`, `Renderer.rasterizeGlyph` (an atlas
+  `Renderer.present`, `Renderer.drawMissing` (inside `present`: the glyphs the frame's build
+  found missing, drawn without the pane lock), `Renderer.rasterizeGlyph` (one atlas
   miss), `DataStream.feed` (one received message: its `Pane.write`s and their waits for
   the pane lock; not one section per write, which a flood makes once a line),
   `Pane.restoreSnapshot`, `Core.stateSnapshot` and `Core.publishState`. A thread the
