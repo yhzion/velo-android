@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- Velo's own code is now compiled ahead of time with the app's profile, as the libraries' code already was. Once Android has compiled the app (usually overnight while charging), screen updates take about a tenth to a quarter less of the main thread's time.
+
 ## 2.12.4 - 2026-11-27
 
 ### Changed

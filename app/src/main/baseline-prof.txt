@@ -1,0 +1,6 @@
+# Velo's own code is compiled ahead of time when the app is installed, rather than run by the
+# interpreter and the JIT first. Its composables, connection state and terminal views run on
+# every frame of the main thread, and a phone with slow cores misses its frames while they warm
+# up. The libraries bring profiles of their own; this one covers Velo's classes.
+HSPLio/github/yhzion/velo/**->**(**)**
+Lio/github/yhzion/velo/**;

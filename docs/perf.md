@@ -97,15 +97,25 @@ slower than a release build: compare counts, and times only with each other.
   that each install says `Success` before you record.
 - Run each build at least twice, alternating. The cold start's order varies: other tabs'
   streams can arrive inside a trace.
-- The app runs from the APK with JIT after a sideloaded install. `adb shell cmd package
-  compile -m speed -f io.github.yhzion.velo` compiles it ahead of time; `--reset` undoes it.
+- The app runs from the APK with JIT after a sideloaded install, until Android compiles it in
+  the background with its profiles. `adb shell cmd package compile -m speed-profile -f
+  io.github.yhzion.velo` does that at once, and `-m speed` compiles all of it. `--reset`
+  undoes either, and deletes the profile the app wrote at its first start: the app writes it
+  again only after it is installed again. To measure with the profiles, install, start the
+  app, wait 15 s, then compile with `speed-profile`. `dumpsys package dexopt` shows the state
+  (`status=`) and where the compiled code is (`location is`).
+- The scripts take the app's processes by its package name, or that name and `:` (its own
+  processes). Another package whose name only starts the same, such as a test app, is not
+  the app.
 - Traces and APKs fill `/tmp` quickly. When the user's quota is full, a signed APK is cut short
   without an error from the signer, and `adb install` fails with `INSTALL_PARSE_FAILED_NOT_APK`.
   Check it with `apksigner verify`.
 - A change that removes work from one thread can make others slower: the cores of a cluster
   share one clock, which drops with the cluster's load. Compare CPU cycles, not only time.
-- In `overview` and `overview-out`, the overview's cards draw no glyphs at present (each card
-  shows its cursor only), so these scenes do not show what a card's atlas costs.
+- In `overview` and `overview-out`, the overview's cards draw no glyphs (each card shows its
+  cursor only) for a minute or two after a cold start: their streams wait for the server to
+  let go of the killed process's connections (REJECT `0x02`, `docs/native-core.md`). So these
+  scenes do not show what a card's atlas costs.
 - A tab next to the one shown has a window of its own already: in `tabs`, the windows that
   start inside the trace depend on when the cold start's tabs got theirs. Compare a scene's
   fills one by one, and its totals only between runs with the same fills.
@@ -221,4 +231,31 @@ being filled (`firstframe.py`).
   others have not kept yet. The fills of the first run at default clocks came apart, the
   second run's did not (7 to 14 ms against 48 to 66 ms).
 - `ko2350` shows one window, which shares nothing: its misses, builds and frames are as before.
+
+### 2026-11-27: Velo's own code is compiled with its profile
+
+The APK carries the libraries' Baseline Profiles, and `profileinstaller` applies them to a
+sideloaded install. They cover the libraries; Velo's own composables, connection state and
+terminal views were left to the JIT. `app/src/main/baseline-prof.txt` now adds all of Velo's
+classes (`io/github/yhzion/velo/**`); the build rewrites the rule through R8's renaming.
+
+Same commit with and without the rule, two runs each, compiled with `speed-profile` after
+the app wrote its profile; `speed` (all of the app compiled) for the ceiling. Main thread
+CPU and recomposition, in ms:
+
+| Scene | Libraries' profiles | With Velo's rule | All compiled |
+|---|---|---|---|
+| `title`: main thread | 1209, 1158 | 1087, 978 | 894, 911 |
+| `title`: recomposition | 386, 360 | 294, 261 | 262, 263 |
+| `overview`: main thread | 453, 437 | 393, 407 | 355, 367 |
+| `overview`: recomposition | 52, 34 | 22, 28 | 25, 24 |
+| Compiled code | 5.5 MB | 9.3 MB | 17.0 MB |
+
+- With the rule, recomposition takes as long as with all of the app compiled, and the main
+  thread does about half of the difference less, for 3.9 MB more of compiled code.
+- Android compiles a sideloaded app with its profiles when the phone is idle, usually
+  overnight while charging. Until then, and again after every update, the app runs with the
+  JIT, as `verify` does: in that state `title` took 1463 and 1421 ms of the main thread.
+- A test app of another session ran beside these runs, with a microphone service using about
+  4 % of one core, in every state alike.
 
