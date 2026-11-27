@@ -76,6 +76,17 @@ class CompareTest(unittest.TestCase):
         self.assertIn("Expected copy", page)
         self.assertIn("Wrong copy", page)
 
+    def test_text_diff_counts_counts_screens_and_per_screen_entries(self):
+        rows = [
+            {"screen": "a", "text_diffs": [{"name": "x", "board": "1", "app": "2", "devices": ["bar", "fold"]},
+                                           {"name": "y", "board": "3", "app": "4", "devices": ["bar"]}]},
+            {"screen": "b", "text_diffs": []},
+            {"screen": "c"},
+            {"screen": "d", "text_diffs": [{"name": "x", "board": "1", "app": "2", "devices": ["fold"]}]},
+        ]
+        self.assertEqual(f.text_diff_counts(rows), (2, 3))
+        self.assertEqual(f.text_diff_counts([]), (0, 0))
+
     def test_text_box_anti_aliasing_does_not_fail_judged_ssim(self):
         board, img = board_and_image()
         board["text_boxes"] = [{"x": 14, "y": 50, "w": 40, "h": 10}]

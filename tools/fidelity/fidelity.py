@@ -288,9 +288,18 @@ def main():
     }
     json.dump(report, open(os.path.join(a.out, "report.json"), "w"), indent=1)
     open(os.path.join(a.out, "report.html"), "w").write(render_html(report))
+    td_screens, td_unique = text_diff_counts(rows)
     print(f"match rate {report['match_rate']:.1f} over {len(rows)} screens "
-          f"({len(impl)} implemented, {report['screens_passed']} pass); tokens {fmt_rate(tokens['rate'])}")
+          f"({len(impl)} implemented, {report['screens_passed']} pass); tokens {fmt_rate(tokens['rate'])}; "
+          f"text differences on {td_screens} screens ({td_unique} unique)")
     print(os.path.join(a.out, "report.html"))
+
+
+def text_diff_counts(rows):
+    """(screens with copy differences, differences summed over screens). A screen's
+    `text_diffs` already merge one difference seen on several devices into one entry."""
+    with_diffs = [r for r in rows if r.get("text_diffs")]
+    return len(with_diffs), sum(len(r["text_diffs"]) for r in with_diffs)
 
 
 def platform_exceptions(index, exceptions):

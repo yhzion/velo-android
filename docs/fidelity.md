@@ -108,8 +108,8 @@ whitespace-normalised `text` of every paired element where the app node carries 
 (`SemanticsProperties.Text` or `EditableText`). Pairs where the app node has no text are skipped:
 `FidelityCaptureTest` walks the unmerged Compose semantics tree, so layout containers and
 button/row wrappers carry no text while HTML `innerText` concatenates descendant text. Differences
-are listed per capture (`text_diffs` and `text_compared`) and aggregated per screen in
-`report.json` and `report.html`, rather than failing the screen or lowering the score. Valid
+are listed per capture (`text_diffs` and `text_compared`) in `report.html` and `report.json`, and
+aggregated per screen in `report.json`, rather than failing the screen or lowering the score. Valid
 captures carry expected dynamic or fixture differences against the static canvas: the installed app
 version (`BuildConfig.VERSION_NAME`), live clock timestamps (`updates-last-checked`), generated SSH
 key fingerprints and sample addresses or status lines. Failing on copy differences would force
@@ -144,8 +144,8 @@ The report lists these apart from the scores:
   text-box SSIM separately. Paired elements whose app node carries text are compared for copy
   differences (whitespace-normalised) and listed in the report, without failing the verdict. Ink
   colour, weight, and within-box size differences inside a board text box remain outside the
-  verdict and score (only missing tags, box shifts over 2 dp, text spilling outside the board's
-  line box, and paired copy mismatches are caught).
+  verdict and score (only missing tags, box shifts over 2 dp, and text spilling outside the board's
+  line box are caught; paired copy mismatches are listed, not judged).
 - **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
   Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
   Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.
