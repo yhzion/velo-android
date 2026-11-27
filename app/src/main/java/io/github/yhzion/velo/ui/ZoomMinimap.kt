@@ -1,6 +1,11 @@
 package io.github.yhzion.velo.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -187,6 +192,56 @@ internal fun zoomPickerBox(cell: ZoomCell, width: Float, height: Float, least: F
     return PickerBox(left.coerceIn(0f, width - w), top.coerceIn(0f, height - h), w, h)
 }
 
+/** How near two edges in dp are taken as one. */
+private const val SameEdge = 0.01f
+
+/**
+ * Whether [box] keeps a part [least] by [least] that none of [over] covers: a finger's target of its own. The boxes'
+ * edges cut [box] into a grid, and some run of its free squares must be [least] across both ways.
+ */
+internal fun keepsTarget(box: PickerBox, over: List<PickerBox>, least: Float): Boolean {
+    val right = box.left + box.width
+    val bottom = box.top + box.height
+    val covers = over.mapNotNull { o ->
+        val l = max(o.left, box.left)
+        val t = max(o.top, box.top)
+        val r = minOf(o.left + o.width, right)
+        val b = minOf(o.top + o.height, bottom)
+        if (r - l > SameEdge && b - t > SameEdge) PickerBox(l, t, r - l, b - t) else null
+    }
+    val xs = (listOf(box.left, right) + covers.flatMap { listOf(it.left, it.left + it.width) }).distinct().sorted()
+    val ys = (listOf(box.top, bottom) + covers.flatMap { listOf(it.top, it.top + it.height) }).distinct().sorted()
+    // Whether the grid's square from xs[i] and ys[j] lies outside every cover: its middle does.
+    val free = Array(xs.size - 1) { i ->
+        BooleanArray(ys.size - 1) { j ->
+            val x = (xs[i] + xs[i + 1]) / 2
+            val y = (ys[j] + ys[j + 1]) / 2
+            covers.none { x > it.left && x < it.left + it.width && y > it.top && y < it.top + it.height }
+        }
+    }
+    for (i0 in 0 until xs.size - 1) for (i1 in i0 + 1 until xs.size) {
+        if (xs[i1] - xs[i0] < least - SameEdge) continue
+        for (j0 in 0 until ys.size - 1) for (j1 in j0 + 1 until ys.size) {
+            if (ys[j1] - ys[j0] < least - SameEdge) continue
+            if ((i0 until i1).all { i -> (j0 until j1).all { j -> free[i][j] } }) return true
+        }
+    }
+    return false
+}
+
+/**
+ * The cells of [map] that the floating cells drawn over them leave no finger's target in a map [width] by [height]
+ * (#171): a tap there takes the floating cell, and so does a screen reader's finger exploring the map. A floating
+ * cell lies over the tiled ones and the floating ones before it. The picker lists these in a row under the map.
+ */
+internal fun zoomCoveredCells(map: ZoomMap, width: Float, height: Float, least: Float): Set<String> {
+    val boxes = map.cells.map { zoomPickerBox(it, width, height, least) }
+    return map.cells.indices.filter { i ->
+        val over = (i + 1 until map.cells.size).filter { map.cells[it].floating }.map { boxes[it] }
+        over.isNotEmpty() && !keepsTarget(boxes[i], over, least)
+    }.mapTo(mutableSetOf()) { map.cells[it].block }
+}
+
 /** The minimap's board size: 46 by 30 (`.mini`), its cells 4 inside its edge. */
 private const val MiniWidth = 46f
 private const val MiniHeight = 30f
@@ -326,10 +381,12 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
  * The picker (`.pop`): its title, then a button per pane where the layout puts it, [mapW] by [mapH] dp, named with
  * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL, at least [least] across
  * ([zoomPickerBox]); the floating ones come last, so they are drawn and touched over the tiled ones. A map larger than
- * the popover scrolls, as the minimized panes' row does, and shows the zoomed cell, at once.
+ * the popover scrolls, as the minimized panes' row does, and shows the zoomed cell, at once. A cell the floating ones
+ * leave no finger's target ([zoomCoveredCells]) is a capsule in a row under the map instead, as a minimized pane is
+ * (#171): a finger picks it there and a screen reader says it there alone, and its strip left on the map only takes a tap.
  */
 @Composable
-private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, name: (String) -> String, onPick: (String) -> Unit) {
+private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, name: (String) -> String, onPick: (String) -> Unit) {
     val c = VeloTheme.surface
     val sheet = VeloTheme.colors.sheet
     val unit = VeloTheme.medium(1.dp)
@@ -356,8 +413,11 @@ private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, nam
             down.scrollTo(((box.top + box.height / 2).dp.toPx() - down.viewportSize / 2f).roundToInt())
         }
     }
-    // One scroll a node: a node keeps one scroll action, and a screen reader needs both.
-    Box(Modifier.testTag("minimap-picker-map").horizontalScroll(across)) {
+    val covered = zoomCoveredCells(map, mapW, mapH, least)
+    val pick by rememberUpdatedState(onPick)
+    // One scroll a node: a node keeps one scroll action, and a screen reader needs both. The map gives up its height
+    // to the row under it, which has no scroll of its own up and down.
+    Box(Modifier.weight(1f, fill = false).testTag("minimap-picker-map").horizontalScroll(across)) {
         Box(Modifier.testTag("minimap-picker-rows").verticalScroll(down)) {
             Box(Modifier.size(width, height)) {
                 for ((index, cell) in map.cells.withIndex()) {
@@ -370,13 +430,18 @@ private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, nam
                             .padding(unit * PickerCellInset).testTag("minimap-picker-cell-${cell.block}")
                             .background(if (on) c.accent else c.glass, rounded(unit * 7))
                             .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
-                            .clickable(role = Role.Button) { onPick(cell.block) }
-                            .semantics {
-                                contentDescription = zoomCellDescription(map, index, cell, named)
-                                selected = on
-                                // In the panes' order, not where they lie: a floating cell lies among the tiled ones.
-                                traversalIndex = index.toFloat()
-                            }
+                            .then(
+                                // Said and picked in the row under the map: what is left of it here takes a tap alone.
+                                if (cell.block in covered) Modifier.clearAndSetSemantics { }
+                                    .pointerInput(cell.block) { detectTapGestures { pick(cell.block) } }
+                                else Modifier.clickable(role = Role.Button) { onPick(cell.block) }
+                                    .semantics {
+                                        contentDescription = zoomCellDescription(map, index, cell, named)
+                                        selected = on
+                                        // In the panes' order, not where they lie: a floating cell lies among the tiled ones.
+                                        traversalIndex = index.toFloat()
+                                    },
+                            )
                             .padding(unit * 7),
                     ) {
                         Column(Modifier.align(Alignment.BottomStart).clearAndSetSemantics { },
@@ -391,6 +456,53 @@ private fun ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, nam
                                 .background(dotTint(dot, sheet.accent, sheet.warning, sheet.danger), CircleShape))
                         }
                     }
+                }
+            }
+        }
+    }
+    if (covered.isNotEmpty()) CoveredCells(map, covered, name, onPick)
+}
+
+/**
+ * The row under the picker's map: a capsule for each cell of [map] in [covered], in the panes' order, as tall as a
+ * minimized pane's ([MinimizedCapsuleHeight]) and named with [name]. A row wider than the popover scrolls sideways.
+ */
+@Composable
+private fun CoveredCells(map: ZoomMap, covered: Set<String>, name: (String) -> String, onPick: (String) -> Unit) {
+    val c = VeloTheme.surface
+    val sheet = VeloTheme.colors.sheet
+    val sizes = VeloTheme.sizes
+    val unit = VeloTheme.medium(1.dp)
+    Text("Under floating panes", Modifier.padding(top = unit * 8, bottom = unit * 6), color = c.secondary, style = VeloTheme.type.caption)
+    Row(Modifier.testTag("minimap-picker-covered").horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(sizes.gapCompact)) {
+        for ((index, cell) in map.cells.withIndex()) {
+            if (cell.block !in covered) continue
+            val on = cell.block == map.zoomed
+            val named = name(cell.block)
+            Row(
+                Modifier.testTag("minimap-picker-covered-${cell.block}").height(MinimizedCapsuleHeight)
+                    .widthIn(min = TargetDp.dp, max = sizes.menuMinWidth)
+                    .background(if (on) c.accent else c.glass, rounded(unit * 7))
+                    .then(if (on) Modifier else Modifier.border(sizes.edge, c.glassEdge, rounded(unit * 7)))
+                    .clickable(role = Role.Button) { onPick(cell.block) }
+                    .semantics {
+                        contentDescription = zoomCellDescription(map, index, cell, named)
+                        selected = on
+                    }
+                    .padding(horizontal = sizes.rowPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(sizes.gapCompact),
+            ) {
+                Row(Modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(sizes.gapCompact)) {
+                    cell.alert?.let(::tileDot)?.let { dot ->
+                        Box(Modifier.size(unit * 6).background(dotTint(dot, sheet.accent, sheet.warning, sheet.danger), CircleShape))
+                    }
+                    Text(named, Modifier.weight(1f, fill = false), color = if (on) c.onAccent else c.text,
+                        style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Pane ${index + 1}", color = if (on) c.onAccent.copy(alpha = 0.7f) else c.secondary, style = VeloTheme.type.caption,
+                        maxLines = 1)
                 }
             }
         }

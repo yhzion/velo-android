@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.ui
 
 import android.app.Application
+import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -10,7 +11,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -42,6 +45,7 @@ import io.github.yhzion.velo.core.TabInfo
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.fidelity.Speech
 import io.github.yhzion.velo.ui.theme.OverlayLayer
 import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
@@ -72,6 +76,7 @@ class ZoomMinimapUiTest {
     private var compact by mutableStateOf(false)
     private var size by mutableStateOf(UiSize.Medium)
     private val zoomedTo = mutableListOf<String>()
+    private lateinit var view: View
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
     private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true) = compose.setContent {
@@ -85,6 +90,7 @@ class ZoomMinimapUiTest {
         val row = sessionGroups(state, false, emptySet(), false, "").single().rows.single()
         val map = zoomMap(window, rtl) { block -> TabIndicator.Done.takeIf { block == "c" } }
         val layer = remember { OverlayLayer() }
+        view = LocalView.current
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
             VeloTheme(size) {
                 val caption = @Composable {
@@ -133,8 +139,50 @@ class ZoomMinimapUiTest {
         val f = compose.onNodeWithTag("minimap-picker-cell-f").getBoundsInRoot()
         val a = compose.onNodeWithTag("minimap-picker-cell-a").getBoundsInRoot()
         assertTrue("f over a", f.left > a.left && f.top > a.top && f.right < a.right && f.bottom < a.bottom)
+        // The floating cell leaves the tiled one a finger's target: it needs no place in the row under the map.
+        compose.onNodeWithTag("minimap-picker-covered").assertDoesNotExist()
         compose.onNodeWithTag("minimap-picker-cell-f").performClick()
         assertEquals(listOf("f"), zoomedTo)
+    }
+
+    @Test fun aTiledPaneUnderAFloatingOneIsSaidAndPickedInTheRowUnderTheMap() {
+        // A floating pane as high as the pane area over claude (#171) covers its cell: a finger could not pick it.
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.6f, h = 1f))
+        show()
+        compose.onNodeWithTag("caption-minimap").performClick()
+        // What a screen reader gets: every pane once, the covered one from the row under the map and not from the map.
+        val said = compose.runOnIdle { Speech.focusableNodes(view) }.map { it.second.joinToString(" | ") }
+        for (n in 1..4) assertEquals("$said", 1, said.count { "Pane $n of 4," in it })
+        assertTrue("$said", said.none { Speech.saysTwice(listOf(it)) })
+        compose.onNodeWithTag("minimap-picker-covered-a").assertIsDisplayed()
+            .assertContentDescriptionEquals("Pane 1 of 4, claude")
+            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("minimap-picker-covered-b").assertDoesNotExist()
+        compose.onNodeWithTag("minimap-picker-covered-c").assertDoesNotExist()
+        compose.onNodeWithTag("minimap-picker-covered-a").performClick()
+        assertEquals(listOf("a"), zoomedTo)
+        compose.onNodeWithTag("minimap-picker").assertDoesNotExist()
+    }
+
+    @Test fun theStripLeftOfACoveredCellStillTakesATap() {
+        floating = listOf(FloatingLayer("f", x = 0.2f, y = 0f, w = 0.4f, h = 1f))
+        show()
+        compose.onNodeWithTag("caption-minimap").performClick()
+        // The strip on the floating cell's left is claude's: a tap there picks it, as it would on the map without the row.
+        compose.onNodeWithTag("minimap-picker-cell-a").performTouchInput { click(Offset(8.dp.toPx(), height / 2f)) }
+        assertEquals(listOf("a"), zoomedTo)
+    }
+
+    @Test fun aCoveredZoomedPaneIsSelectedInTheRow() {
+        floating = listOf(FloatingLayer("f", x = 0.5f, y = 0f, w = 0.5f, h = 1f))
+        show()
+        compose.onNodeWithTag("caption-minimap").performClick()
+        // build and logcat lie under the floating pane: build, the full screen one, is selected, and a tap only closes.
+        compose.onNodeWithTag("minimap-picker-covered-c").assertContentDescriptionEquals("Pane 3 of 4, logcat, Completed")
+        compose.onNodeWithTag("minimap-picker-covered-b").assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .performClick()
+        assertEquals(emptyList<String>(), zoomedTo)
+        compose.onNodeWithTag("minimap-picker").assertDoesNotExist()
     }
 
     @Test fun zoomingLeavesTheCaptionAsHighAsItWas() {

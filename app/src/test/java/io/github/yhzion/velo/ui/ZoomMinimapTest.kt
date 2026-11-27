@@ -8,7 +8,9 @@ import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private fun leaf(block: String) = LayoutNode(block = block)
@@ -192,5 +194,48 @@ class ZoomMinimapTest {
         val (w, h) = zoomPickerSize(zoomCells(four, false), 194f, 128f, 48f)
         assertEquals(194f, w, 0.01f)
         assertEquals(192f, h, 0.01f)
+    }
+
+    @Test
+    fun `a box keeps a finger's target only where no box over it reaches`() {
+        val box = PickerBox(0f, 0f, 100f, 100f)
+        assertTrue(keepsTarget(box, emptyList(), 52f))
+        assertFalse("covered whole", keepsTarget(box, listOf(PickerBox(-10f, -10f, 200f, 200f)), 52f))
+        // A strip 40 wide is left: less than a finger's target.
+        assertFalse("a narrow strip", keepsTarget(box, listOf(PickerBox(40f, 0f, 60f, 100f)), 52f))
+        assertTrue("a wide strip", keepsTarget(box, listOf(PickerBox(55f, 0f, 60f, 100f)), 52f))
+        // Two boxes leave free strips at the top and on the left, each 60 by 40: none is 52 both ways.
+        assertFalse("two boxes", keepsTarget(box, listOf(PickerBox(40f, 0f, 60f, 60f), PickerBox(0f, 60f, 100f, 40f)), 52f))
+        // The free corner is a target when it is large enough, though the boxes cut it into squares.
+        assertTrue("a free corner", keepsTarget(box, listOf(PickerBox(60f, 0f, 40f, 30f), PickerBox(0f, 60f, 100f, 40f), PickerBox(70f, 30f, 30f, 30f)), 52f))
+        // A box beside it covers nothing.
+        assertTrue("beside it", keepsTarget(box, listOf(PickerBox(100f, 0f, 50f, 100f)), 52f))
+    }
+
+    @Test
+    fun `a floating pane over a row of narrow panes covers their cells`() {
+        // Four side by side under a floating pane as high as the area and half as wide (#171).
+        val four = WindowInfo("w", layout = row(leaf("a"), row(leaf("b"), row(leaf("c"), leaf("d")), 1f / 3), 0.25f), zoomed = "d",
+            floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.5f, h = 1f)))
+        val map = zoomMap(four, false) { null }!!
+        val (w, h) = zoomPickerSize(map, 194f, 128f, 52f)
+        assertEquals(setOf("a", "b"), zoomCoveredCells(map, w, h, 52f))
+        // In RTL the panes and the floating one are mirrored together: the same cells are covered.
+        val rtl = zoomMap(four, true) { null }!!
+        assertEquals(setOf("a", "b"), zoomCoveredCells(rtl, w, h, 52f))
+        // A floating pane that leaves a finger's target of a cell covers none, and a tab without one has none.
+        val small = four.copy(floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.125f, h = 0.5f)))
+        assertEquals(emptySet<String>(), zoomCoveredCells(zoomMap(small, false) { null }!!, w, h, 52f))
+        assertEquals(emptySet<String>(), zoomCoveredCells(zoomMap(four.copy(floating = emptyList()), false) { null }!!, w, h, 52f))
+    }
+
+    @Test
+    fun `a floating pane can cover another floating one`() {
+        // The later floating pane lies over the earlier one, as it floats over it; it is itself on top. It leaves claude
+        // strips 39 wide and 26 high, and build and logcat a target each on its right.
+        val two = tab.copy(floating = listOf(FloatingLayer("f", x = 0.3f, y = 0.3f, w = 0.3f, h = 0.4f),
+            FloatingLayer("g", x = 0.2f, y = 0.2f, w = 0.5f, h = 0.6f)))
+        val map = zoomMap(two, false) { null }!!
+        assertEquals(setOf("a", "f"), zoomCoveredCells(map, 194f, 128f, 52f))
     }
 }
