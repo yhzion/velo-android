@@ -2734,3 +2734,11 @@ test "renderer: a frame the thread asked for itself goes to the window when due,
     try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
     try std.testing.expectEqual(@as(i128, 0), t.r.due_ns);
 }
+
+test "gl: the window's perform hook is where the platform's struct ANativeWindow has it" {
+    // system/window.h (android16-release) on a 64-bit ABI: common is 56 bytes, perform at 152,
+    // the struct 192 bytes (common.version). `setWindowScaling` calls through this offset.
+    if (@sizeOf(usize) != 8) return error.SkipZigTest;
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(gl.NativeBase));
+    try std.testing.expectEqual(@as(usize, 152), @offsetOf(gl.NativeWindow, "perform"));
+}
