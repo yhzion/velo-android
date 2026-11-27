@@ -163,6 +163,10 @@ class PaneAlertsTest {
         assertEquals("Push to main or open a PR? 1. main 2. PR", full.text)
         assertEquals("$message\n\nrex · deploy · Build", full.expanded)
         assertEquals("Claude Code", full.program)
+        for (agent in listOf("gemini", "gemini-cli")) {
+            val gemini = paneNoteText(PaneAlert(sub, PaneAlertKind.Done, null, "Draft plan", "Done", agent))
+            assertEquals("Gemini", gemini.program)
+        }
         val bare = paneNoteText(PaneAlert(sub, PaneAlertKind.Done, null, title = "", message = "  "))
         assertEquals("Work completed", bare.title)
         assertEquals("rex · deploy · Build", bare.text)

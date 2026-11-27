@@ -312,6 +312,11 @@ class SidebarModelTest {
         assertTrue(groups(query = "no such thing").isEmpty())
         // Both filters at once: a row must pass both.
         assertEquals(listOf("window:c"), groups(activityOnly = true, query = "~/n").flatMap { it.rows }.map { it.tab })
+        // Searching by an agent's label finds a tab whose icon names that agent even under node.
+        val gemini = SessionInfo("session:g", "g", listOf(
+            TabInfo("window:g", block = "block:g", icon = "gemini-cli", title = "Draft plan", program = "node"),
+        ))
+        assertEquals(listOf("window:g"), groups(both.copy(sessions = listOf(gemini)), query = "Gemini").flatMap { it.rows }.map { it.tab })
     }
 
     @Test

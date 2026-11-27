@@ -62,7 +62,7 @@ fun ownTabLabel(label: String): String = if (AutoTabLabel.matches(label)) "" els
  * [label] is what the app calls each one. Their tiles are [TileBrand][io.github.yhzion.velo.ui.theme.TileBrand]s.
  */
 enum class TabAgent(val label: String) {
-    Claude("Claude Code"), Codex("Codex"), Omp("omp"), Pi("pi");
+    Claude("Claude Code"), Codex("Codex"), Omp("omp"), Pi("pi"), Gemini("Gemini");
 
     fun matchesProgramName(title: String): Boolean = title.equals(label, ignoreCase = true) || from(title) == this
 
@@ -72,6 +72,7 @@ enum class TabAgent(val label: String) {
             "codex", "codex-cli", "openai-codex" -> Codex
             "omp", "oh-my-pi" -> Omp
             "pi", "pi-coding-agent" -> Pi
+            "gemini", "gemini-cli" -> Gemini
             else -> null
         }
     }

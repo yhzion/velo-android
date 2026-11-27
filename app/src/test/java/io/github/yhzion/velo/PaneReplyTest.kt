@@ -46,6 +46,8 @@ class PaneReplyTest {
         assertNull(plan("permission", "omp"))
         assertNull(plan("question", "codex"))
         assertNull(plan("question", "pi"))
+        assertNull(plan("question", "gemini"))
+        assertNull(plan("permission", "gemini-cli"))
         assertNull(plan("permission", "vim"))
         assertNull(plan("permission", null))
         // Other blocked reasons and other states.

@@ -3,6 +3,8 @@ package io.github.yhzion.velo.ui
 import io.github.yhzion.velo.PaneAddress
 import io.github.yhzion.velo.SeenReport
 import io.github.yhzion.velo.core.BlockInfo
+import io.github.yhzion.velo.ui.theme.TileBrand
+import io.github.yhzion.velo.ui.theme.tileBrand
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -156,5 +158,18 @@ class ActivityReadStateTest {
         // On equal rank the newer report wins, wherever its pane is.
         assertEquals("claude", seenIcon(SeenReport("done", later, agent = "claude"), SeenReport("done", time, agent = "codex")))
         assertEquals("codex", seenIcon(SeenReport("done", time, agent = "claude"), SeenReport("done", later, agent = "codex")))
+    }
+
+    @Test fun aNodeTabWhoseReportNamesGeminiGetsGeminisTile() {
+        for (agent in listOf("gemini", "gemini-cli")) {
+            val state = ActivityReadState()
+            state.update(lead, mapOf("work" to SeenReport("working", time, agent = agent)))
+            val activity = state.activity(node, true)
+            assertEquals(agent, activity.icon)
+            assertEquals(TileBrand.Gemini, tileBrand(activity.icon))
+            val tile = tabTile(node, activity)
+            assertEquals(TileBrand.Gemini, tile.brand)
+            assertEquals("Gemini, 2 panes", tabTileDescription(tile, activity.icon ?: node.icon))
+        }
     }
 }
