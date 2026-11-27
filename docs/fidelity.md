@@ -113,16 +113,20 @@ aggregated per screen in `report.json`, rather than failing the screen or loweri
 
 **Known text.** Some differences are there by nature: the installed version, the clock time of a
 check, the digest of a sample SSH key, a sample address. `tools/fidelity/known-text.json` accepts
-such an element's text on the screens it names, with the reason:
+such an element's text on the screens it names, with the board text it accepts and the reason:
 
 ```json
-{"elements": {"updates-last-checked": {"screens": ["settings-updates"], "reason": "the clock time of the check"}}}
+{"elements": {"updates-last-checked": {"screens": ["settings-updates"],
+  "board": "Last checked: today, 9:41 PM", "reason": "the clock time of the check"}}}
 ```
+
+An entry applies only while the board's normalised text equals its `board`, so a later copy change
+on that element in the canvas shows as a new difference and the entry is reported unused.
 
 A known difference is listed apart (`text_known`, with its reason, per capture and per screen) and
 is not counted as new. Unlike `exceptions.json`, the element stays in the geometry and fill checks.
 The summary line counts the new differences and gives the known ones as a number:
-`new text differences on 0 screens (0 unique); 13 known`. Like new ones, known ones count once per
+`new text differences on N screens (U unique); K known`. Like new ones, known ones count once per
 screen and text, so a clock that turns a minute between two devices counts twice. An entry that
 matched no difference on a measured screen is printed and listed as `known_text_unused`, so a
 fixed or renamed element leaves the list.

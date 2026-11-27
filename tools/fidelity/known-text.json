@@ -2,42 +2,42 @@
   "elements": {
     "about-app-version": {
       "screens": ["settings-about"],
+      "board": "Version 2.10.0 (3000040)",
       "reason": "the installed version (versionName and versionCode of the build), which changes with every release"
     },
     "settings-nav-about-summary": {
       "screens": ["settings-home"],
+      "board": "Version 2.10.0 · 2.10.1 available",
       "reason": "starts with the installed version, which changes with every release"
     },
     "updates-installed-value": {
       "screens": ["settings-updates"],
+      "board": "2.10.0 (3000040)",
       "reason": "the installed version (versionName and versionCode of the build), which changes with every release"
     },
     "new-version-meta": {
       "screens": ["settings-updates"],
+      "board": "You have 2.10.0 · Stable",
       "reason": "names the installed version, which changes with every release"
     },
     "updates-last-checked": {
       "screens": ["settings-updates"],
+      "board": "Last checked: today, 9:41 PM",
       "reason": "the clock time of the scene's update check, which is when the capture runs"
-    },
-    "remotes-ssh-key-fingerprint": {
-      "screens": ["settings-remotes", "settings-add-remote"],
-      "reason": "the digest of the scene's phone key; no key has the board's made-up digest"
-    },
-    "ssh-phone-key-fingerprint": {
-      "screens": ["settings-ssh"],
-      "reason": "the digest of the scene's phone key; no key has the board's made-up digest"
     },
     "ssh-imported-key-name-2": {
       "screens": ["settings-ssh"],
+      "board": "Imported key Xp4Lw0Tq",
       "reason": "a key without a comment is named by the first 8 characters of its digest (#284), and no key has the board's made-up digest"
     },
     "ssh-imported-key-fingerprint-2": {
       "screens": ["settings-ssh"],
+      "board": "rsa · SHA256:Xp4L…waQ8",
       "reason": "the digest of the scene's imported key; no key has the board's made-up digest"
     },
     "saved-remote-address-studio-mac": {
       "screens": ["settings-remotes", "settings-add-remote"],
+      "board": "https://studio-mac.example.ts.net",
       "reason": "sample address: the scene's studio-mac is an ssh:// remote, because the app offers the SSH items the open board's menu draws on ssh remotes only"
     }
   }

@@ -92,7 +92,7 @@ class CompareTest(unittest.TestCase):
         board["elements"][2]["text"] = "Version 2.10.0"
         app = app_from(board)
         app["nodes"][2]["text"] = "Version 2.12.4"
-        known = {"label": {"screens": ["settings-about"], "reason": "the installed version"}}
+        known = {"label": {"screens": ["settings-about"], "board": "Version  2.10.0", "reason": "the installed version"}}
         r, _, _ = f.compare({"screen": "settings-about"}, board, app, img, img.copy(), {}, DSF, known)
         self.assertEqual(r["text_diffs"], [])
         self.assertEqual(r["text_known"], [{"name": "label", "board": "Version 2.10.0", "app": "Version 2.12.4",
@@ -104,21 +104,49 @@ class CompareTest(unittest.TestCase):
         # A known text difference keeps the element in geometry and fills, unlike exceptions.json.
         self.assertEqual((r["elements"], r["geometry"]), (3, 1.0))
 
-    def test_load_known_text_needs_screens_and_a_reason(self):
+    def test_known_text_entry_applies_only_to_the_board_text_it_names(self):
+        board, img = board_and_image()
+        board["elements"][2]["text"] = "Version 2.10.0 released"
+        app = app_from(board)
+        app["nodes"][2]["text"] = "Version 2.12.4"
+        known = {"label": {"screens": ["settings-about"], "board": "Version 2.10.0", "reason": "the installed version"}}
+        r, _, _ = f.compare({"screen": "settings-about"}, board, app, img, img.copy(), {}, DSF, known)
+        # Same element, other board text: a new difference, and the entry matched nothing.
+        self.assertEqual([d["name"] for d in r["text_diffs"]], ["label"])
+        self.assertEqual(r["text_known"], [])
+        row = {"screen": "settings-about", "devices": {"bar": {"status": "measured", **r}}, "text_known": r["text_known"]}
+        self.assertEqual(f.unused_known_text(known, [row]), [{"name": "label", "screen": "settings-about"}])
+
+    def test_load_known_text_needs_screens_a_board_text_and_a_reason(self):
         import json
         import os
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(f.load_known_text(os.path.join(d, "none.json")), {})
             path = os.path.join(d, "known-text.json")
-            ok = {"elements": {"x": {"screens": ["a"], "reason": "why"}}}
-            json.dump(ok, open(path, "w"))
+            ok = {"elements": {"x": {"screens": ["a"], "board": "1.0", "reason": "why"}}}
+            with open(path, "w") as fp:
+                json.dump(ok, fp)
             self.assertEqual(f.load_known_text(path), ok["elements"])
-            for bad in ({"x": {"screens": [], "reason": "why"}}, {"x": {"screens": ["a"], "reason": " "}},
-                        {"x": {"screens": "a", "reason": "why"}}, {"x": "why"}):
-                json.dump({"elements": bad}, open(path, "w"))
-                with self.assertRaises(SystemExit):
+            entry = {"screens": ["a"], "board": "1.0", "reason": "why"}
+            for bad, says in (
+                    ([], "elements must map"),
+                    ({"x": "why"}, "x must be an entry"),
+                    ({"x": {**entry, "screens": []}}, "x needs a list of screens"),
+                    ({"x": {**entry, "screens": "a"}}, "x needs a list of screens"),
+                    ({"x": {**entry, "screens": ["a", 5]}}, "x has a screen that is not a screen id"),
+                    ({"x": {**entry, "screens": [" "]}}, "x has a screen that is not a screen id"),
+                    ({"x": {**entry, "reason": " "}}, "x needs a reason text"),
+                    ({"x": {**entry, "reason": None}}, "x needs a reason text"),
+                    ({"x": {**entry, "reason": 5}}, "x needs a reason text"),
+                    ({"x": {k: v for k, v in entry.items() if k != "board"}}, "x needs a board text"),
+                    ({"x": {**entry, "board": ""}}, "x needs a board text"),
+                    ({"x": {**entry, "board": 2.1}}, "x needs a board text")):
+                with open(path, "w") as fp:
+                    json.dump({"elements": bad}, fp)
+                with self.assertRaises(SystemExit) as caught:
                     f.load_known_text(path)
+                self.assertIn(says, str(caught.exception))
 
     def test_screen_lists_merge_devices_and_unused_known_entries_are_named(self):
         known_diff = {"name": "v", "board": "1", "app": "2", "reason": "version"}
@@ -132,7 +160,8 @@ class CompareTest(unittest.TestCase):
         rows = [{"screen": "s", "devices": devices, "text_known": f.by_screen(devices, "text_known")},
                 {"screen": "t", "devices": {"bar": {"status": "measured"}}, "text_known": []},
                 {"screen": "u", "devices": {"bar": {"status": "no-scene"}}, "text_known": []}]
-        known = {"v": {"screens": ["s", "t", "u"], "reason": "version"}, "w": {"screens": ["s"], "reason": "r"}}
+        known = {"v": {"screens": ["s", "t", "u"], "board": "1", "reason": "version"},
+                 "w": {"screens": ["s"], "board": "1", "reason": "r"}}
         # u is not measured, so its entry is not judged.
         self.assertEqual(f.unused_known_text(known, rows), [{"name": "v", "screen": "t"}, {"name": "w", "screen": "s"}])
         self.assertEqual(f.text_diff_counts(rows, "text_known"), (1, 1))
@@ -142,7 +171,7 @@ class CompareTest(unittest.TestCase):
         board["elements"][2]["text"] = "9:41 PM"
         app = app_from(board)
         app["nodes"][2]["text"] = "4:53 PM"
-        known = {"label": {"screens": ["settings-test"], "reason": "the clock time of the check"}}
+        known = {"label": {"screens": ["settings-test"], "board": "9:41 PM", "reason": "the clock time of the check"}}
         r, _, _ = f.compare({"screen": "settings-test"}, board, app, img, img.copy(), {}, DSF, known)
         entry = {"board": "SetBarTest", "title": "t", "size": [100, 80], "status": "measured", **r, "pass": True,
                  "reasons": [], "score": 100.0, "images": {"side": "side.png", "heat": "heat.png"}}

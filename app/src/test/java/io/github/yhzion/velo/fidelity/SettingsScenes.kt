@@ -259,7 +259,7 @@ internal class BoardKeys(val fake: FakeKeys = FakeKeys()) : SshKeyTool by fake {
     override fun generate(comment: String): Pair<String, String> = fake.generate(comment).first to BoardPhoneKey
 }
 
-// The board's line without its ellipsis, so that it is a key with a fingerprint.
+// The board's public key line, so the fingerprints the app shows are the board's too.
 private const val BoardPhoneKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK7v1Qm3xR9tY2b velo-phone"
 
 /** The SetSsh block's imported key: an rsa key without a comment. Its digest is the scene's own (tools/fidelity/known-text.json). */

@@ -146,25 +146,37 @@ def load_board(path):
 
 
 def load_known_text(path):
-    """The known text differences: {element: {"screens": [screen id, ...], "reason": why}}. Each accepts that
-    element's text on those screens only; its geometry and fill are still measured. A missing file is no list."""
+    """The known text differences: {element: {"screens": [screen id, ...], "board": text, "reason": why}}. Each
+    accepts that element's text on those screens only, and only while the board shows exactly that (normalised)
+    text; its geometry and fill are still measured. A missing file is no list."""
     if not os.path.exists(path):
         return {}
     with open(path) as fp:
         known = json.load(fp).get("elements", {})
+    file = os.path.basename(path)
+    if not isinstance(known, dict):
+        raise SystemExit(f"{file}: elements must map element names to entries")
     for name, k in known.items():
-        screens = k.get("screens") if isinstance(k, dict) else None
-        if not screens or not isinstance(screens, list) or not str(k.get("reason", "")).strip():
-            raise SystemExit(f"{os.path.basename(path)}: {name} needs a list of screens and a reason")
+        if not isinstance(k, dict):
+            raise SystemExit(f"{file}: {name} must be an entry with screens, board and reason")
+        screens = k.get("screens")
+        if not isinstance(screens, list) or not screens:
+            raise SystemExit(f"{file}: {name} needs a list of screens")
+        if not all(isinstance(s, str) and s.strip() for s in screens):
+            raise SystemExit(f"{file}: {name} has a screen that is not a screen id")
+        for field in ("board", "reason"):
+            if not isinstance(k.get(field), str) or not k[field].strip():
+                raise SystemExit(f"{file}: {name} needs a {field} text")
     return known
 
 
 def split_known_text(diffs, screen, known):
-    """Splits a capture's text differences into new ones and known ones (each with its reason)."""
+    """Splits a capture's text differences into new ones and known ones (each with its reason). An entry applies
+    only while the board text is the one it names, so a later change to that board text shows as new."""
     new, accepted = [], []
     for d in diffs:
         k = known.get(d["name"])
-        if k and screen in k["screens"]:
+        if k and screen in k["screens"] and d["board"] == m.normalise_text(k["board"]):
             accepted.append({**d, "reason": k["reason"]})
         else:
             new.append(d)
