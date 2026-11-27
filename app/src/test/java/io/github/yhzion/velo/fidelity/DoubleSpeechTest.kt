@@ -132,8 +132,11 @@ class DoubleSpeechTest(private val width: ScanWidth) {
     private fun utterances(view: View): List<Said> =
         Speech.focusableNodes(view).filter { it.second.isNotEmpty() }.map { (info, said) -> Said(nodeName(info), said, customActions(info)) }
 
-    /** How many custom actions [info] offers: their ids are resource ids, above the standard actions' bits. */
-    private fun customActions(info: AccessibilityNodeInfo): Int = info.actionList.count { it.id > 0xFFFFFF }
+    /**
+     * How many custom actions [info] offers. Their ids are the app's resource ids; the standard actions' are bits, or
+     * since API 23 the framework's resource ids (package 0x01, as ACTION_SET_PROGRESS or ACTION_IME_ENTER): both are left out.
+     */
+    private fun customActions(info: AccessibilityNodeInfo): Int = info.actionList.count { it.id > 0xFFFFFF && it.id ushr 24 != 0x01 }
 
     private fun nodeName(info: AccessibilityNodeInfo): String =
         info.viewIdResourceName ?: Rect().also(info::getBoundsInScreen).let { "node at ${it.toShortString()}" }

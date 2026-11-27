@@ -233,7 +233,9 @@ private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Bool
     // A screen that does not open fails the scene, so no scan reads a shut stage as the screen.
     if (view.overview) LaunchedEffect(conn, view) {
         snapshotFlow { conn.connected }.first { it }
-        while (overview.tabs.isEmpty()) withFrameNanos {}
+        // Its tabs are no snapshot state, so they are asked each frame, a bounded number of times.
+        repeat(120) { if (overview.tabs.isEmpty()) withFrameNanos {} }
+        check(overview.tabs.isNotEmpty()) { "The stage got no tabs" }
         when (view) {
             SceneView.Overview -> overview.open()
             SceneView.Drum -> checkNotNull(overview.openWheel()) { "The drum did not open" }
@@ -276,7 +278,9 @@ private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Bool
         RailColumn("9:41", BatteryState(80, charging = true, powerSave = false), DeviceNetwork.Wifi,
             connectionMark(if (down) "error" else "connected", removed = false), Host,
             failure = if (down) DownFailure else null, keyboard = false, onReconnect = {}, menuEnabled = true,
-            fix = if (down) DownFix else null, onCopyCommand = {}, overviewOpen = view == SceneView.Overview || view == SceneView.PaneMove,
+            fix = if (down) DownFix else null, onCopyCommand = {},
+            // As the workspace hands the rail its state: from the overview, not from the scene's view.
+            overviewOpen = overview.showing && !overview.wheel,
             sidebarOpen = sidebar != null, keepScreenOn = false, onKeepScreenOn = {},
             keyboardAvailable = true, onMenu = { menuOpen = true }, onKeyboard = {}, onSidebar = {}, onOverview = {},
             // The focused pane's menu, as the workspace hands the rail: its Compose opens the dialog below.
@@ -285,13 +289,14 @@ private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Bool
                     onClose = {}, onCompose = { session, block -> composer = ComposerTarget(conn, session, block, 1L, composerTargetLabel(Host, panes)) },
                     showing = { it }, expanded = menuOpen, onMoveToTab = {}, onMoveToNewTab = {})
             },
-            // The boards' count, else the shown tab's place among the session's.
-            page = if (view == SceneView.Boards) RailPage(if (threePanes) 2 else 1, 4) else railPage(panes.windows.map { it.id }, shown),
+            // The boards' count, else the shown tab's place among the session's, or the drum's front tab's.
+            page = if (view == SceneView.Boards) RailPage(if (threePanes) 2 else 1, 4)
+            else railPage(panes.windows.map { it.id }, shown, front = if (overview.wheel) overview.wheelFront else -1),
             strip = {
                 if (view == SceneView.Boards) Spacer(Modifier.weight(1f))
                 // As the workspace draws it: it turns only while the overview is shut, and a turn sends nothing here.
-                else RailScrubber(wheelWindows(conn.state, conn.activityReadState, conn.connected), shown = shown, scrolls = !view.overview,
-                    turns = conn.connected && !view.overview, haptics = false, pane = { focused }, touchEpoch = { 0 }, pressed = { false },
+                else RailScrubber(wheelWindows(conn.state, conn.activityReadState, conn.connected), shown = shown, scrolls = !overview.showing,
+                    turns = conn.connected && !overview.showing && overview.paneMove == null && !overview.pinching, haptics = false, pane = { focused }, touchEpoch = { 0 }, pressed = { false },
                     onScroll = { _, _ -> false }, onOpen = { overview.openWheel() }, onTurn = overview::turnWheel,
                     onPick = { overview.pickWheel(it, select = false) }, onSelect = {}, modifier = Modifier.weight(1f))
             })
