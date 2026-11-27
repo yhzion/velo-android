@@ -89,9 +89,16 @@ internal class ActivityReadState(saved: String? = null, private val persist: (St
         return views.values.flatten().toSet()
     }
 
+    /**
+     * The tab's tile, mark and badge: its panes' unseen or animating report with the highest rank, then the newest.
+     * A seen report loses its mark but keeps the agent it names on the tile: when the shown report names no agent,
+     * the tile shows the agent of the best seen report, ranked the same way, and else the program ([TabRow.icon]).
+     * Both come from [records] as they are now, so a report that has left the pane takes its agent with it.
+     */
     fun activity(row: TabRow, connected: Boolean): TabActivity {
         if (!connected) return TabActivity(row.icon, row.indicatorWhile(false), null, null)
         var selected: Candidate? = null
+        var seenAgent: Candidate? = null
         for (block in row.terminalBlocks.ifEmpty { listOfNotNull(row.block) }) {
             val target = PaneAddress(row.session, row.tab, block)
             val lead = block == row.block
@@ -113,14 +120,26 @@ internal class ActivityReadState(saved: String? = null, private val persist: (St
             }
             for (candidate in candidates) {
                 val receipt = candidate.receipt
-                if (!candidate.mark.animates && seen[target to receipt.id] == receipt) continue
-                if (selected == null || compareValuesBy(candidate, selected, { it.rank }, { it.at }) > 0) selected = candidate
+                if (!candidate.mark.animates && seen[target to receipt.id] == receipt) {
+                    // Seen: no mark, but the agent it names still runs in the pane.
+                    if (candidate.agent != null && outranks(candidate, seenAgent)) seenAgent = candidate
+                    continue
+                }
+                if (outranks(candidate, selected)) selected = candidate
             }
         }
-        val result = selected ?: return TabActivity(row.icon, row.indicator, null, row.since)
-        return TabActivity(result.icon?.takeIf { TabAgent.from(it) != null } ?: row.icon, result.mark,
-            result.mark.takeUnless { it.animates }, result.at?.toEpochMilli())
+        val fallback = seenAgent?.agent ?: row.icon
+        val result = selected ?: return TabActivity(fallback, row.indicator, null, row.since)
+        return TabActivity(result.agent ?: fallback, result.mark, result.mark.takeUnless { it.animates },
+            result.at?.toEpochMilli())
     }
+
+    /** The agent this report names, or null when its icon is a program's (a snapshot's [TabRow.icon]). */
+    private val Candidate.agent get() = icon?.takeIf { TabAgent.from(it) != null }
+
+    /** Whether [candidate] beats [best] for the tile: the higher rank, then the newer report. */
+    private fun outranks(candidate: Candidate, best: Candidate?) =
+        best == null || compareValuesBy(candidate, best, { it.rank }, { it.at }) > 0
 
     private fun forget(target: PaneAddress, id: String?): Boolean {
         val key = target to id

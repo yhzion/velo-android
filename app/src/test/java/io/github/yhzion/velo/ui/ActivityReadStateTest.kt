@@ -76,4 +76,54 @@ class ActivityReadStateTest {
         assertEquals(TabIndicator.Done, state.activity(finished, true).badge)
         assertNull(state.activity(finished, false).badge)
     }
+
+    /** A `node` tab whose pane runs Claude: the tile is Claude only because a report names it. */
+    private val node = row.copy(icon = "node", program = "node")
+
+    @Test fun aSeenReportKeepsTheAgentItNamesButLosesItsBadge() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        val seen = state.activity(node, true)
+        assertEquals("claude", seen.icon)
+        assertNull(seen.badge)
+    }
+
+    @Test fun anUnseenReportShowsItsBadgeAndTheAgentItNames() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        val unseen = state.activity(node, true)
+        assertEquals("claude", unseen.icon)
+        assertEquals(TabIndicator.Done, unseen.badge)
+    }
+
+    @Test fun aSeenReportThatLeavesThePaneTakesItsAgentWithIt() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        state.update(lead, emptyMap())
+        assertEquals("node", state.activity(node, true).icon)
+    }
+
+    @Test fun offlineShowsTheProgramEvenWhileAReportNamesAnAgent() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        assertEquals("node", state.activity(node, false).icon)
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        assertEquals("node", state.activity(node, false).icon)
+    }
+
+    @Test fun amongSeenReportsTheAgentFollowsTheShownReportsRanking() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.update(split, mapOf("turn" to SeenReport("error", later, agent = "codex")))
+        state.show(1, mapOf(lead to null, split to null))
+        state.hide(1)
+        // Error outranks Done, as it would if both were unseen.
+        assertEquals("codex", state.activity(node, true).icon)
+        assertNull(state.activity(node, true).badge)
+    }
 }
