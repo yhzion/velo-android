@@ -228,7 +228,7 @@ const pane = @import("pane");
 const glyphs = @import("glyphs.zig");
 
 /// A JNIEnv for the glyph source (`glyphs.Glyphs`): it counts the global references and finds
-/// every method, or none. A VM that has it for every thread (`ListenerVm`) lets `jni.attach`
+/// every method, or none. A VM that attaches any thread to it (`ListenerVm`) lets `jni.attach`
 /// return it anywhere.
 const FakeListener = struct {
     /// What `Env` points to: the function table.
@@ -275,6 +275,7 @@ const FakeListener = struct {
         self.globals -= 1;
         self.deleted += 1;
         self.deleted_on = std.Thread.getCurrentId();
+        ListenerVm.note(.delete);
     }
 
     fn getObjectClass(_: [*c]c.JNIEnv, _: c.jobject) callconv(.c) c.jclass {
@@ -303,23 +304,64 @@ const FakeListener = struct {
     }
 };
 
-/// A JavaVM that has attached every thread already, with `env`.
+/// A JavaVM that knows a thread only once it attached, as Android's knows no render thread
+/// before `jni.attach`. Every thread it attaches gets `env`. It notes its attaches and detaches,
+/// and `FakeListener` its deletes, in `events`, in the order they happen.
 const ListenerVm = struct {
-    var functions: c.struct_JNIInvokeInterface = .{ .GetEnv = getEnv };
+    var functions: c.struct_JNIInvokeInterface = .{
+        .GetEnv = getEnv,
+        .AttachCurrentThread = attachCurrentThread,
+        .DetachCurrentThread = detachCurrentThread,
+    };
     var vm: c.JavaVM = &functions;
     var env: Env = null;
+    threadlocal var attached = false;
+
+    const Event = enum { attach, delete, detach };
+    /// Written by one thread at a time; the test reads them after `join`.
+    var events: [8]Event = undefined;
+    var count: usize = 0;
+
+    fn note(event: Event) void {
+        if (count < events.len) events[count] = event;
+        count += 1;
+    }
+
+    fn noted() []const Event {
+        return events[0..@min(count, events.len)];
+    }
 
     fn getEnv(_: [*c]c.JavaVM, raw: [*c]?*anyopaque, _: c.jint) callconv(.c) c.jint {
+        if (!attached) {
+            raw.* = null;
+            return c.JNI_EDETACHED;
+        }
         raw.* = @ptrCast(env);
+        return c.JNI_OK;
+    }
+
+    fn attachCurrentThread(_: [*c]c.JavaVM, out: [*c][*c]c.JNIEnv, _: ?*anyopaque) callconv(.c) c.jint {
+        attached = true;
+        out.* = env;
+        note(.attach);
+        return c.JNI_OK;
+    }
+
+    fn detachCurrentThread(_: [*c]c.JavaVM) callconv(.c) c.jint {
+        attached = false;
+        note(.detach);
         return c.JNI_OK;
     }
 };
 
 test "glyph source: its own reference to the listener goes with its last holder, on that holder's thread (#178)" {
     // jni.zig's `Handle` holds the source's first reference and each render link one more. A
-    // render thread its pane gave up may be the last: the reference is deleted there.
+    // render thread its pane gave up may be the last: the reference is deleted there. A thread
+    // that never drew a glyph is not attached yet: `free` attaches it, and it is detached when it
+    // exits (`detachOnThreadExit`).
     var java: FakeListener = .{};
     ListenerVm.env = java.env();
+    ListenerVm.count = 0;
     _ = jni.onLoad(&ListenerVm.vm);
     defer _ = jni.onLoad(null);
     const source = (try glyphs.Glyphs.create(java.env(), @ptrCast(&FakeListener.some_object))).source();
@@ -341,6 +383,7 @@ test "glyph source: its own reference to the listener goes with its last holder,
     try std.testing.expectEqual(0, java.globals);
     try std.testing.expectEqual(1, java.deleted);
     try std.testing.expectEqual(Last.id, java.deleted_on);
+    try std.testing.expectEqualSlices(ListenerVm.Event, &.{ .attach, .delete, .detach }, ListenerVm.noted());
 }
 
 test "glyph source: a listener without rasterizeGlyph keeps no reference to it (#178)" {
