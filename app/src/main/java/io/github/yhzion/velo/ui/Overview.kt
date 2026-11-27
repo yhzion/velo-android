@@ -1299,8 +1299,8 @@ internal class OverviewState(
     /**
      * The fingers of a pinch that could take a step of the ladder lifted, or became another gesture: [op] is the step it
      * sends, or none ([liftOp]). Sent, the text has its size from before the pinch ([startScale]) and the [preview] goes
-     * on to the pane's other place, where it stays until the server has taken the step. Not sent, the preview goes at
-     * once and the text keeps the size it has, as after any pinch.
+     * on to the pane's other place, where it stays until the server answers ([stepAnswered]). Not sent, the preview goes
+     * at once and the text keeps the size it has, as after any pinch.
      */
     fun endPreview(startScale: Float, op: String?) {
         previewMotion?.cancel()
@@ -1316,10 +1316,11 @@ internal class OverviewState(
         previewShare = 1f
         previewMotion = scope.launch {
             animate(previewReach, 1f, 0f, spring(dampingRatio = 1f, stiffness = PREVIEW_STIFFNESS)) { value, _ -> previewReach = value }
-            // A step the server does not take (the pane went, the tab changed) leaves the tab as it was.
+            // A step the server does not take (the pane went, the tab changed) leaves the tab as it was. Another pane
+            // zoomed meanwhile (the minimap, another device) is an answer too: the outline would stand over that pane.
             withTimeoutOrNull(PREVIEW_WAIT_MS) {
                 snapshotFlow { conn.state.windows.firstOrNull { it.id == look.tab }?.zoomed }
-                    .first { if (look.toward == LayoutPinch.Zoom) it == look.block else it == null }
+                    .first { stepAnswered(look.toward, look.block, it) }
             }
             preview = null
             previewShare = 0f

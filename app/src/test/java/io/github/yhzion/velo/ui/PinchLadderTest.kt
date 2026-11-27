@@ -177,6 +177,16 @@ class PinchLadderTest {
         assertNull(layoutPinch(withFloat.copy(zoomed = "a"), "f", connected = true))
     }
 
+    @Test fun thePreviewWaitsOnlyUntilTheTabsFullScreenChanges() {
+        assertFalse("not yet zoomed", stepAnswered(LayoutPinch.Zoom, "a", null))
+        assertTrue(stepAnswered(LayoutPinch.Zoom, "a", "a"))
+        assertTrue("another device zoomed another pane", stepAnswered(LayoutPinch.Zoom, "a", "b"))
+        assertFalse("still full screen", stepAnswered(LayoutPinch.Unzoom, "a", "a"))
+        assertTrue(stepAnswered(LayoutPinch.Unzoom, "a", null))
+        // The minimap zoomed another pane before the server split the tab: the outline would stand over that pane.
+        assertTrue("the minimap zoomed another pane", stepAnswered(LayoutPinch.Unzoom, "a", "b"))
+    }
+
     @Test fun aPinchInOnAFullScreenPaneScalesTheTextButOpensNoOverview() {
         val min = HostConnection.MIN_SCALE
         assertEquals(PinchStep(0.8f, 0f), ladderStep(1f, 0.8f, LayoutPinch.Unzoom))

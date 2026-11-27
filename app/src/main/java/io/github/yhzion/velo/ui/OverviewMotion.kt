@@ -985,6 +985,14 @@ fun stepAtLift(toward: LayoutPinch?, state: UiState, tab: String?, block: String
 }
 
 /**
+ * Whether the server has answered a fast pinch that sent [toward] for [block], now that the tab's full screen pane is
+ * [zoomed]: the tab no longer has the full screen it had then. Either the step was taken, or the tab changed otherwise
+ * meanwhile (the minimap or another device zoomed another pane); the preview has nothing left to wait for.
+ */
+fun stepAnswered(toward: LayoutPinch, block: String, zoomed: String?): Boolean =
+    if (toward == LayoutPinch.Zoom) zoomed != null else zoomed != block
+
+/**
  * How far toward its other place the preview takes the pane, 0 to 1, with the fingers [lnRatio] apart: [PREVIEW_REACH]
  * as the intent turns on, a little further as the fingers go on, up to [PREVIEW_REACH_MAX].
  */
