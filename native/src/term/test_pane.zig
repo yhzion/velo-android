@@ -979,8 +979,10 @@ test "attach in place: the window the pane draws to takes the size and nothing e
     // The same window and size again (a preview becomes the shown pane, or back): the
     // renderer is woken and nothing else changes.
     p.wake = false;
+    p.present_due = false;
     try p.attachSurface(&window_a, 300, 200);
     try std.testing.expect(p.wake);
+    try std.testing.expect(p.present_due); // drawn even when it draws what the window shows
     try std.testing.expectEqual(@as(?*anyopaque, &window_a), p.window);
     try std.testing.expectEqual(@as(f32, 2), p.scale);
     try std.testing.expectEqual(pan_x, p.pan_x);
