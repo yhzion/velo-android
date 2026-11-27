@@ -11,13 +11,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -209,6 +213,84 @@ class ZoomMinimapUiTest {
         for (block in listOf("a", "b", "c", "d")) {
             compose.onNodeWithTag("minimap-picker-cell-$block").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         }
+    }
+
+    /** [n] panes p0, p1, … of one width, side by side ([dir] row) or one over another (column). */
+    private fun line(n: Int, dir: String = "row", from: Int = 0): LayoutNode =
+        if (n == 1) LayoutNode(block = "p$from")
+        else LayoutNode(dir = dir, ratio = 1f / n, first = LayoutNode(block = "p$from"), second = line(n - 1, dir, from + 1))
+
+    /**
+     * Scrolls the picker's map by [dx], [dy] px at a time, with the scroll action a screen reader uses, until
+     * [block]'s cell shows. The map scrolls sideways, and up and down in a node of its own.
+     */
+    private fun scrollTo(block: String, dx: Float, dy: Float = 0f) {
+        val tag = if (dx != 0f) "minimap-picker-map" else "minimap-picker-rows"
+        repeat(20) {
+            if (compose.onNodeWithTag("minimap-picker-cell-$block").fetchSemanticsNode().boundsInRoot.width > 0f) return
+            compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.ScrollBy) { it(dx, dy) }
+        }
+    }
+
+    @Test fun nineSideBySideScrollAndStayFingersTargets() {
+        // Nine 48 dp cells and the room around them are wider than the popover (#144): the map scrolls in it.
+        zoomed = "p8"
+        show(line(9))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val root = compose.onRoot().getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertTrue("the picker ${picker.left}..${picker.right} on the screen", picker.left >= root.left && picker.right <= root.right)
+        // It opens on the zoomed pane, the last; the first is off the map until it scrolls there.
+        compose.onNodeWithTag("minimap-picker-cell-p8").assertIsDisplayed()
+        compose.onNodeWithTag("minimap-picker-cell-p0").assertIsNotDisplayed()
+        for (i in 8 downTo 0) {
+            scrollTo("p$i", -100f)
+            compose.onNodeWithTag("minimap-picker-cell-p$i").assertIsDisplayed()
+                .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        }
+        scrollTo("p0", -100f)
+        compose.onNodeWithTag("minimap-picker-cell-p0").performClick()
+        assertEquals(listOf("p0"), zoomedTo)
+    }
+
+    @Config(qualifiers = "w900dp-h700dp-420dpi")
+    @Test fun aScrollingPickerEndsAtTheMinimapOnAWideScreen() {
+        // The map is wider than the popover, which scrolls it: the popover's end stays at the minimap's, as with fewer panes.
+        zoomed = "p8"
+        show(line(9))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val mini = compose.onNodeWithTag("caption-minimap").getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertEquals(mini.right.value, picker.right.value, 1f)
+    }
+
+    @Test fun twelveSideBySideScrollInRtl() {
+        // The layout's first pane is on the right in RTL: the map opens on the zoomed one, the first, at its start.
+        zoomed = "p0"
+        show(line(12), rtl = true)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        val first = compose.onNodeWithTag("minimap-picker-cell-p0").assertIsDisplayed().getBoundsInRoot()
+        assertTrue("p0 at the picker's right", first.right <= picker.right && first.left > (picker.left + picker.right) / 2)
+        compose.onNodeWithTag("minimap-picker-cell-p11").assertIsNotDisplayed()
+        scrollTo("p11", 100f)
+        compose.onNodeWithTag("minimap-picker-cell-p11").assertIsDisplayed().performClick()
+        assertEquals(listOf("p11"), zoomedTo)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-420dpi")
+    @Test fun nineStackedScrollOnALowScreen() {
+        // Nine rows of 48 dp are higher than a phone held sideways: the map scrolls up and down too.
+        zoomed = "p0"
+        show(line(9, "column"))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val root = compose.onRoot().getBoundsInRoot()
+        val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
+        assertTrue("the picker ${picker.top}..${picker.bottom} on the screen", picker.top >= root.top && picker.bottom <= root.bottom)
+        compose.onNodeWithTag("minimap-picker-cell-p8").assertIsNotDisplayed()
+        scrollTo("p8", 0f, 100f)
+        compose.onNodeWithTag("minimap-picker-cell-p8").assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        assertEquals(listOf("p8"), zoomedTo)
     }
 
     @Test fun withoutTheServerTheMinimapSendsNothing() {

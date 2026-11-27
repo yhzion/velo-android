@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -148,7 +153,7 @@ internal fun zoomCellDescription(map: ZoomMap, index: Int, cell: ZoomCell, name:
 
 /**
  * The picker's map ([cells] scaled to it) in dp: at least [width] by [height], and grown so that the narrowest and the
- * shortest cell are [least] across, a finger's target.
+ * shortest cell are [least] across, a finger's target. A map grown past the popover scrolls in it (#144).
  */
 internal fun zoomPickerSize(cells: List<PaneRect>, width: Float, height: Float, least: Float): Pair<Float, Float> {
     val w = cells.filter { it.width > 0f }.maxOfOrNull { least / it.width } ?: 0f
@@ -260,9 +265,11 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
         VeloTheme.medium(PickerHeight.dp).value, TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value)
     val padding = VeloTheme.sizes.overlayPadding
     // Above the caption, its end at the minimap's end: an anchor that reaches the screen's bottom leaves no room under it.
+    val most = VeloTheme.sizes.dialogWidth
     val anchor = {
         at?.let { mini ->
-            val width = with(density) { (mapW.dp + padding * 2).roundToPx() }
+            // No wider than the popover, which scrolls a wider map: its end stays at the minimap's.
+            val width = with(density) { minOf(mapW.dp + padding * 2, most).roundToPx() }
             val left = if (rtl) mini.left else mini.right - width
             IntRect(left, mini.top, left + width, Int.MAX_VALUE / 2)
         }
@@ -287,7 +294,8 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
 /**
  * The picker (`.pop`): its title, then a button per pane where the layout puts it, [width] by [height], named with
  * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL; the floating ones come last, so they
- * are drawn and touched over the tiled ones.
+ * are drawn and touched over the tiled ones. A map larger than the popover scrolls, as the minimized panes' row
+ * does, and opens on the zoomed cell.
  */
 @Composable
 private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> String, onPick: (String) -> Unit) {
@@ -295,34 +303,42 @@ private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> St
     val sheet = VeloTheme.colors.sheet
     val unit = VeloTheme.medium(1.dp)
     Text("Panes in this tab", Modifier.padding(bottom = unit * 8), color = c.secondary, style = VeloTheme.type.caption)
-    Box(Modifier.size(width, height)) {
-        for ((index, cell) in map.cells.withIndex()) {
-            val r = cell.rect
-            val on = cell.block == map.zoomed
-            val named = name(cell.block)
-            Box(
-                // From the left edge, not the line's start: the rectangles are mirrored already.
-                Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset(width * r.left, height * r.top).size(width * r.width, height * r.height)
-                    .padding(unit * PickerCellInset).testTag("minimap-picker-cell-${cell.block}")
-                    .background(if (on) c.accent else c.glass, rounded(unit * 7))
-                    .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
-                    .clickable(role = Role.Button) { onPick(cell.block) }
-                    .semantics {
-                        contentDescription = zoomCellDescription(map, index, cell, named)
-                        selected = on
+    val shown = remember { BringIntoViewRequester() }
+    LaunchedEffect(Unit) { shown.bringIntoView() }
+    // One scroll a node: a node keeps one scroll action, and a screen reader needs both.
+    Box(Modifier.testTag("minimap-picker-map").horizontalScroll(rememberScrollState())) {
+        Box(Modifier.testTag("minimap-picker-rows").verticalScroll(rememberScrollState())) {
+            Box(Modifier.size(width, height)) {
+                for ((index, cell) in map.cells.withIndex()) {
+                    val r = cell.rect
+                    val on = cell.block == map.zoomed
+                    val named = name(cell.block)
+                    Box(
+                        // From the left edge, not the line's start: the rectangles are mirrored already.
+                        Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset(width * r.left, height * r.top).size(width * r.width, height * r.height)
+                            .then(if (on) Modifier.bringIntoViewRequester(shown) else Modifier)
+                            .padding(unit * PickerCellInset).testTag("minimap-picker-cell-${cell.block}")
+                            .background(if (on) c.accent else c.glass, rounded(unit * 7))
+                            .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
+                            .clickable(role = Role.Button) { onPick(cell.block) }
+                            .semantics {
+                                contentDescription = zoomCellDescription(map, index, cell, named)
+                                selected = on
+                            }
+                            .padding(unit * 7),
+                    ) {
+                        Column(Modifier.align(Alignment.BottomStart).clearAndSetSemantics { },
+                            verticalArrangement = Arrangement.spacedBy(unit * 2)) {
+                            Text(named, color = if (on) c.onAccent else c.text, style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Pane ${index + 1}", color = if (on) c.onAccent.copy(alpha = 0.7f) else c.secondary, style = VeloTheme.type.caption,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        cell.alert?.let(::tileDot)?.let { dot ->
+                            Box(Modifier.align(Alignment.TopEnd).size(unit * 6)
+                                .background(dotTint(dot, sheet.accent, sheet.warning, sheet.danger), CircleShape))
+                        }
                     }
-                    .padding(unit * 7),
-            ) {
-                Column(Modifier.align(Alignment.BottomStart).clearAndSetSemantics { },
-                    verticalArrangement = Arrangement.spacedBy(unit * 2)) {
-                    Text(named, color = if (on) c.onAccent else c.text, style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Pane ${index + 1}", color = if (on) c.onAccent.copy(alpha = 0.7f) else c.secondary, style = VeloTheme.type.caption,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                cell.alert?.let(::tileDot)?.let { dot ->
-                    Box(Modifier.align(Alignment.TopEnd).size(unit * 6)
-                        .background(dotTint(dot, sheet.accent, sheet.warning, sheet.danger), CircleShape))
                 }
             }
         }
