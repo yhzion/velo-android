@@ -47,7 +47,31 @@ internal fun rowMark(indicator: TabIndicator?): RowMark? = when (indicator) {
  * What a screen reader says for a tab's tile: its brand's name and its panes ([tileLabel]). A program
  * without a brand of its own is called by its name ([hint]), as its mark was before the tiles.
  */
-internal fun tabTileDescription(tile: TabTileLook, hint: String?): String {
-    val named = if (tile.brand != TileBrand.Terminal) tile.brand.label else hint?.takeIf { it.isNotBlank() } ?: tile.brand.label
-    return named + if (tile.panes > 1) ", ${tile.panes} panes" else ""
-}
+internal fun tabTileDescription(tile: TabTileLook, hint: String?): String =
+    listOfNotNull(tileProgram(tile, hint), tilePanes(tile)).joinToString(", ")
+
+/** The program a tile names: its brand's name, or the program's own ([hint]) for one without a brand. */
+private fun tileProgram(tile: TabTileLook, hint: String?): String =
+    if (tile.brand != TileBrand.Terminal) tile.brand.label else hint?.takeIf { it.isNotBlank() } ?: tile.brand.label
+
+private fun tilePanes(tile: TabTileLook): String? = if (tile.panes > 1) "${tile.panes} panes" else null
+
+/**
+ * What a screen reader hears for a tab's row besides its second line: the tile's [description] with
+ * its [state], and the row's name unless it only says the tile's program again ([nameSaid]).
+ */
+internal data class RowTileSpeech(val description: String, val state: String?, val nameSaid: Boolean)
+
+/**
+ * What a tab's row says, so it says each part once (#150). The tile says the program and the panes
+ * ([tabTileDescription]); the row's [name] is said unless it is that program. The second line says
+ * what the program does now ([mark]) and the folder ([tabRowSubtitle]), so the tile's state is only
+ * a report not yet seen ([badge]): "Unread", with the report's words when the second line does not
+ * say them.
+ */
+internal fun tabRowTileSpeech(tile: TabTileLook, hint: String?, name: String, badge: TabIndicator?, mark: TabIndicator?): RowTileSpeech =
+    RowTileSpeech(
+        tabTileDescription(tile, hint),
+        badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" },
+        nameSaid = !tileProgram(tile, hint).equals(name.trim(), ignoreCase = true),
+    )

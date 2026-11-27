@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -228,7 +229,8 @@ private val LayerRim = Color.White.copy(alpha = 0.18f)
  * [tag] is the tile's test tag, `tab-tile-<tab id>`; its parts get the canvas's names under it
  * (`-face`, `-logo`, `-letter`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
  * what a screen reader says, with [stateDescription] (the state its dot shows); a null
- * [contentDescription] leaves the tile out, for a row that says it itself.
+ * [contentDescription] leaves the tile out, for a row that says it itself. The letter and the pane
+ * count are part of the picture and are never said on their own.
  */
 @Composable
 fun TabTile(
@@ -283,8 +285,9 @@ fun TabTile(
                 Icon(painterResource(brand.logo), null, Modifier.size(u((s * brand.glyphShare).roundToInt().toFloat())).tagged("logo"), tint = ink)
             } else if (brand.letter != null) {
                 // The letter's box is its size high, as the board sets it (line-height 1); the glyph keeps its own room.
+                // Part of the picture: the tile's description names the program (#150).
                 Text(
-                    brand.letter, Modifier.tagged("letter").height(u(tileLetter(s, brand.mono))).wrapContentHeight(unbounded = true),
+                    brand.letter, Modifier.tagged("letter").semantics { hideFromAccessibility() }.height(u(tileLetter(s, brand.mono))).wrapContentHeight(unbounded = true),
                     color = ink, maxLines = 1,
                     fontSize = (tileLetter(s, brand.mono) * unit).sp, lineHeight = (tileLetter(s, brand.mono) * unit).sp,
                     fontWeight = FontWeight.Bold, fontFamily = if (brand.mono) FontFamily.Monospace else null,
@@ -316,7 +319,7 @@ fun TabTile(
                     .padding(horizontal = u(4f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("$panes", color = colors.text, fontSize = (10 * unit).sp, lineHeight = (ChipHeight * unit).sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text("$panes", Modifier.semantics { hideFromAccessibility() }, color = colors.text, fontSize = (10 * unit).sp, lineHeight = (ChipHeight * unit).sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
     }

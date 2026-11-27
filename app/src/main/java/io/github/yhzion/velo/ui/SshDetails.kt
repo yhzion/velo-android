@@ -466,7 +466,7 @@ internal fun SshDetailsPanel(app: AppController, remote: Remote, onDismiss: () -
  * every other time.
  */
 @Composable
-private fun DetailRow(row: SshDetailRow, focus: FocusRequester, takesFocus: Boolean, onFocus: (Boolean) -> Unit, forgetEnabled: Boolean, onForget: () -> Unit) {
+internal fun DetailRow(row: SshDetailRow, focus: FocusRequester, takesFocus: Boolean, onFocus: (Boolean) -> Unit, forgetEnabled: Boolean, onForget: () -> Unit) {
     val s = VeloTheme.sizes
     val c = VeloTheme.surface
     // Not read while composing: a change recomposes nothing.
@@ -485,6 +485,6 @@ private fun DetailRow(row: SshDetailRow, focus: FocusRequester, takesFocus: Bool
                 Text(line.text, style = style, color = c.secondary)
             }
         }
-        if (row.canForget) VeloButton(FORGET, onForget, Modifier.semantics { contentDescription = row.detail.forgetDescription }, enabled = forgetEnabled)
+        if (row.canForget) VeloButton(FORGET, onForget, enabled = forgetEnabled, contentDescription = row.detail.forgetDescription)
     }
 }

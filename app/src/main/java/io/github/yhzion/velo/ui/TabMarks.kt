@@ -19,24 +19,28 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
 import io.github.yhzion.velo.ui.theme.VeloTheme
 
-/** The offline mark drawn at the end of a disconnected tab's row or caption. */
+/**
+ * The offline mark drawn at the end of a disconnected tab's row or caption. A screen reader hears
+ * [description]; null is for a row whose second line says it.
+ */
 @Composable
-internal fun OfflineMark(markHeight: Dp = VeloTheme.sizes.statusIcon) {
-    Icon(Icons.Default.CloudOff, TabIndicator.Offline.description, Modifier.size(markHeight), tint = VeloTheme.surface.secondary)
+internal fun OfflineMark(markHeight: Dp = VeloTheme.sizes.statusIcon, description: String? = TabIndicator.Offline.description) {
+    Icon(Icons.Default.CloudOff, description, Modifier.size(markHeight), tint = VeloTheme.surface.secondary)
 }
 
 /**
  * The working mark as the Sidebar and Pane boards draw it: three dots [dot] across, [gap] apart, in
- * the accent, lit one after another. A screen reader hears [description] once for all three.
+ * the accent, lit one after another. A screen reader hears [description] once for all three; null
+ * is for a row whose second line says it.
  */
 @Composable
-internal fun WorkingDots(dot: Dp, gap: Dp, modifier: Modifier = Modifier, description: String = TabIndicator.Working.description) {
+internal fun WorkingDots(dot: Dp, gap: Dp, modifier: Modifier = Modifier, description: String? = TabIndicator.Working.description) {
     val accent = VeloTheme.surface.accent
     val phase by rememberInfiniteTransition(label = "Working dots").animateFloat(
         initialValue = 0f, targetValue = 3f,
         animationSpec = infiniteRepeatable(tween(3 * DotIntervalMs, easing = LinearEasing)), label = "Dot phase",
     )
-    Canvas(modifier.size(dot * 3 + gap * 2, dot).clearAndSetSemantics { contentDescription = description }) {
+    Canvas(modifier.size(dot * 3 + gap * 2, dot).clearAndSetSemantics { if (description != null) contentDescription = description }) {
         val radius = size.height / 2
         val step = (size.width - size.height) / 2
         repeat(3) { index -> drawCircle(accent.copy(alpha = workingDotAlpha(phase, index)), radius, Offset(radius + index * step, center.y)) }

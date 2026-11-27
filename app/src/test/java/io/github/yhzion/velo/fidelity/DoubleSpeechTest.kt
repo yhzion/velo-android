@@ -15,7 +15,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.test.junit4.createComposeRule
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -43,19 +42,6 @@ class DoubleSpeechTest {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
 
-    /** A place known to say a thing twice: the scene, the start of what its node says, and the issue that fixes it. */
-    private data class Known(val scene: String, val saysFirst: String, val issue: Int)
-
-    /** Remove an entry when its issue is fixed; the test fails while an entry no longer says a thing twice. */
-    private val known = listOf(
-        Known("workspace-sidebar", "Claude Code", 150),
-        Known("workspace-sidebar", "Codex, 2 panes", 150),
-        Known("workspace-sidebar", "zsh, 4 panes", 150),
-        Known("workspace-docked", "Claude Code", 150),
-        Known("workspace-docked", "Codex, 2 panes", 150),
-        Known("workspace-docked", "zsh, 4 panes", 150),
-    )
-
     /** What one focusable node says: its own words first, then its descendants'. */
     private class Said(val node: String, val parts: List<String>) {
         override fun toString() = "$node: \"${parts.joinToString(" | ")}\""
@@ -71,18 +57,13 @@ class DoubleSpeechTest {
             // Tags as resource ids name the node a failure points at; nothing else in the tree changes.
             Box(Modifier.semantics { testTagsAsResourceId = true }) { key(current) { FidelityScenes.getValue(current)() } }
         }
-        val unknown = mutableListOf<String>()
-        val stale = known.toMutableList()
+        val twiceSaid = mutableListOf<String>()
         for (name in names) {
             current = name
             compose.waitForIdle()
-            for (said in compose.runOnIdle { utterances(view) }.filter { twice(it.parts) }) {
-                val entry = known.firstOrNull { it.scene == name && said.parts.first().startsWith(it.saysFirst) }
-                if (entry == null) unknown += "$name, $said" else stale -= entry
-            }
+            for (said in compose.runOnIdle { utterances(view) }.filter { twice(it.parts) }) twiceSaid += "$name, $said"
         }
-        assertTrue("Said twice to a screen reader (scene, node, words):\n" + unknown.joinToString("\n"), unknown.isEmpty())
-        assertEquals("Known places that no longer say a thing twice: remove them from the list", emptyList<Known>(), stale)
+        assertTrue("Said twice to a screen reader (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
     }
 
     @Test fun theCheckFindsADescriptionOverItsText() {

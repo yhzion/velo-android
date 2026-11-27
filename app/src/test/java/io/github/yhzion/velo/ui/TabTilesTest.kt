@@ -108,4 +108,20 @@ class TabTilesTest {
         assertFalse(said(TabInfo("w", program = "htop", panes = 6)).isEmpty())
         assertTrue(said(TabInfo("w", program = "htop", panes = 6)).endsWith("6 panes"))
     }
+
+    @Test fun aRowSaysItsTileAndItsNameOnce() {
+        val claude = TabTileLook(TileBrand.Claude, 1, null)
+        val zsh = TabTileLook(TileBrand.Zsh, 4, null)
+        // What the program does now is the second line's words, not the tile's state.
+        assertEquals(RowTileSpeech("Claude Code", null, true), tabRowTileSpeech(claude, null, "Refactor the sync queue", null, TabIndicator.Working))
+        // A row named after its program: the tile says it, the name is not said again.
+        assertEquals(RowTileSpeech("zsh, 4 panes", null, false), tabRowTileSpeech(zsh, null, "zsh", null, null))
+        assertEquals(RowTileSpeech("zsh, 4 panes", null, false), tabRowTileSpeech(zsh, null, " ZSH ", null, null))
+        assertEquals(RowTileSpeech("zsh", "Unread, Error", false), tabRowTileSpeech(TabTileLook(TileBrand.Zsh, 1, null), null, "zsh", TabIndicator.Error, null))
+        // A report not yet seen: "Unread", and its words only when the second line does not say them.
+        assertEquals(RowTileSpeech("Claude Code", "Unread", true), tabRowTileSpeech(claude, null, "fix", TabIndicator.Waiting, TabIndicator.Waiting))
+        assertEquals(RowTileSpeech("Claude Code", "Unread, Completed", true), tabRowTileSpeech(claude, null, "fix", TabIndicator.Done, null))
+        // A program without a brand is named by its hint, and the name the same way.
+        assertEquals(RowTileSpeech("node, 2 panes", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 2, null), "node", "node", null, null))
+    }
 }

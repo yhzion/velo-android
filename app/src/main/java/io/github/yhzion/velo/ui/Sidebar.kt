@@ -420,6 +420,7 @@ private fun TabRowView(
     val ticker = message?.takeIf { connected && showsTicker(activity.badge, it) }
     val type = VeloTheme.type
     val tile = tabTile(row, activity)
+    val said = tabRowTileSpeech(tile, activity.icon ?: row.icon, row.name, activity.badge, mark)
     val id = row.tab
     Box {
         TabListRow(row.name, onSelect, Modifier.padding(horizontal = 8.bd).pointerInput(threshold) {
@@ -429,24 +430,22 @@ private fun TabRowView(
                 if (swipes) revealFeel(shown, drag, drag + dx, threshold)?.let(feel)
                 drag += dx
             }
-        }, subtitle = subtitle, selected = row.shown, onLongClick = { menu = true }, id = id,
+        }, subtitle = subtitle, selected = row.shown, onLongClick = { menu = true }, id = id, titleSaid = said.nameSaid,
             titleContent = if (ticker != null) {
                 { TitleTicker(row.name, ticker, type.body.naturalLines(), VeloTheme.surface.text, motion) }
             } else null,
             tile = {
                 BouncingMark(connected && bouncesIcon(activity.badge), motion) {
                     TabTile(tile.brand, panes = tile.panes, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
-                        contentDescription = tabTileDescription(tile, activity.icon ?: row.icon),
-                        stateDescription = activity.badge?.let { "Unread, ${it.description}" } ?: mark?.description)
+                        contentDescription = said.description, stateDescription = said.state)
                 }
             }, trailing = {
+                // The second line says what the program does now: the marks are drawn only (#150).
                 when (rowMark(mark)) {
-                    RowMark.Working -> WorkingDots(5.bd, 4.bd, Modifier.testTag("tab-working-$id").padding(end = 8.bd),
-                        description = mark?.description ?: TabIndicator.Working.description)
-                    // The second line says it waits: the dot is drawn only.
+                    RowMark.Working -> WorkingDots(5.bd, 4.bd, Modifier.testTag("tab-working-$id").padding(end = 8.bd), description = null)
                     RowMark.Waiting -> Box(Modifier.padding(end = 10.bd).testTag("tab-attention-$id").size(9.bd)
                         .background(VeloTheme.surface.warning, CircleShape))
-                    RowMark.Offline -> OfflineMark()
+                    RowMark.Offline -> OfflineMark(description = null)
                     null -> Unit
                 }
                 when (row.closeControl) {

@@ -295,7 +295,7 @@ fun MenuItem(
             Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = iconColor)
             Spacer(Modifier.width(VeloTheme.medium(14.dp)))
         }
-        // Hidden one by one: a hidden node's children are still said.
+        // With a description, each text is hidden one by one: a hidden node's children are still said.
         Column(Modifier.padding(vertical = if (note != null) s.menuPadding else 0.dp)) {
             Text(text, Modifier.saidBy(contentDescription), style = VeloTheme.type.body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (note != null) Text(note, Modifier.saidBy(contentDescription), style = VeloTheme.type.caption, color = c.secondary)

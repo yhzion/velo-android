@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -19,6 +20,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.github.yhzion.velo.ui.AttachControl
+import io.github.yhzion.velo.ui.DetailLine
+import io.github.yhzion.velo.ui.DetailRow
+import io.github.yhzion.velo.ui.PASSWORD_SAVED
+import io.github.yhzion.velo.ui.SshDetail
+import io.github.yhzion.velo.ui.SshDetailRow
 import io.github.yhzion.velo.ui.ComposerAttachment
 import io.github.yhzion.velo.ui.ComposerDraft
 import io.github.yhzion.velo.ui.SettingsCategory
@@ -42,7 +48,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
- * and the SSH key actions (#149). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * and the SSH key actions (#149), SSH details' Forget, and the sidebar's tab rows (#150). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -64,9 +70,9 @@ class ReadOnceTest {
         return compose.runOnIdle { Speech.saidAt(view, id) }
     }
 
-    /** The node tagged [tag] still takes a tap and keeps its [role] after its words are hidden. */
-    private fun assertStillActs(tag: String, role: Role) {
-        val node = compose.onNodeWithTag(tag).assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, role))
+    /** The node tagged [tag] still takes a tap and keeps its [role] (if it has one) after its words are hidden. */
+    private fun assertStillActs(tag: String, role: Role?) {
+        val node = compose.onNodeWithTag(tag).let { if (role == null) it else it.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, role)) }
         val info = compose.runOnIdle { Speech.node(view, node.fetchSemanticsNode().id) }
         assertTrue("$tag takes a tap", info.isClickable)
     }
@@ -150,5 +156,31 @@ class ReadOnceTest {
         val items = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
         for (item in listOf("Copy imported key Uf/c48n6", "Copy install command for imported key Uf/c48n6", "Share install command for imported key Uf/c48n6"))
             assertTrue("$item said once, among $items", listOf(item) in items)
+    }
+
+    @Test fun sshDetailsForgetIsSaidOnce() {
+        val row = SshDetailRow(SshDetail.Password, listOf(DetailLine(PASSWORD_SAVED)), canForget = true)
+        show { VeloTheme(UiSize.Medium) { DetailRow(row, remember { FocusRequester() }, takesFocus = false, onFocus = {}, forgetEnabled = true) {} } }
+        compose.waitForIdle()
+        val said = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        assertTrue("Forget said once, among $said", listOf(SshDetail.Password.forgetDescription) in said)
+    }
+
+    // #150: the sidebar's tab rows, beside it and docked.
+
+    @Test fun aTabRowBesideThePanesSaysEachPartOnce() = assertTabRowsSayEachPartOnce("workspace-sidebar")
+
+    @Test fun aDockedTabRowSaysEachPartOnce() = assertTabRowsSayEachPartOnce("workspace-docked")
+
+    /** The tile names the program and the panes, the name follows unless it is the program, and the second line says the state and the folder. */
+    private fun assertTabRowsSayEachPartOnce(name: String) {
+        scene(name)
+        assertEquals(listOf("Claude Code", "Refactor the sync queue", "Working · 2s since report · ~/src/api"), said("tab-row-refactor-sync-queue"))
+        assertEquals(listOf("Codex, 2 panes", "Port the parser tests", "Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
+        assertEquals(listOf("zsh, 4 panes", "~/src/web"), said("tab-row-zsh"))
+        // The second line says the program works; the tile has no state to add.
+        val tile = compose.onNodeWithTag("tab-tile-refactor-sync-queue", useUnmergedTree = true).fetchSemanticsNode()
+        assertTrue(SemanticsProperties.StateDescription !in tile.config)
+        assertStillActs("tab-row-zsh", null)
     }
 }
