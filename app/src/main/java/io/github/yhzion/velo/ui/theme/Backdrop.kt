@@ -126,12 +126,14 @@ data class ClearPlace(val above: Boolean, val room: Int)
 /**
  * Where a popover opens that must not cover its [anchor] (in the pixels of a window of size [window]): above it,
  * unless there is more room below. The popover is then no higher than the [ClearPlace.room] of that side, [margin]
- * from the anchor and from the window's edge, and scrolls what does not fit (#182).
+ * from the anchor and from the window's edge, and scrolls what does not fit (#182). Null when neither side has the
+ * [least] height the popover needs to be of use: it is then placed as a menu is ([menuPosition]), over the anchor.
  */
-fun clearPlace(anchor: IntRect, window: IntSize, margin: Int): ClearPlace {
+fun clearPlace(anchor: IntRect, window: IntSize, margin: Int, least: Int = 0): ClearPlace? {
     val above = anchor.top - 2 * margin
     val below = window.height - anchor.bottom - 2 * margin
-    return if (above >= below) ClearPlace(true, maxOf(0, above)) else ClearPlace(false, maxOf(0, below))
+    val place = if (above >= below) ClearPlace(true, maxOf(0, above)) else ClearPlace(false, maxOf(0, below))
+    return place.takeIf { it.room >= least && it.room > 0 }
 }
 
 /** Where a popover of size [menu] opens on the side [place] gives it: from the anchor's left edge, as [menuPosition]. */

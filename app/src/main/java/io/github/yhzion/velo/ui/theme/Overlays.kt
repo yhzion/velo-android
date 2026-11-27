@@ -206,17 +206,20 @@ private const val UnboundedHeight = 1 shl 15
 
 /**
  * Places [content] for the [anchor] it belongs to ([menuPosition]); without one, in the middle. With [keepsAnchorClear]
- * it opens on a side of the anchor and is no higher than the room there ([clearPlace]), so that it never covers it.
+ * it opens on a side of the anchor and is no higher than the room there ([clearPlace]), so that it never covers it,
+ * unless neither side has [least] px: then it is placed as a menu is. It is then not measured before it knows where the
+ * anchor is: a first frame of another height would leave what it scrolled to on that frame off its viewport.
  */
 @Composable
-private fun Anchored(anchor: IntRect?, keepsAnchorClear: Boolean = false, content: @Composable () -> Unit) {
+private fun Anchored(anchor: IntRect?, keepsAnchorClear: Boolean = false, least: Int = 0, content: @Composable () -> Unit) {
     val margin = with(LocalDensity.current) { VeloTheme.sizes.overlayMargin.roundToPx() }
     var area by remember { mutableStateOf<IntRect?>(null) }
     Layout(content, Modifier.fillMaxSize().onGloballyPositioned { area = it.onScreen() }) { measurables, constraints ->
         val window = IntSize(constraints.maxWidth, constraints.maxHeight)
         val here = area
         val at = if (anchor == null || here == null) null else anchor.translate(-here.left, -here.top)
-        val clear = if (keepsAnchorClear && at != null) clearPlace(at, window, margin) else null
+        if (keepsAnchorClear && anchor != null && at == null) return@Layout layout(window.width, window.height) {}
+        val clear = if (keepsAnchorClear && at != null) clearPlace(at, window, margin, least) else null
         val high = maxOf(0, window.height - 2 * margin).let { whole -> clear?.room?.coerceAtMost(whole) ?: whole }
         val placeable = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0, maxWidth = maxOf(0, window.width - 2 * margin), maxHeight = high))
         layout(window.width, window.height) {
@@ -363,17 +366,19 @@ fun <T> SelectMenu(
 /**
  * A popover: free [content] on an overlay surface, placed as a [VeloMenu] is. With [keepImeTarget] it leaves the keyboard
  * to the terminal under it, as a pane menu does: for a popover over the panes that edits no text. With [keepsAnchorClear]
- * it never covers its [anchor]: it opens above it or, with more room there, below it, and is no higher than that room
- * ([clearPlace]); its [content] gives up height where it scrolls.
+ * it does not cover its [anchor]: it opens above it or, with more room there, below it, and is no higher than that room
+ * ([clearPlace]); its [content] gives up height where it scrolls. Where neither side has [leastHeight], the least it is
+ * of use in, it is placed as a menu is.
  */
 @Composable
 fun VeloPopover(
     expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, anchor: (() -> IntRect?)? = null,
-    keepImeTarget: Boolean = false, keepsAnchorClear: Boolean = false,
+    keepImeTarget: Boolean = false, keepsAnchorClear: Boolean = false, leastHeight: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val at = anchor ?: rememberAnchor()
-    if (expanded) OverlayHost(onDismissRequest, keepImeTarget) { Anchored(at(), keepsAnchorClear) { PopoverSurface(modifier, content) } }
+    val least = with(LocalDensity.current) { leastHeight.roundToPx() }
+    if (expanded) OverlayHost(onDismissRequest, keepImeTarget) { Anchored(at(), keepsAnchorClear, least) { PopoverSurface(modifier, content) } }
 }
 
 /** The surface of a popover. */

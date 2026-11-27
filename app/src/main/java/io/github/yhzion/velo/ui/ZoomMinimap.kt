@@ -105,9 +105,6 @@ internal data class ZoomMap(val tab: String, val zoomed: String, val cells: List
      * end the previous. The start is on the left, on the right in [rtl], where the layout is drawn mirrored.
      */
     fun swiped(dx: Float, rtl: Boolean): String = step(if ((dx < 0f) != rtl) 1 else -1)
-
-    /** The cells as the minimap draws them: in layout order, the floating ones over the tiled ones, the zoomed one last. */
-    val drawOrder: List<ZoomCell> get() = cells.sortedBy { it.block == zoomed }
 }
 
 /**
@@ -324,9 +321,7 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
                 val edge = 1.dp.toPx()
                 val corner = CornerRadius(2.dp.toPx())
                 val dot = unit.toPx() * 5f
-                // The zoomed cell last, over the floating ones too (#183): its pane is the one on screen, and a floating
-                // cell over it would leave the minimap without the filled cell that says which.
-                for (cell in map.drawOrder) {
+                for (cell in map.cells) {
                     val r = cell.rect
                     val topLeft = Offset(r.left * size.width + edge, r.top * size.height + edge)
                     val box = Size(r.width * size.width - 2 * edge, r.height * size.height - 2 * edge)
@@ -336,6 +331,15 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
                         // A floating cell hides the lines of the cells under it, as its pane hides theirs.
                         if (cell.floating) drawRoundRect(ring, topLeft, box, corner)
                         drawRoundRect(line, topLeft + Offset(edge / 2, edge / 2), Size(box.width - edge, box.height - edge), corner, Stroke(edge))
+                    }
+                }
+                // The zoomed cell's outline over every cell, in its fill's colour (#183): a floating cell over it hides
+                // its fill, as its pane lies over the full screen one, but not where the full screen pane is.
+                map.cells.firstOrNull { it.block == map.zoomed }?.rect?.let { r ->
+                    val topLeft = Offset(r.left * size.width + edge, r.top * size.height + edge)
+                    val box = Size(r.width * size.width - 2 * edge, r.height * size.height - 2 * edge)
+                    if (box.width > edge && box.height > edge) {
+                        drawRoundRect(fill, topLeft + Offset(edge / 2, edge / 2), Size(box.width - edge, box.height - edge), corner, Stroke(edge))
                     }
                 }
                 // The dots over every cell: a floating cell hides no report of a pane under it.
@@ -356,8 +360,15 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
     val least = TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value
     val (mapW, mapH) = zoomPickerSize(map, VeloTheme.medium(PickerWidth.dp).value, VeloTheme.medium(PickerHeight.dp).value, least)
     val padding = VeloTheme.sizes.overlayPadding
+    // The least height the picker is of use in (#182): its title, a row of cells, and the row under the map when there
+    // is one. With less room on both sides of the caption it opens over it, as it did before.
+    val textLine = with(density) { VeloTheme.type.caption.lineHeight.toDp() }
+    val unitDp = VeloTheme.medium(1.dp)
+    val rowUnder = remember(map.cells.map { it.rect to it.floating }, mapW, mapH, least) { zoomCoveredCells(map, mapW, mapH, least).isNotEmpty() }
+    val leastHeight = padding * 2 + textLine + unitDp * 8 + least.dp +
+        (if (rowUnder) unitDp * 14 + textLine + MinimizedCapsuleHeight else 0.dp)
     // Its end at the minimap's end, above the caption: below it only where there is more room there, as over the
-    // keyboard. It never covers the minimap it came from (#182): no higher than the room, the map scrolls in it.
+    // keyboard. It does not cover the minimap it came from (#182): no higher than the room, the map scrolls in it.
     val most = VeloTheme.sizes.dialogWidth
     val anchor = {
         at?.let { mini ->
@@ -369,7 +380,7 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
     }
     // It edits no text: the keyboard stays up for the full screen pane, which keeps its size.
     VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"),
-        anchor = anchor, keepImeTarget = true, keepsAnchorClear = true) {
+        anchor = anchor, keepImeTarget = true, keepsAnchorClear = true, leastHeight = leastHeight) {
         ZoomPicker(map, mapW, mapH, least, name) { block ->
             openFor = null
             if (block != map.zoomed) zoom(block)

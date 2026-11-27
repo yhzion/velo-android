@@ -15,6 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
@@ -54,6 +57,7 @@ import io.github.yhzion.velo.ui.theme.OverlayLayer
 import io.github.yhzion.velo.ui.theme.OverlayLayerBox
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -85,7 +89,8 @@ class ZoomMinimapUiTest {
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
     // [low]: the caption at the screen's bottom, under the panes, as in the app; else at its top, as over the keyboard.
-    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true, low: Boolean = false) = compose.setContent {
+    // [under]: the room under the caption, as the key bar's.
+    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true, low: Boolean = false, under: Dp = 0.dp) = compose.setContent {
         val window = WindowInfo(tab, layout = layout, zoomed = zoomed, floating = floating)
         val state = UiState(
             status = "connected", session = "s", window = tab, windows = listOf(window),
@@ -104,6 +109,8 @@ class ZoomMinimapUiTest {
                         if (low) Spacer(Modifier.weight(1f))
                         PaneCaption(row, connected, ActivityReadState(), host = "studio", compact = compact, zoom = map,
                             paneName = { zoomPaneName(state, window, it) }, onZoom = { zoomedTo += it })
+                        // The key bar's room under the caption.
+                        Spacer(Modifier.height(under))
                     }
                 }
                 if (layered) OverlayLayerBox(layer, Modifier.fillMaxSize()) { caption() } else caption()
@@ -140,22 +147,43 @@ class ZoomMinimapUiTest {
         assertEquals(listOf("a"), zoomedTo)
     }
 
+    /** Whether [a] and [b] are the same colour but for rounding at an edge. */
+    private fun near(a: Color, b: Color) = abs(a.red - b.red) < 0.04f && abs(a.green - b.green) < 0.04f && abs(a.blue - b.blue) < 0.04f
+
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Test fun aFullScreenPaneUnderAFloatingOneStaysFilled() {
-        // Four side by side, a floating pane over the left half, the second full screen (#183): its cell is still filled.
+    @Test fun aFullScreenPaneUnderAFloatingOneIsStillMarked() {
+        // Four side by side, a floating pane over the left half, the second full screen (#183): the floating cell hides
+        // its fill, as the floating pane lies over it, but its outline in the fill's colour still says where it is.
         floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 0.5f, h = 1f))
         zoomed = "p1"
         show(line(4))
         compose.onNodeWithTag("caption-minimap").assertContentDescriptionEquals("Full screen, pane 2 of 5. Show panes")
         fun board() = compose.onNodeWithTag("caption-minimap").captureToImage().toPixelMap()
-        // The middle of the second quarter and of the first, inside the board's edge.
-        val covered = board().let { it[it.width * 3 / 8, it.height / 2] to it[it.width / 5, it.height / 2] }
+        val covered = board()
         floating = emptyList()
         compose.waitForIdle()
-        val open = board().let { it[it.width * 3 / 8, it.height / 2] to it[it.width / 5, it.height / 2] }
-        // The second is filled as it is without the floating pane; the first, under it but not full screen, is not.
-        assertEquals(open.first, covered.first)
-        assertTrue("$covered", covered.second != covered.first)
+        // The fill, in the middle of the second quarter inside the board's edge.
+        val fill = board().let { it[it.width * 3 / 8, it.height / 2] }
+        // Across the second quarter at the board's middle height: the outline's two sides.
+        val inset = covered.width * 4 / 46
+        val across = (inset + (covered.width - 2 * inset) / 4 until inset + (covered.width - 2 * inset) / 2)
+            .map { covered[it, covered.height / 2] }
+        assertTrue("the outline across $across", across.count { near(it, fill) } >= 2)
+        // Inside it the floating cell's glass, not the fill.
+        assertTrue(!near(covered[covered.width * 3 / 8, covered.height / 2], fill))
+    }
+
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun aFloatingPaneOverTheFullScreenOneStaysInTheMinimap() {
+        // A small floating pane inside the full screen pane's cell: drawn over its fill, as the pane lies over it.
+        floating = listOf(FloatingLayer("f", x = 0.6f, y = 0.25f, w = 0.3f, h = 0.5f))
+        zoomed = "p1"
+        show(line(2))
+        val board = compose.onNodeWithTag("caption-minimap").captureToImage().toPixelMap()
+        val inset = 4f / 46
+        fun at(x: Float, y: Float) = board[(board.width * (inset + x * (1 - 2 * inset))).toInt(), (board.height * (4f / 30 + y * (1 - 8f / 30))).toInt()]
+        // The full screen cell's fill beside the floating cell, and the floating cell's glass in its middle.
+        assertTrue(!near(at(0.75f, 0.5f), at(0.55f, 0.1f)))
     }
 
     @Test fun aPaneWithoutAProgramIsNamedTerminal() {
@@ -471,14 +499,28 @@ class ZoomMinimapUiTest {
     @Config(qualifiers = "w894dp-h393dp-420dpi")
     @Test fun aPickerOverACaptionHighOnTheScreenOpensUnderIt() {
         // The caption high on the screen, as over the keyboard: more room below it, where the picker opens.
+        // Nine one over another are higher than the room below: placed as a menu, it would cover the minimap.
         floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 0.5f))
         zoomed = "p1"
-        show(line(4, "column"))
+        show(line(9, "column"))
         compose.onNodeWithTag("caption-minimap").performClick()
         val mini = compose.onNodeWithTag("caption-minimap").getBoundsInRoot()
         val picker = compose.onNodeWithTag("minimap-picker").getBoundsInRoot()
         assertTrue("the picker from ${picker.top} under the minimap to ${mini.bottom}", picker.top >= mini.bottom)
         assertTrue("the picker to ${picker.bottom} on the screen", picker.bottom <= compose.onRoot().getBoundsInRoot().bottom)
+    }
+
+    @Config(qualifiers = "w894dp-h393dp-420dpi")
+    @Test fun aLowPickerOpensOnTheZoomedPaneOfAStackedMap() {
+        // The caption over the key bar, the ninth of nine stacked panes full screen: the picker fits the room above the
+        // caption, and the map shows the zoomed cell in that room, not in a first frame of the window's height.
+        zoomed = "p8"
+        show(line(9, "column"), low = true, under = 56.dp)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        val map = compose.onNodeWithTag("minimap-picker-map").getBoundsInRoot()
+        val cell = compose.onNodeWithTag("minimap-picker-cell-p8").assertIsDisplayed().getBoundsInRoot()
+        assertTrue("p8 ${cell.top}..${cell.bottom} in the map ${map.top}..${map.bottom}", cell.top >= map.top - 1.dp && cell.bottom <= map.bottom + 1.dp)
+        assertTrue(compose.onNodeWithTag("minimap-picker").getBoundsInRoot().bottom <= compose.onNodeWithTag("pane-caption").getBoundsInRoot().top)
     }
 
     @Test fun withoutTheServerTheMinimapSendsNothing() {

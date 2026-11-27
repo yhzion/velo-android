@@ -9,7 +9,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - An image inserted from the keyboard, such as one from Gboard's clipboard strip, is now sent to the remote, and its path is typed into the pane, as Paste does for a copied file.
 
 ### Changed
-- The command palette's Focus Pane and Full Screen Pane commands name each pane as the minimap's picker and the sidebar do, such as Pane 2 · zsh, so a pane without a title is no longer just Pane 2.
+- The command palette's Focus Pane and Full Screen Pane commands name each pane as the minimap's picker does, such as Pane 2 · zsh, so a pane without a title is no longer just Pane 2.
 - A pane whose program Velo has not heard of yet is named Terminal in the minimap's picker and the command palette, instead of Tab.
 
 ### Fixed

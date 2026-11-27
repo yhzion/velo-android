@@ -84,7 +84,7 @@ class BackdropTest {
     @Test fun aPopoverThatKeepsItsAnchorClearOpensAboveIt() {
         // The minimap's picker over a caption low on the screen (#182): above it, no higher than the room there.
         val anchor = IntRect(1500, 1500, 1626, 1582)
-        val place = clearPlace(anchor, window, margin)
+        val place = clearPlace(anchor, window, margin)!!
         assertEquals(ClearPlace(above = true, room = 1500 - 2 * margin), place)
         assertEquals(IntOffset(1500, 1500 - margin - 500), clearPosition(anchor, menu, window, margin, place))
         // Taller than the room, it is measured to fit it: it still ends a margin above the anchor.
@@ -96,10 +96,12 @@ class BackdropTest {
     @Test fun aPopoverThatKeepsItsAnchorClearOpensBelowItWithMoreRoomThere() {
         // A caption high on the screen, as over the keyboard: below it, from a margin under it.
         val anchor = IntRect(1500, 200, 1626, 282)
-        val place = clearPlace(anchor, window, margin)
+        val place = clearPlace(anchor, window, margin)!!
         assertEquals(ClearPlace(above = false, room = 1848 - 282 - 2 * margin), place)
         assertEquals(IntOffset(1500, 282 + margin), clearPosition(anchor, menu, window, margin, place))
-        // Where neither side has room, it has none: it is not moved over the anchor.
-        assertEquals(0, clearPlace(IntRect(0, 0, 10, 1848), window, margin).room)
+        // Where neither side has the least it needs, it has no clear place: it is placed as a menu is.
+        assertNull(clearPlace(IntRect(0, 0, 10, 1848), window, margin))
+        assertNull(clearPlace(anchor, window, margin, least = 1848))
+        assertEquals(place, clearPlace(anchor, window, margin, least = place.room))
     }
 }

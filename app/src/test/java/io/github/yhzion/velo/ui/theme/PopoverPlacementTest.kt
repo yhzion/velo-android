@@ -18,6 +18,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.fidelity.HostActivityRule
@@ -40,7 +41,7 @@ class PopoverPlacementTest {
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
 
     /** A button near the screen's bottom with a popover higher than the room above it, open. */
-    private fun show(keepsAnchorClear: Boolean) = compose.setContent {
+    private fun show(keepsAnchorClear: Boolean, leastHeight: Dp = 0.dp) = compose.setContent {
         VeloTheme {
             val layer = remember { OverlayLayer() }
             var at by remember { mutableStateOf<IntRect?>(null) }
@@ -51,7 +52,7 @@ class PopoverPlacementTest {
                     Spacer(Modifier.height(8.dp))
                 }
                 VeloPopover(true, onDismissRequest = {}, modifier = Modifier.testTag("popover"), anchor = { at },
-                    keepsAnchorClear = keepsAnchorClear) {
+                    keepsAnchorClear = keepsAnchorClear, leastHeight = leastHeight) {
                     Box(Modifier.size(200.dp, 600.dp))
                 }
             }
@@ -75,5 +76,14 @@ class PopoverPlacementTest {
         val root = compose.onRoot().getBoundsInRoot()
         assertTrue("the popover ${popover.top}..${popover.bottom} above the button from ${button.top}",
             popover.top >= root.top && popover.bottom <= button.top)
+    }
+
+    @Test fun aPopoverWithoutTheLeastRoomOnEitherSideIsPlacedAsBefore() {
+        // Too little room above the button for what the popover needs: covering the button beats an empty popover.
+        show(keepsAnchorClear = true, leastHeight = 380.dp)
+        val button = compose.onNodeWithTag("button").getBoundsInRoot()
+        val popover = compose.onNodeWithTag("popover").getBoundsInRoot()
+        assertTrue("the popover ${popover.top}..${popover.bottom} over the button ${button.top}..${button.bottom}",
+            popover.top < button.top && popover.bottom > button.top)
     }
 }
