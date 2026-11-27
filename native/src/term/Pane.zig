@@ -194,13 +194,13 @@ fn stopBound(now: i128) u64 {
 }
 
 /// What a render thread shares with its pane, kept apart from the pane (#159). A pane waits for
-/// its thread to end at most `stop_wait_ns` and then gives it up: a thread stuck in the platform
-/// (#117) would otherwise stop main or `velo-control` for good. The pane may then be freed, or
-/// draw with a new thread, while the one it gave up is still stuck. So the thread touches the
-/// pane only between `enter` and `leave`, and once given up never again; the reference to the
-/// window it draws to is then its own. The pane frees the link after joining its thread; a
-/// thread given up frees it itself when it ends (`end`). One that never ends leaks the link,
-/// its EGL objects and the window's reference.
+/// its thread to end at most `stop_wait_ns` (`burst_wait_ns` right after another give-up) and
+/// then gives it up: a thread stuck in the platform (#117) would otherwise stop main or
+/// `velo-control` for good. The pane may then be freed, or draw with a new thread, while the one
+/// it gave up is still stuck. So the thread touches the pane only between `enter` and `leave`,
+/// and once given up never again; the reference to the window it draws to is then its own. The
+/// pane frees the link after joining its thread; a thread given up frees it itself when it ends
+/// (`end`). One that never ends leaks the link, its EGL objects and the window's reference.
 pub const RenderLink = struct {
     gpa: std.mem.Allocator,
     /// The window the thread draws to. Its reference is the pane's until the pane gives the
@@ -226,8 +226,14 @@ pub const RenderLink = struct {
 
     /// The thread's side: whether it may touch the pane, until `leave`. False once the pane
     /// gave it up: the pane may be gone, or draw with another thread. Between the two the
-    /// thread waits on nothing but the pane's lock: what waits on the platform (`present`,
-    /// the EGL setup and teardown) happens outside.
+    /// thread takes the pane's lock and builds the frame under it. The build calls the
+    /// platform: `buildFrame` asks `eglQuerySurface` for the buffer's size twice, and
+    /// `buildImages` makes GL texture calls (`glGenTextures`, `glTexImage2D`,
+    /// `glDeleteTextures`). These are not known to block, since the thread owns its surface
+    /// and they queue no buffer, but the wait for `leave` past the bound (`waitEnd`) relies
+    /// on them. What is known to wait on the platform (`present`, the glyph source, the EGL
+    /// setup and teardown) happens outside. The bound does not cover a thread stuck while it
+    /// holds the pane's lock: `stopRenderer` takes that lock to set `quit` before it waits.
     pub fn enter(l: *RenderLink) bool {
         l.lock.lock();
         defer l.lock.unlock();
@@ -909,10 +915,10 @@ pub const Pane = struct {
     }
 
     /// End the render thread, if there is one: one that ended by itself (`render_failed`)
-    /// is joined all the same. One that does not end within `stop_wait_ns` is given up
-    /// (#159): it is left to end by itself, if it ever does, and the pane forgets it. The pane
-    /// draws to no window afterwards; the reference to the one it drew to is not touched here.
-    /// False when the thread was given up.
+    /// is joined all the same. One that does not end within `stop_wait_ns` (`burst_wait_ns`
+    /// right after another give-up) is given up (#159): it is left to end by itself, if it ever
+    /// does, and the pane forgets it. The pane draws to no window afterwards; the reference to
+    /// the one it drew to is not touched here. False when the thread was given up.
     fn stopRenderer(self: *Pane) bool {
         var ended = true;
         if (self.thread) |t| {

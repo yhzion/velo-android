@@ -145,8 +145,8 @@ the host.
 | `wanted` window | Step | What happens |
 |---|---|---|
 | the window the pane draws to, renderer alive | `keep` | The render thread, EGL surface, EGL context and glyph atlas stay. The pane takes the new size and draws one frame. |
-| another window, a first one, or the same one after its renderer failed | `replace` | The old render thread is joined (one that ended by itself too), or given up after 2 s, then a new one starts. |
-| none (`detachSurface`) | `detach` | The render thread is joined, or given up after 2 s. |
+| another window, a first one, or the same one after its renderer failed | `replace` | The old render thread is joined (one that ended by itself too), or given up after 2 s (200 ms right after another give-up), then a new one starts. |
+| none (`detachSurface`) | `detach` | The render thread is joined, or given up after 2 s (200 ms right after another give-up). |
 
 Limit. `keep` is decided from `render_failed` under the pane lock, and the render thread
 sets that flag only after a swap has failed; the swap runs without the lock. An attach in
@@ -217,15 +217,32 @@ A render thread that does not end within `stop_wait_ns` (2 s) of the pane asking
 (#159): main waits for it with `Core.lock` held (`surfaceDestroyed` → `paneSuspend`), and
 `velo-control` does when the server closes a pane, so a thread stuck in a swap (#117) would
 otherwise be an ANR. The pane detaches the thread, forgets it and goes on: it may then be freed,
-or start a new thread on the next attach. So the thread and the pane share a `RenderLink`, kept
-apart from the pane. The thread touches the pane only between `link.enter()` and `link.leave()`:
-`run` is inside but while `present` runs, and `present` enters only to rebuild rows after drawing
-glyphs and after its swap. Nothing between the two waits on the platform, so the pane gives the
-thread up only outside, and never while it is inside. A thread given up enters no more: when it
-wakes it ends without the pane, gives up its EGL objects, then the window's reference (which the
-pane left it, `Ref.thread`) and frees the link. One that never wakes leaks those, and logcat has
-`renderer given up after … ms pane=… window=…`. A thread that ends in time is joined as before,
-and the pane gives up the window's reference after the join.
+or start a new thread on the next attach. Stops come one after another (`HostConnection.destroy`
+detaches every pane, a `surfaceDestroyed` suspends every pane of the view, Core's sweep removes
+each closed pane), and one sync of the window can leave several threads stuck. So the bound is
+shared: for 2 s after a give-up, in any pane, a stop waits only `burst_wait_ns` (200 ms), and k
+stuck threads cost 2 s + k × 0.2 s. A thread that is not stuck ends within tens of milliseconds;
+one that is only slow and is given up frees itself when it ends. The waits run on the monotonic
+clock (`Lock.waitUntil`, `pthread_cond_clockwait`), so a step of the wall clock does not move them.
+
+The thread and the pane share a `RenderLink`, kept apart from the pane. The thread touches the
+pane only between `link.enter()` and `link.leave()`: `run` is inside except while `present` runs,
+and `present` enters only to rebuild rows after drawing glyphs and after its swap. Inside, the
+thread takes the pane's lock and builds the frame under it, and the build calls the platform:
+`buildFrame` asks `eglQuerySurface` for the buffer's size twice, and `buildImages` makes GL
+texture calls (`glGenTextures`, `glTexImage2D`, `glDeleteTextures`). These are not known to
+block, since the thread owns its surface and they queue no buffer. The pane gives the thread up
+only outside: one inside when the bound runs out is waited for until it leaves, with no bound of
+its own, and 500 ms past the bound logcat has `renderer still in its pane … ms past the bound
+window=…`. The bound does not cover a thread stuck while it holds the pane's lock either:
+`stopRenderer` takes that lock to set `quit` before its wait starts. It covers a thread stuck
+outside the pane, in the swap, in EGL setup or teardown, or in the glyph source. A thread given
+up enters no more and asks the glyph source for no further glyph, since a disconnect frees the
+source (jni.zig's `Handle`) right after it gave the core's threads up. When it wakes it ends
+without the pane, gives up its EGL objects, then the window's reference (which the pane left it,
+`Ref.thread`) and frees the link. One that never wakes leaks those, and logcat has `renderer
+given up after … ms pane=… window=…`. A thread that ends in time is joined as before, and the
+pane gives up the window's reference after the join.
 
 A renderer that cannot set up EGL for its window, or whose `eglSwapBuffers` fails, marks
 the pane (`render_failed`) and its thread ends, releasing its EGL surface, EGL context

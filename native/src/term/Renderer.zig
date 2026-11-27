@@ -577,7 +577,7 @@ pub fn threadMain(pane: *Pane, link: *PaneMod.RenderLink) void {
 /// Returns when the pane asks (`quit`), or by itself, with the pane marked
 /// (`render_failed`), when the window does not take a frame: a dead surface returns from
 /// the swap at once, so going on would draw every frame unseen and unthrottled. The loop is
-/// in the pane (`link.enter`) but while `draw.present()` runs, which touches the pane only
+/// in the pane (`link.enter`) except while `draw.present()` runs, which touches the pane only
 /// through `link` too: a present can wait on the platform for good (#117), and the pane gives
 /// up a thread that does not end in time (#159). Once given up the loop returns at once.
 pub fn run(pane: *Pane, link: *PaneMod.RenderLink, draw: anytype) void {

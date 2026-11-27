@@ -17,7 +17,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader also says the alert rows in Notifications settings, the keys in Edit order, Compose's attachment and the SSH key's buttons once, without the words shown.
 - A screen reader says each part of a sidebar tab row once: the program and panes, the tab's name, its state and folder. SSH details' Forget buttons are also said once.
 - A screen reader says the release found on About's Updates row once, instead of also saying it as the row's state.
-- A pane whose drawing gets stuck no longer makes Velo stop responding when you leave the app or the pane closes.
+- A pane whose drawing gets stuck no longer makes Velo stop responding when you leave the app or the pane closes, and the pane draws again when you come back.
 
 ## 2.14.0 - 2026-11-27
 
