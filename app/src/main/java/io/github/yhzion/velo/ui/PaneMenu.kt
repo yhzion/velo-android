@@ -80,10 +80,14 @@ internal fun PaneMenu(
         // What the keyboard composes goes first ([TerminalInputView.finishCompositionBeforePaste]); a keyboard
         // paste that waits for its question keeps the pane, and the menu only closes.
         PaneAction.Paste -> if (beforePaste()) onDismiss() else {
-            val text = clipboardText(context)
-            val title = pasteQuestion(text, conn.bracketedPaste(block))
-            if (title != null) pasteAsked = PasteAsked(title, text)
-            else act { if (text.isNotEmpty()) conn.paste(block, text, confirmed = false) }
+            // A file another app copied goes as the toolbar's Paste sends it (#109); a text clip as before.
+            val file = clipboardFile(context)
+            if (file != null) act { pasteClipboardFile(context, conn, block, file) } else {
+                val text = clipboardText(context)
+                val title = pasteQuestion(text, conn.bracketedPaste(block))
+                if (title != null) pasteAsked = PasteAsked(title, text)
+                else act { if (text.isNotEmpty()) conn.paste(block, text, confirmed = false) }
+            }
         }
         PaneAction.Compose -> { onDismiss(); session?.let { onCompose(it, block) } }
         PaneAction.TextLarger -> act { conn.textSize(block) { it * HostConnection.TEXT_SIZE_STEP } }

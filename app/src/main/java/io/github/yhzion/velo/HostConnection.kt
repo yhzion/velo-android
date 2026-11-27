@@ -162,6 +162,11 @@ class HostConnection(
     // Owned on main. destroy() invalidates immediately but never frees a worker's handle.
     internal var composerRunning = false
         private set
+    /**
+     * The upload toast's text while a clipboard file is read and sent ([io.github.yhzion.velo.ui.pasteClipboardFile]);
+     * null hides it. Main thread. It is set before [composerRunning], so it also refuses a second Paste during the read.
+     */
+    var uploading: String? by mutableStateOf(null)
     // Owned on main, as composerRunning: a download thread holds the core until it ends.
     private var downloadRunning = false
     // Owned on main, as composerRunning: threads that open, close or sweep forwards hold the core.

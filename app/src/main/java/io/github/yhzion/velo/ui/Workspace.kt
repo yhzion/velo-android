@@ -11,6 +11,8 @@ import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Text
 import android.os.SystemClock
 import androidx.compose.runtime.*
@@ -45,6 +47,7 @@ import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.feel
+import io.github.yhzion.velo.ui.theme.ToastSurface
 
 /** Fold posture as observed by the activity. */
 data class FoldInfo(val tabletop: Boolean = false, val hingeTopPx: Int = 0)
@@ -833,6 +836,8 @@ internal fun Workspace(
                     .padding(bottom = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap)), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(sizes.gap)) {
                     UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
+                    // No timer: a clipboard file's toast stays until its send ends (#109).
+                    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload) }
                     ErrorNotice(conn, text = ::noticeText)
                 }
             }
