@@ -150,6 +150,7 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
     pairs, missing, extra = m.pair(board_els, nodes)
     good = [(b, n) for b, n in pairs if m.within(b, n)]
     geometry = len(good) / len(board_els) if board_els else 1.0
+    text_compared, copy_diffs = m.text_diffs(pairs)
 
     # Fills: the board elements that paint a background. Both sides are sampled from their screenshots,
     # in a band just inside the box's edges (metrics.edge_colour), so alpha and drawing order count the same way.
@@ -184,6 +185,7 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
                      "dw": round(n["w"] - b["w"], 2), "dh": round(n["h"] - b["h"], 2)}
                     for b, n in pairs if not m.within(b, n)],
         "fills": fills, "colour": colour, "max_delta_e": max(compared) if compared else None,
+        "text_compared": text_compared, "text_diffs": copy_diffs,
         "ssim": judged_ssim, "ssim_text": text_ssim, "ssim_raw": raw_ssim,
         "text_coverage": float(mask.mean()),
     }, smap, app_img
@@ -257,8 +259,20 @@ def main():
         measured = [d for d in devices.values() if d["status"] == "measured"]
         implemented = len(measured) == len(devices)
         score = sum(d["score"] for d in measured) / len(devices) if measured else 0.0
+        by_diff = {}
+        for dev in DEVICE_ORDER:
+            d = devices.get(dev)
+            if not d or d["status"] != "measured":
+                continue
+            for td in d.get("text_diffs", []):
+                by_diff.setdefault((td["name"], td["board"], td["app"]), []).append(dev)
+        screen_text_diffs = [
+            {"name": name, "board": bt, "app": at, "devices": devs}
+            for (name, bt, at), devs in by_diff.items()
+        ]
         rows.append({"screen": screen, "implemented": implemented, "score": score,
-                     "pass": implemented and all(d["pass"] for d in measured), "devices": devices})
+                     "pass": implemented and all(d["pass"] for d in measured),
+                     "text_diffs": screen_text_diffs, "devices": devices})
     impl = [r["score"] for r in rows if r["implemented"]]
     report = {
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -311,10 +325,12 @@ def render_html(r):
                 cells.append(f"<td class=na>{e(c['status'])}<br><small>{e(c['board'])}</small></td>")
             else:
                 text_note = "" if c.get("ssim_text") is None else f" (text {c['ssim_text']:.3f})"
+                td_count = len(c.get("text_diffs", []))
                 cells.append(
                     f"<td class={'pass' if c['pass'] else 'fail'}><a href='#{e(s['screen'])}-{d}'><b>{c['score']:.0f}</b></a>"
                     f"<br><small>geom {fmt_rate(c['geometry'])} · ΔE {'—' if c['max_delta_e'] is None else round(c['max_delta_e'], 2)}"
-                    f" · SSIM {c['ssim']:.3f}{text_note}<br>missing {len(c['missing'])} · extra {len(c['extra'])}</small></td>")
+                    f" · SSIM {c['ssim']:.3f}{text_note}<br>missing {len(c['missing'])} · extra {len(c['extra'])}"
+                    f" · text diff {td_count}</small></td>")
         verdict = "PASS" if s["pass"] else ("fail" if s["implemented"] else "not implemented")
         rows.append(f"<tr><th>{e(s['screen'])}</th>{''.join(cells)}<td>{s['score']:.1f}</td><td>{verdict}</td></tr>")
     details = []
@@ -326,6 +342,12 @@ def render_html(r):
             fills = "".join(f"<li>{e(f['name'])}: board {f['board']} app {f['app']} ΔE "
                             f"{'—' if f['delta_e'] is None else round(f['delta_e'], 2)}</li>" for f in c["fills"])
             offs = "".join(f"<li>{e(o['name'])}: dx {o['dx']} dy {o['dy']} dw {o['dw']} dh {o['dh']}</li>" for o in c["offsets"])
+            tdiffs = c.get("text_diffs", [])
+            tcompared = c.get("text_compared", 0)
+            td_items = "".join(
+                f"<li><b>{e(td['name'])}</b>: board <code>{e(td['board'])}</code> vs app <code>{e(td['app'])}</code></li>"
+                for td in tdiffs
+            )
             ssim_line = f"SSIM {c['ssim']:.3f} non-text"
             if c.get("ssim_text") is not None:
                 ssim_line += f", {c['ssim_text']:.3f} text ({c['text_coverage']:.0%} of pixels)"
@@ -335,11 +357,12 @@ def render_html(r):
 <section id="{e(s['screen'])}-{d}"><h2>{e(s['screen'])} · {d} <small>({e(c['board'])}, {c['size'][0]}×{c['size'][1]} dp)</small></h2>
 <p>Score {c['score']:.1f} — {'PASS' if c['pass'] else 'fail: ' + e('; '.join(c['reasons']))}</p>
 <p>Elements {c['elements']}, paired {c['paired']}, within ±{t['tolerance_dp']:g} dp {c['within']}
- ({fmt_rate(c['geometry'])}); {ssim_line}; colour {fmt_rate(c['colour'])}</p>
+ ({fmt_rate(c['geometry'])}); {ssim_line}; colour {fmt_rate(c['colour'])}; text diffs {len(tdiffs)}/{tcompared}</p>
 <figure><img src="{e(c['images']['side'])}" alt="board, app and SSIM heatmap"><figcaption>Board · App · SSIM loss (red)</figcaption></figure>
 <details><summary>Missing tags ({len(c['missing'])})</summary><p>{e(', '.join(c['missing']))}</p></details>
 <details><summary>Extra tags ({len(c['extra'])})</summary><p>{e(', '.join(c['extra']))}</p></details>
 <details><summary>Out of tolerance ({len(c['offsets'])})</summary><ul>{offs}</ul></details>
+<details><summary>Text differences ({len(tdiffs)})</summary><ul>{td_items}</ul></details>
 <details><summary>Fills ({len(c['fills'])})</summary><ul>{fills}</ul></details>
 </section>""")
     exc = "".join(f"<li><b>{e(x['what'])}</b>: {e(x['note'])}</li>" for x in r["platform_exceptions"])

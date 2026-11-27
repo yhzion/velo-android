@@ -38,6 +38,43 @@ class CompareTest(unittest.TestCase):
         self.assertIsNone(r["ssim_text"])
         self.assertEqual(r["text_coverage"], 0.0)
         self.assertEqual([x["name"] for x in r["fills"]], ["screen", "card"])
+        self.assertEqual((r["text_compared"], r["text_diffs"]), (0, []))
+
+    def test_paired_text_differences_are_reported_without_failing_verdict(self):
+        board, img = board_and_image()
+        board["elements"][2]["text"] = "Hello\n  world"
+        board["elements"].append({"name": "subtitle", "x": 14, "y": 62, "w": 40, "h": 10,
+                                  "background": "rgba(0, 0, 0, 0)", "text": "Expected copy"})
+        app = app_from(board)
+        app["nodes"][2]["text"] = "Hello world"
+        app["nodes"][3]["text"] = "Wrong copy"
+        r, _, _ = f.compare({}, board, app, img, img.copy(), {}, DSF)
+        self.assertEqual(r["text_compared"], 2)
+        self.assertEqual(r["text_diffs"], [{"name": "subtitle", "board": "Expected copy", "app": "Wrong copy"}])
+        v = f.m.verdict(tokens=1.0, geometry=r["geometry"], missing=len(r["missing"]),
+                        max_delta_e=r["max_delta_e"], ssim=r["ssim"])
+        self.assertTrue(v["pass"])
+
+        # Report HTML renders the text differences summary and details.
+        entry = {"board": "SetBarTest", "title": "t", "size": [100, 80], "status": "measured", **r, **v,
+                 "score": 100.0, "images": {"side": "side.png", "heat": "heat.png"}}
+        page = f.render_html({
+            "generated": "2026-11-27T00:00:00+00:00",
+            "thresholds": {"tokens": 1.0, "geometry": 0.95, "tolerance_dp": 2.0,
+                           "missing": 0, "delta_e_below": 3.0, "ssim": 0.92},
+            "tokens": {"rate": 1.0, "cases": 1, "failed": [], "classes": ["T"]},
+            "match_rate": 100.0, "match_rate_implemented": 100.0,
+            "screens_total": 1, "screens_implemented": 1, "screens_passed": 1,
+            "platform_exceptions": [],
+            "screens": [{"screen": "settings-test", "implemented": True, "score": 100.0, "pass": True,
+                         "text_diffs": [{"name": "subtitle", "board": "Expected copy", "app": "Wrong copy",
+                                         "devices": ["bar"]}],
+                         "devices": {"bar": entry}}],
+        })
+        self.assertIn("text diff 1", page)
+        self.assertIn("Text differences (1)", page)
+        self.assertIn("Expected copy", page)
+        self.assertIn("Wrong copy", page)
 
     def test_text_box_anti_aliasing_does_not_fail_judged_ssim(self):
         board, img = board_and_image()

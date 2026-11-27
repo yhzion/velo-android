@@ -77,6 +77,21 @@ class PairingTest(unittest.TestCase):
         self.assertFalse(m.within(b, {"x": 12.5, "y": 10, "w": 100, "h": 40}, 2))
         self.assertFalse(m.within(b, {"x": 10, "y": 10, "w": 100, "h": 43}, 2))
 
+    def test_text_diffs_normalises_whitespace_and_skips_empty_app_nodes(self):
+        pairs = [
+            ({"name": "container", "text": "Title Subtitle"}, {"tag": "container"}),
+            ({"name": "button", "text": "Save"}, {"tag": "button", "text": "   "}),
+            ({"name": "heading", "text": "Hello\n  world"}, {"tag": "heading", "text": "  Hello   world  "}),
+            ({"name": "version", "text": "Version 2.10.0"}, {"tag": "version", "text": "Version 2.12.4"}),
+            ({"name": "unexpected", "text": ""}, {"tag": "unexpected", "text": "Extra copy"}),
+        ]
+        compared, diffs = m.text_diffs(pairs)
+        self.assertEqual(compared, 3)
+        self.assertEqual(diffs, [
+            {"name": "version", "board": "Version 2.10.0", "app": "Version 2.12.4"},
+            {"name": "unexpected", "board": "", "app": "Extra copy"},
+        ])
+
 
 class SsimTest(unittest.TestCase):
     def test_identical_images_score_one(self):

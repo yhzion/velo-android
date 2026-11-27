@@ -128,16 +128,20 @@ async function launch(chrome) {
 // Runs in the page: every data-el element's box, text and colours, in document order,
 // plus the rendered boxes of visible text (for masking text anti-aliasing out of SSIM).
 const EXTRACT = `(() => {
+  const textInputTypes = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
   const out = [];
   for (const el of document.querySelectorAll('[data-el]')) {
     const r = el.getBoundingClientRect();
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-    const text = (el.innerText ?? el.textContent ?? '').replace(/\\s+/g, ' ').trim();
+    const isTextControl = el.tagName === 'TEXTAREA'
+      || (el.tagName === 'INPUT' && textInputTypes.has((el.type || 'text').toLowerCase()));
+    const rawElText = isTextControl ? (el.value || '') : (el.innerText ?? el.textContent ?? '');
+    const text = rawElText.replace(/\\s+/g, ' ').trim();
     out.push({
       name: el.getAttribute('data-el'),
       x: +r.left.toFixed(2), y: +r.top.toFixed(2), w: +r.width.toFixed(2), h: +r.height.toFixed(2),
-      text: text.slice(0, 200),
+      text,
       label: el.getAttribute('aria-label'),
       background: cs.backgroundColor, color: cs.color,
     });
@@ -170,7 +174,6 @@ const EXTRACT = `(() => {
       if (clipped) textBoxes.push(clipped);
     }
   }
-  const textInputTypes = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
   const mirrorProps = [
     'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'fontVariant',
     'lineHeight', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent',

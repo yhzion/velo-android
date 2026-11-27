@@ -159,6 +159,33 @@ def within(board_el, app_node, tolerance=TOLERANCE_DP):
     return all(abs(board_el[k] - app_node[k]) <= tolerance + 1e-9 for k in ("x", "y", "w", "h"))
 
 
+def normalise_text(value):
+    """Collapses whitespace runs to single spaces and trims ends; None becomes ''."""
+    return " ".join((value or "").split())
+
+
+def text_diffs(pairs):
+    """Compares whitespace-normalised text of paired elements where the app node carries text.
+
+    FidelityCaptureTest walks the unmerged Compose semantics tree, so layout containers and
+    button/row wrappers carry no SemanticsProperties.Text while HTML innerText concatenates
+    descendant text. Skipping pairs whose app node has no text avoids flooding every screen
+    with container mismatches while catching copy changes on every text-bearing node.
+    Returns (compared_count, [{"name", "board", "app"}, ...]).
+    """
+    compared = 0
+    diffs = []
+    for b, n in pairs:
+        app_text = normalise_text(n.get("text"))
+        if not app_text:
+            continue
+        compared += 1
+        board_text = normalise_text(b.get("text"))
+        if board_text != app_text:
+            diffs.append({"name": b["name"], "board": board_text, "app": app_text})
+    return compared, diffs
+
+
 # ---- whole screen -------------------------------------------------------------------------
 
 SSIM_WINDOW = 11

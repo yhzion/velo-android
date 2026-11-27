@@ -19,7 +19,7 @@ It takes about a minute for one screen and a few minutes for the whole canvas. T
 
 | File | Content |
 |---|---|
-| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, fills |
+| `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, text differences, fills |
 | `report.json` | The same numbers for tools |
 | `boards/<Board>.json`, `.png` | Every `data-el` element of a board (box in dp, text, colours), its rendered text boxes, and the board's render |
 | `app/<screen>@<device>.json`, `.png` | Every testTag node of the app scene: box in dp, text; the app's screenshot |
@@ -101,11 +101,29 @@ missing card fill. The threshold is therefore 0.92, up from 0.90. The report als
 heatmap shows the whole map.
 
 Missing tags and geometry still catch a missing text element or a box that moves more than 2 dp.
-Text that spills out of the board's line box still lowers non-text SSIM. **Blind spot:** a change
-of text colour, weight, copy or size inside the board's text box is caught by neither the verdict
-nor the score. `fidelity.py` does not compare an element's `text` or `color`, and the colour check
-samples fills only. `ssim_text` spans about 0.39 to 0.84 on matching captures, so it cannot serve
-as a floor.
+Text that spills out of the board's line box still lowers non-text SSIM.
+
+**Paired text.** To narrow the text blind spot left by non-text SSIM, `compare` compares the
+whitespace-normalised `text` of every paired element where the app node carries text
+(`SemanticsProperties.Text` or `EditableText`). Pairs where the app node has no text are skipped:
+`FidelityCaptureTest` walks the unmerged Compose semantics tree, so layout containers and
+button/row wrappers carry no text while HTML `innerText` concatenates descendant text. Differences
+are listed per capture (`text_diffs` and `text_compared`) and aggregated per screen in
+`report.json` and `report.html`, rather than failing the screen or lowering the score. Valid
+captures carry expected dynamic or fixture differences against the static canvas: the installed app
+version (`BuildConfig.VERSION_NAME`), live clock timestamps (`updates-last-checked`), generated SSH
+key fingerprints and sample addresses or status lines. Failing on copy differences would force
+those elements into `exceptions.json`, which would also drop them from geometry and fill checks.
+
+**Remaining blind spot and why text colour is not compared.** A change of text colour, weight, or
+within-box size inside a board text box (and copy inside a wrapper whose Compose node carries no
+`Text` semantics) is still outside the verdict and score. `ssim_text` spans about 0.39 to 0.84 on
+matching captures, so it cannot serve as a floor. Text colour is not compared because
+`FidelityCaptureTest` records Compose semantics nodes and Compose's `SemanticsProperties` does not
+expose `TextStyle.color` or `LocalContentColor`. Sampling ink pixels from the rendered screenshots
+is not reliable: elements behind a modal scrim or dialog (such as `settings-add-remote`) sample the
+overlay instead of the text (ΔE 4.6 to 58.2 on matching screens), and thin anti-aliased strokes
+blend differently with the background in Chromium and Skia.
 
 **Score.** A capture's score is the mean of four rates, 0 to 100: tokens, geometry, the share of
 fills with ΔE < 3, and non-text SSIM. With no token result, tokens count as 0. A board without fills
@@ -122,10 +140,12 @@ The report lists these apart from the scores:
 
 - **Status bar.** Robolectric draws no system bars, and the boards draw none. Nothing is masked.
 - **Font hinting.** Chromium and Robolectric's Skia anti-alias text differently. The judged SSIM
-  masks out the board's rendered text boxes and reports text-box SSIM separately. Because nothing
-  else in the tool compares element `text` or ink `color`, a colour, weight, copy or within-box size
-  difference inside a board text box is not caught by the verdict or score (only missing tags, box
-  shifts over 2 dp and text spilling outside the board's line box are caught).
+  masks out the board's rendered text boxes (expanded by the 5 px SSIM window radius) and reports
+  text-box SSIM separately. Paired elements whose app node carries text are compared for copy
+  differences (whitespace-normalised) and listed in the report, without failing the verdict. Ink
+  colour, weight, and within-box size differences inside a board text box remain outside the
+  verdict and score (only missing tags, box shifts over 2 dp, text spilling outside the board's
+  line box, and paired copy mismatches are caught).
 - **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
   Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
   Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.

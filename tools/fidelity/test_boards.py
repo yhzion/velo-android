@@ -67,6 +67,8 @@ class BoardsTextBoxTest(unittest.TestCase):
                 'box-sizing:border-box;font:16px/20px sans-serif">'
                 '<input data-el="check" type="checkbox" checked '
                 'style="position:fixed;left:20px;top:100px;width:20px;height:20px">'
+                '<p data-el="long-copy" style="position:fixed;left:20px;top:140px;width:350px">'
+                + ("word " * 60).strip() + '</p>'
             ),
         })
 
@@ -91,14 +93,24 @@ class BoardsTextBoxTest(unittest.TestCase):
             self.assertLessEqual(b["y"] + b["h"], 68.1)
 
     def test_input_masks_occupied_value_only_and_ignores_checkbox(self):
-        boxes = self.boards["SetBarInput"]["text_boxes"]
-        self.assertEqual(len(boxes), 1, boxes)
-        box = boxes[0]
+        board = self.boards["SetBarInput"]
+        # One box for wide-input ("OK") plus the wrapped lines of long-copy, none for the checkbox.
+        input_boxes = [b for b in board["text_boxes"] if b["y"] < 80]
+        self.assertEqual(len(input_boxes), 1, input_boxes)
+        box = input_boxes[0]
         # Vertically centered inside y in [20, 68] (center y=44), starting at x=36, narrow width.
         self.assertAlmostEqual(box["x"], 36.0, delta=2.0)
         self.assertAlmostEqual(box["y"] + box["h"] / 2, 44.0, delta=3.0)
         self.assertLess(box["w"], 60.0)
         self.assertLess(box["h"], 30.0)
+        # No text_box around checkbox at y=100..120.
+        self.assertFalse(any(90 <= b["y"] <= 125 for b in board["text_boxes"]), board["text_boxes"])
+
+        by_name = {e["name"]: e for e in board["elements"]}
+        self.assertEqual(by_name["wide-input"]["text"], "OK")
+        self.assertEqual(by_name["check"]["text"], "")
+        self.assertEqual(by_name["long-copy"]["text"], ("word " * 60).strip())
+        self.assertGreater(len(by_name["long-copy"]["text"]), 200)
 
 
 if __name__ == "__main__":
