@@ -11,6 +11,7 @@
 #                                  items under "## Unreleased"
 #
 # CHANGELOG overrides the file for section and body; pr-check reads CHANGELOG.md from git.
+# CHANGELOG_LOCALE (for tests) sets the locale pr-check counts code points under.
 set -euo pipefail
 export LC_ALL=C
 die() { echo "changelog.sh: $1" >&2; exit 1; }

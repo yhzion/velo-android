@@ -1,7 +1,7 @@
 name: Pull request check (scripts)
 
 # Self-tests for the release and pull-request scripts under .github/scripts/.
-# Only when .github/scripts/ or this workflow changes; no Android tools, zig, Go or secrets.
+# Only when .github/scripts/, CHANGELOG.md or this workflow changes; no Android tools, zig, Go or secrets.
 on:
   pull_request:
     branches: [main]
@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/scripts/**'
       - '.github/workflows/pr-check-scripts.yml'
+      - 'CHANGELOG.md'
 
 permissions:
   contents: read
