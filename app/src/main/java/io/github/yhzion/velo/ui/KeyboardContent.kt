@@ -28,7 +28,10 @@ internal fun declareKeyboardContent(outAttrs: EditorInfo) {
     outAttrs.contentMimeTypes = KEYBOARD_CONTENT_TYPES.copyOf()
 }
 
-/** A keyboard's content is pasted only from a `content:` URI, and only while a pane is bound: anything else sends nothing. */
+/**
+ * A keyboard's content is pasted only from a `content:` URI, and only while a pane is bound: anything
+ * else sends nothing. (Android already enforces the scheme; this is a guard.)
+ */
 internal fun keyboardContentAccepted(uriScheme: String?, bound: Boolean): Boolean =
     bound && uriScheme == ContentResolver.SCHEME_CONTENT
 

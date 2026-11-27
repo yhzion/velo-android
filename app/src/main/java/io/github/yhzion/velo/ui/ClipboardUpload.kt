@@ -18,6 +18,17 @@ private const val FOCUS_POLL_MS = 50L
 /** How long the read may take; a result that comes later does nothing. */
 internal const val READ_LIMIT_MS = 60_000L
 
+/** [f] wrapped so that only its first call runs it; later calls do nothing. Main thread. */
+internal fun once(f: () -> Unit): () -> Unit {
+    var ran = false
+    return {
+        if (!ran) {
+            ran = true
+            f()
+        }
+    }
+}
+
 internal enum class FocusWait { Take, Wait, GiveUp }
 
 /** What a paste does when it has waited [waitedMs] for its pane: a pane shown focused is taken, even at the bound. */
@@ -45,15 +56,17 @@ internal fun focusWait(focused: Boolean, waitedMs: Long): FocusWait = when {
 internal fun pasteClipboardFile(
     context: Context, conn: HostConnection, block: String, file: ClipboardFile, onReadDone: () -> Unit = {},
 ): Boolean {
+    // Every path below calls it; once makes a missed or second call harmless to the grant.
+    val readDone = once(onReadDone)
     if (conn.uploading != null || conn.composerRunning) {
         conn.error = BUSY
-        onReadDone()
+        readDone()
         return false
     }
     val session = conn.state.session
     if (session == null || !conn.connected) {
         conn.error = TARGET_GONE
-        onReadDone()
+        readDone()
         return false
     }
     // Each step checks that this paste still owns the toast: a timeout or destroy() takes it away.
@@ -65,12 +78,12 @@ internal fun pasteClipboardFile(
     val asked = SystemClock.uptimeMillis()
     if (!conn.state.showsComposerPane(session, block)) conn.op("focus", "block" to block)
     fun step() {
-        if (conn.uploadOwner !== paste) return onReadDone()
+        if (conn.uploadOwner !== paste) return readDone()
         when (focusWait(conn.state.showsComposerPane(session, block), SystemClock.uptimeMillis() - asked)) {
-            FocusWait.Take -> readAndSend(conn, paste, session, block, file, resolver, main, onReadDone)
+            FocusWait.Take -> readAndSend(conn, paste, session, block, file, resolver, main, readDone)
             FocusWait.Wait -> main.postDelayed({ step() }, FOCUS_POLL_MS)
             FocusWait.GiveUp -> {
-                onReadDone()
+                readDone()
                 conn.endUpload(paste, TARGET_GONE)
             }
         }
@@ -81,15 +94,15 @@ internal fun pasteClipboardFile(
 
 private fun readAndSend(
     conn: HostConnection, paste: Any, session: String, block: String, file: ClipboardFile,
-    resolver: ContentResolver, main: Handler, onReadDone: () -> Unit,
+    resolver: ContentResolver, main: Handler, readDone: () -> Unit,
 ) {
     val epoch = conn.composerTarget(session, block)
     if (epoch == 0L) {
-        onReadDone()
+        readDone()
         return conn.endUpload(paste, TARGET_GONE)
     }
     readClipboardFileOnWorker(resolver, file, main) { read ->
-        onReadDone()
+        readDone()
         if (conn.uploadOwner !== paste) return@readClipboardFileOnWorker
         read.fold(
             onSuccess = { attachment ->

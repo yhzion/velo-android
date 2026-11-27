@@ -23,4 +23,24 @@ class ClipboardUploadTest {
         assertEquals(2_000L, FOCUS_WAIT_MS)
         assertEquals(60_000L, READ_LIMIT_MS)
     }
+
+    @Test fun onceRunsItsFunctionOnlyOnTheFirstCall() {
+        var runs = 0
+        val readDone = once { runs++ }
+        assertEquals(0, runs)
+        readDone()
+        readDone()
+        readDone()
+        assertEquals(1, runs)
+    }
+
+    @Test fun eachOnceHasItsOwnFirstCall() {
+        var runs = 0
+        val first = once { runs++ }
+        val second = once { runs++ }
+        first()
+        second()
+        first()
+        assertEquals(2, runs)
+    }
 }

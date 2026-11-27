@@ -918,6 +918,7 @@ class TerminalInputView(context: Context) : View(context) {
             try {
                 info.requestPermission()
             } catch (_: Exception) {
+                host.error = REFUSED
                 return false
             }
         }

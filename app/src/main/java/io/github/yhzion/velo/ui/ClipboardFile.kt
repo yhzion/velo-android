@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter
 internal class ClipboardFile(val uri: Uri, val mime: String?)
 
 internal const val UNREADABLE = "Could not read the clipboard file."
-private const val REFUSED = "Velo may not read this clipboard file."
+internal const val REFUSED = "Velo may not read this clipboard file."
 private const val GONE = "The clipboard file is no longer available."
 private val GENERATED_NAME = DateTimeFormatter.ofPattern("'clipboard-'yyyyMMdd-HHmmss")
 
