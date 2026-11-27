@@ -844,6 +844,14 @@ private val NothingFoundSteps = listOf(
 )
 
 /**
+ * What to check when Rex is installed but still not found: the server serves its API on the tailnet only after
+ * `rex server tailscale on`, and Velo lists a server only once its `https://` address answers, which takes the
+ * tailnet's MagicDNS and HTTPS certificates (README "Over Tailscale").
+ */
+private const val TailnetHttpsHint =
+    "On the computer, run rex server tailscale on. The tailnet also needs MagicDNS and HTTPS certificates."
+
+/**
  * A search ended and found nothing: say so, announced without a tap, say what to do about it, and offer to get Rex
  * ([StartCardModel.getRex]) or to search again (not while one is under way). When no browser opens the guide, its
  * address shows as selectable text instead.
@@ -857,6 +865,7 @@ private fun NoComputerCard(model: StartCardModel) {
         Text(FoundNote.NothingFound.text!!, Modifier.fillMaxWidth().testTag("no-computer-message").semantics { liveRegion = LiveRegionMode.Polite },
             style = paragraph(16f), color = c.text)
         Text(NothingFoundSteps[0], Modifier.fillMaxWidth().testTag("no-computer-hint"), style = paragraph(15f), color = VeloTheme.colors.textOnRaised)
+        Text(TailnetHttpsHint, Modifier.fillMaxWidth().testTag("tailnet-https-hint"), style = paragraph(15f), color = VeloTheme.colors.textOnRaised)
         VeloButton("Get Rex for Mac", { browserUnavailable = !model.getRex() }, Modifier.fillMaxWidth().testTag("get-rex-button"),
             kind = ButtonKind.Primary, icon = painterResource(R.drawable.ic_open_external), iconAtEnd = true)
         if (browserUnavailable) SelectionContainer {
