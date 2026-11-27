@@ -25,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The checks DoubleSpeechTest and MenuSpeechTest scan by, on words given here, so they need no width
- * and run once (#175): [Speech.saysTwice] (#147, #167), that the scan hears a state and passes a
+ * and run once (#175): [Speech.saysTwice] (#147, #167), [Speech.repeatsNeighbour] (#197), that the scan hears a state and passes a
  * view of its own (#174), and the kind check of an [Opened] menu.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -85,6 +85,24 @@ class SpeechCheckTest {
         assertTrue(twice(listOf("Unread · Unread")))
         assertTrue(twice(listOf("Neovim, nvim")))
         assertTrue(!twice(listOf("zsh, 4 panes")))
+    }
+
+    // #197: a stop that says a name alone beside one that says "<name>: <value>".
+
+    @Test fun theCheckFindsAStopThatRepeatsTheOneBesideIt() {
+        assertTrue(Speech.repeatsNeighbour(listOf("Channel"), listOf("Channel: Stable")))
+        assertTrue(Speech.repeatsNeighbour(listOf("Double tap: Tab"), listOf("Double tap")))
+        assertTrue(Speech.repeatsNeighbour(listOf("minimized windows"), listOf("Minimized windows: Bottom Left")))
+        // A heading before its rows, an item before a longer one, a mark before its name: other things.
+        assertTrue(!Speech.repeatsNeighbour(listOf("SSH"), listOf("SSH key", "ed25519 · SHA256:p/a7…Z9EY")))
+        assertTrue(!Speech.repeatsNeighbour(listOf("Split"), listOf("Split Left")))
+        assertTrue(!Speech.repeatsNeighbour(listOf("Velo"), listOf("Velo", "2.10.0", "MIT")))
+        assertTrue(!Speech.repeatsNeighbour(listOf("About", "Update available"), listOf("About")))
+        // Words that start alike but are not all of the other's, or that come after a state.
+        assertTrue(!Speech.repeatsNeighbour(listOf("Sound volume"), listOf("Sound: Attention")))
+        assertTrue(!Speech.repeatsNeighbour(listOf("Sound"), listOf("On", "Sound: Attention")))
+        assertTrue(!Speech.repeatsNeighbour(listOf("Undo"), listOf("Undo")))
+        assertTrue(!Speech.repeatsNeighbour(emptyList(), listOf("Channel: Stable")))
     }
 
     /** A node whose state says its own words again is said twice: the scan reads states (#167). */

@@ -100,6 +100,21 @@ internal object Speech {
         return false
     }
 
+    /**
+     * Whether two focus stops side by side say a thing twice (#197): one says a name alone, and the other starts with
+     * that name and ": ", as a control that says "<label>: <value>" (#151) does. So a row's label "Channel" beside its
+     * menu button's "Channel: Stable" is found. A heading before its rows ("SSH", "SSH key"), or an item before a longer
+     * one ("Split", "Split Left"), names other things and passes. The scans of one stop ([saysTwice]) do not see words
+     * said on two stops.
+     */
+    fun repeatsNeighbour(first: List<String>, second: List<String>): Boolean = namesBefore(first, second) || namesBefore(second, first)
+
+    /** Whether [control]'s first words are all of [label]'s words, then ": ". */
+    private fun namesBefore(label: List<String>, control: List<String>): Boolean {
+        val name = label.joinToString(", ").trim()
+        return name.length >= 2 && control.firstOrNull()?.startsWith("$name: ", ignoreCase = true) == true
+    }
+
     /** A folder, said as a path ("~/.config/nvim"): a fact of its own, not a name of the program in it. */
     private fun isPath(token: String) = '/' in token || token.startsWith("~")
 

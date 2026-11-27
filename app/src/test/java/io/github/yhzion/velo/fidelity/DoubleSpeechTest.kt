@@ -42,7 +42,8 @@ import org.robolectric.annotation.GraphicsMode
  *
  * Each focusable node says its own words and states and those of the descendants that are not
  * focusable themselves. The node says a thing twice by [Speech.saysTwice]: a part comes again, as it
- * is or by a short or full name of one thing (#167), or one of its words is said inside another.
+ * is or by a short or full name of one thing (#167), or one of its words is said inside another. Two nodes side by side
+ * say a thing twice by [Speech.repeatsNeighbour]: a row's label alone, then its menu button's "<label>: <value>" (#197).
  * MenuSpeechTest opens the scenes' menus and scans their options the same way.
  *
  * The scenes of the screens no board draws (#174: the rail's window wheel, the overview, its drum, a pane move and a
@@ -106,6 +107,7 @@ class DoubleSpeechTest(private val width: ScanWidth) {
             // The drum's cards say nothing, so their names' tags, kept in the unmerged tree, show the drum was drawn.
             if (name == "workspace-drum") drumTags += compose.taggedNodes().map { it.tag }
             for (s in said.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $s"
+            for ((a, b) in said.zipWithNext()) if (Speech.repeatsNeighbour(a.parts, b.parts)) twiceSaid += "$name, $a, then $b"
         }
         assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
         // The screens no board draws were drawn and heard (#174), so the scan is not empty by a screen that did not draw.
