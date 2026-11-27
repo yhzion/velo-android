@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -308,10 +309,11 @@ fun MenuDivider(modifier: Modifier = Modifier) {
  * when it is the current value (Overlays board, select-menu).
  */
 @Composable
-fun SelectMenuItem(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun SelectMenuItem(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String? = null) {
     val c = VeloTheme.surface
     Row(
         modifier.fillMaxWidth().heightIn(min = VeloTheme.sizes.menuItem).selectable(selected, role = Role.RadioButton, onClick = onClick)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
             .padding(start = VeloTheme.space.s20, end = VeloTheme.space.s16),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -323,18 +325,21 @@ fun SelectMenuItem(text: String, selected: Boolean, onClick: () -> Unit, modifie
 /**
  * A menu that picks one of [options], opened from a [MenuButton]: the current one has a check.
  * Picking one calls [onPick] and closes the menu. [optionTag] gives each choice its test tag
- * (`select-menu-option-<id>`); the menu's own is set on [modifier].
+ * (`select-menu-option-<id>`); the menu's own is set on [modifier]. [spoken] gives what a screen
+ * reader says for a choice whose drawn [label] is short, such as Escape for Esc.
  */
 @Composable
 fun <T> SelectMenu(
     expanded: Boolean, onDismissRequest: () -> Unit, options: List<T>, selected: T, label: (T) -> String, onPick: (T) -> Unit,
     modifier: Modifier = Modifier, anchor: (() -> IntRect?)? = null, optionTag: ((T) -> String)? = null,
+    spoken: ((T) -> String)? = null,
 ) {
     VeloMenu(expanded, onDismissRequest, modifier.selectableGroup(), anchor) {
         for (option in options) {
             SelectMenuItem(
                 label(option), option == selected, onClick = { onPick(option); onDismissRequest() },
                 modifier = if (optionTag != null) Modifier.testTag(optionTag(option)) else Modifier,
+                contentDescription = spoken?.invoke(option),
             )
         }
     }

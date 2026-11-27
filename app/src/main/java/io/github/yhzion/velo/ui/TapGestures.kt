@@ -13,6 +13,9 @@ enum class TapKey(val label: String, val keyCode: Int?) {
     Up("Up", KeyEvent.KEYCODE_DPAD_UP),
     Down("Down", KeyEvent.KEYCODE_DPAD_DOWN);
 
+    /** What a screen reader says for the key: its name on the key bar ([spokenKeyName]), such as Escape for Esc. */
+    val spoken: String get() = spokenKeyName(label)
+
     /** The saved name, which stays when the label changes. */
     val saved: String get() = name
 

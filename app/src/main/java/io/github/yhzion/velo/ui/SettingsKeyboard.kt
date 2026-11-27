@@ -211,8 +211,8 @@ private fun TapKeyRow(label: String, tag: String, key: TapKey, onPick: (TapKey) 
     var choosing by remember { mutableStateOf(false) }
     SettingRow(label, tag = tag, labelFills = false) {
         Box {
-            MenuButton(key.label, { choosing = true }, contentDescription = "$label: ${key.label}", tag = "$tag-menu")
-            SelectMenu(choosing, { choosing = false }, TapKey.entries, key, { it.label }, onPick = onPick)
+            MenuButton(key.label, { choosing = true }, contentDescription = "$label: ${key.spoken}", tag = "$tag-menu")
+            SelectMenu(choosing, { choosing = false }, TapKey.entries, key, { it.label }, onPick = onPick, spoken = { it.spoken })
         }
     }
 }
