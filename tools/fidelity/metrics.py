@@ -12,7 +12,7 @@ import numpy as np
 TOLERANCE_DP = 2.0
 MIN_GEOMETRY = 0.95
 MAX_DELTA_E = 3.0
-MIN_SSIM = 0.90
+MIN_SSIM = 0.92
 
 
 # ---- colour -------------------------------------------------------------------------------
@@ -195,6 +195,27 @@ def ssim(a, b):
     return float(smap.mean()), smap
 
 
+def text_mask(shape, text_boxes, scale):
+    """Boolean mask (H, W) of pixels inside text_boxes ({x, y, w, h} in dp), scaled by scale px per dp."""
+    h, w = shape
+    mask = np.zeros((h, w), dtype=bool)
+    for box in text_boxes:
+        x0 = max(0, int(round(box["x"] * scale)))
+        y0 = max(0, int(round(box["y"] * scale)))
+        x1 = min(w, int(round((box["x"] + box["w"]) * scale)))
+        y1 = min(h, int(round((box["y"] + box["h"]) * scale)))
+        if x1 > x0 and y1 > y0:
+            mask[y0:y1, x0:x1] = True
+    return mask
+
+
+def split_ssim(smap, mask):
+    """Mean SSIM outside mask (non-text) and inside mask (text), each None if its region is empty."""
+    non_text = float(smap[~mask].mean()) if (~mask).any() else None
+    text = float(smap[mask].mean()) if mask.any() else None
+    return non_text, text
+
+
 # ---- previews -------------------------------------------------------------------------------
 
 def clip_board(board, img, name, index, dsf, slack=0.5):
@@ -210,9 +231,19 @@ def clip_board(board, img, name, index, dsf, slack=0.5):
         return (e["x"] >= c["x"] - slack and e["y"] >= c["y"] - slack
                 and e["x"] + e["w"] <= c["x"] + c["w"] + slack and e["y"] + e["h"] <= c["y"] + c["h"] + slack)
     elements = [{**e, "x": round(e["x"] - c["x"], 2), "y": round(e["y"] - c["y"], 2)} for e in board["elements"] if inside(e)]
+    out = {**board, "elements": elements, "size": [c["w"], c["h"]]}
+    if "text_boxes" in board:
+        clipped_boxes = []
+        for b in board["text_boxes"]:
+            x0, y0 = max(b["x"], c["x"]), max(b["y"], c["y"])
+            x1, y1 = min(b["x"] + b["w"], c["x"] + c["w"]), min(b["y"] + b["h"], c["y"] + c["h"])
+            if x1 > x0 and y1 > y0:
+                clipped_boxes.append({"x": round(x0 - c["x"], 2), "y": round(y0 - c["y"], 2),
+                                      "w": round(x1 - x0, 2), "h": round(y1 - y0, 2)})
+        out["text_boxes"] = clipped_boxes
     x0, y0 = int(round(c["x"] * dsf)), int(round(c["y"] * dsf))
     x1, y1 = int(round((c["x"] + c["w"]) * dsf)), int(round((c["y"] + c["h"]) * dsf))
-    return {**board, "elements": elements, "size": [c["w"], c["h"]]}, img[y0:y1, x0:x1]
+    return out, img[y0:y1, x0:x1]
 
 
 # ---- screens and verdict --------------------------------------------------------------------
@@ -241,7 +272,7 @@ def verdict(tokens, geometry, missing, max_delta_e, ssim):
     if max_delta_e is not None and max_delta_e >= MAX_DELTA_E:
         reasons.append(f"colour delta_e {max_delta_e:.2f} >= {MAX_DELTA_E}")
     if ssim is None or ssim < MIN_SSIM:
-        reasons.append(f"ssim {ssim if ssim is not None else 0:.3f} < {MIN_SSIM}")
+        reasons.append(f"non-text ssim {ssim if ssim is not None else 0:.3f} < {MIN_SSIM}")
     return {"pass": not reasons, "reasons": reasons}
 
 

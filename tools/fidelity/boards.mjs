@@ -125,7 +125,8 @@ async function launch(chrome) {
   return { cdp: new Cdp(ws), close: () => { ws.close(); proc.kill(); rmSync(profile, { recursive: true, force: true }); } };
 }
 
-// Runs in the page: every data-el element's box, text and colours, in document order.
+// Runs in the page: every data-el element's box, text and colours, in document order,
+// plus the rendered boxes of visible text (for masking text anti-aliasing out of SSIM).
 const EXTRACT = `(() => {
   const out = [];
   for (const el of document.querySelectorAll('[data-el]')) {
@@ -141,7 +142,55 @@ const EXTRACT = `(() => {
       background: cs.backgroundColor, color: cs.color,
     });
   }
-  return { elements: out, fonts: document.fonts.status,
+  const clipToAncestors = (rect, startEl) => {
+    let l = rect.left, t = rect.top, r = rect.right, b = rect.bottom;
+    for (let a = startEl; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return null;
+      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+        const ar = a.getBoundingClientRect();
+        if (cs.overflowX !== 'visible') { l = Math.max(l, ar.left); r = Math.min(r, ar.right); }
+        if (cs.overflowY !== 'visible') { t = Math.max(t, ar.top); b = Math.min(b, ar.bottom); }
+      }
+    }
+    return r > l && b > t ? { x: +l.toFixed(2), y: +t.toFixed(2), w: +(r - l).toFixed(2), h: +(b - t).toFixed(2) } : null;
+  };
+  const textBoxes = [];
+  const skipTags = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.nodeValue || !node.nodeValue.trim()) continue;
+    const parent = node.parentElement;
+    if (!parent || skipTags.has(parent.tagName)) continue;
+    range.selectNodeContents(node);
+    for (const r of range.getClientRects()) {
+      const clipped = clipToAncestors(r, parent);
+      if (clipped) textBoxes.push(clipped);
+    }
+  }
+  for (const el of document.querySelectorAll('input, textarea')) {
+    if (!el.value && !el.placeholder) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+    const r = el.getBoundingClientRect();
+    const bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
+    const bt = parseFloat(cs.borderTopWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
+    const pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+    const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
+    const left = r.left + bl + pl, right = r.right - br - pr;
+    let top = r.top + bt + pt, bottom = r.bottom - bb - pb;
+    const fs = parseFloat(cs.fontSize) || 16;
+    const lh = parseFloat(cs.lineHeight) || fs * 1.25;
+    if (el.tagName === 'INPUT' && bottom - top > lh) {
+      top += (bottom - top - lh) / 2;
+      bottom = top + lh;
+    }
+    const clipped = clipToAncestors({ left, top, right, bottom }, el.parentElement);
+    if (clipped) textBoxes.push(clipped);
+  }
+  return { elements: out, text_boxes: textBoxes, fonts: document.fonts.status,
     families: [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family + ' ' + f.weight) };
 })()`;
 

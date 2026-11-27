@@ -99,6 +99,37 @@ class SsimTest(unittest.TestCase):
         b = np.roll(a, 1, axis=1)
         self.assertGreater(m.ssim(a, b)[0], 0.8)
 
+    def test_text_mask_scales_and_clamps_boxes(self):
+        mask = m.text_mask((20, 30), [
+            {"x": 2, "y": 3, "w": 5, "h": 4},
+            {"x": -2, "y": 8, "w": 4, "h": 5},
+            {"x": 5, "y": 5, "w": 0, "h": 3},
+        ], scale=2.0)
+        self.assertEqual(mask.shape, (20, 30))
+        self.assertTrue(mask[6:14, 4:14].all())
+        self.assertTrue(mask[16:20, 0:4].all())
+        self.assertFalse(mask[0:6, :].any())
+        self.assertEqual(int(mask.sum()), 8 * 10 + 4 * 4)
+
+    def test_split_ssim_separates_text_and_non_text_regions(self):
+        smap = np.full((10, 10), 0.98)
+        mask = np.zeros((10, 10), dtype=bool)
+        mask[2:6, 2:7] = True
+        smap[mask] = 0.50
+        non_text, text = m.split_ssim(smap, mask)
+        self.assertAlmostEqual(non_text, 0.98, places=6)
+        self.assertAlmostEqual(text, 0.50, places=6)
+
+        # Empty text mask: non-text equals the whole map, text is None.
+        non_text_empty, text_empty = m.split_ssim(smap, np.zeros((10, 10), dtype=bool))
+        self.assertAlmostEqual(non_text_empty, float(smap.mean()), places=6)
+        self.assertIsNone(text_empty)
+
+        # Full text mask: non-text is None, text equals the whole map.
+        non_text_full, text_full = m.split_ssim(smap, np.ones((10, 10), dtype=bool))
+        self.assertIsNone(non_text_full)
+        self.assertAlmostEqual(text_full, float(smap.mean()), places=6)
+
 
 class ScreensTest(unittest.TestCase):
     def test_screen_ids_from_board_names(self):
@@ -129,16 +160,36 @@ class ClipTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.clip_board(board, img, "screen", 2, 2.0)
 
+    def test_clip_board_clips_and_translates_text_boxes(self):
+        board = {
+            "board": "Main", "dsf": 2.0,
+            "elements": [
+                {"name": "screen", "x": 100, "y": 20, "w": 50, "h": 60},
+            ],
+            "text_boxes": [
+                {"x": 10, "y": 30, "w": 20, "h": 10},   # outside
+                {"x": 110, "y": 30, "w": 20, "h": 10},  # fully inside
+                {"x": 140, "y": 75, "w": 20, "h": 10},  # partially overlapping right/bottom
+            ],
+        }
+        img = np.zeros((200, 400, 3), dtype=np.uint8)
+        clipped, _ = m.clip_board(board, img, "screen", 0, 2.0)
+        self.assertEqual(clipped["text_boxes"], [
+            {"x": 10.0, "y": 10.0, "w": 20.0, "h": 10.0},
+            {"x": 40.0, "y": 55.0, "w": 10.0, "h": 5.0},
+        ])
+
 
 class VerdictTest(unittest.TestCase):
-    GOOD = dict(tokens=1.0, geometry=0.96, missing=0, max_delta_e=2.9, ssim=0.91)
+    GOOD = dict(tokens=1.0, geometry=0.96, missing=0, max_delta_e=2.9, ssim=0.93)
 
     def test_passes_at_thresholds(self):
         self.assertEqual(m.verdict(**self.GOOD)["pass"], True)
+        self.assertEqual(m.verdict(**{**self.GOOD, "ssim": m.MIN_SSIM})["pass"], True)
 
     def test_each_threshold_fails_on_its_own(self):
         for key, bad in [("tokens", 0.99), ("geometry", 0.949), ("missing", 1), ("max_delta_e", 3.0),
-                         ("ssim", 0.899), ("tokens", None)]:
+                         ("ssim", 0.919), ("tokens", None)]:
             v = m.verdict(**{**self.GOOD, key: bad})
             self.assertFalse(v["pass"], key)
             self.assertTrue(any(key.split("_")[-1] in r for r in v["reasons"]), (key, v["reasons"]))

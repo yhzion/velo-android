@@ -160,9 +160,14 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
     colour = sum(1 for f in fills if f["delta_e"] is not None and f["delta_e"] < m.MAX_DELTA_E) / len(fills) if fills else None
 
     # Whole screen: the app shot is scaled to the board shot's pixels (they differ by rounding only).
+    # Text boxes are masked out of the judged SSIM so Chromium/Skia text anti-aliasing does not decide
+    # the verdict; text-box SSIM and raw whole-screen SSIM are reported separately.
     if app_img.shape[:2] != board_img.shape[:2]:
         app_img = np.asarray(Image.fromarray(app_img).resize((board_img.shape[1], board_img.shape[0]), Image.BILINEAR))
-    s, smap = m.ssim(board_img, app_img)
+    raw_ssim, smap = m.ssim(board_img, app_img)
+    mask = m.text_mask(smap.shape, board.get("text_boxes", []), scale=dsf)
+    non_text_ssim, text_ssim = m.split_ssim(smap, mask)
+    judged_ssim = raw_ssim if non_text_ssim is None else non_text_ssim
     return {
         "elements": len(board_els), "paired": len(pairs), "within": len(good),
         "geometry": geometry, "missing": [e["name"] for e in missing], "extra": [n["tag"] for n in extra],
@@ -170,7 +175,8 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
                      "dw": round(n["w"] - b["w"], 2), "dh": round(n["h"] - b["h"], 2)}
                     for b, n in pairs if not m.within(b, n)],
         "fills": fills, "colour": colour, "max_delta_e": max(compared) if compared else None,
-        "ssim": s,
+        "ssim": judged_ssim, "ssim_text": text_ssim, "ssim_raw": raw_ssim,
+        "text_coverage": float(mask.mean()),
     }, smap, app_img
 
 
@@ -269,8 +275,9 @@ def platform_exceptions(index, exceptions):
             "Boards drawn with Google Fonts Roboto; app screenshots with Robolectric's static Roboto faces.")
     return [
         {"what": "status bar", "note": "Robolectric draws no system bars and the boards draw none; nothing is masked."},
-        {"what": "font hinting", "note": "Chromium and Robolectric's Skia anti-alias text differently, which lowers "
-                                         "SSIM by a few hundredths on text-heavy screens. " + font},
+        {"what": "font hinting", "note": "Chromium and Robolectric's Skia anti-alias text differently, so the judged "
+                                         "SSIM masks out the board's rendered text boxes and reports text-box SSIM "
+                                         "separately. " + font},
         {"what": "Android SDK", "note": "Captures run on Robolectric SDK 34 (the build's test JVM is Java 17)."},
     ] + [{"what": f"element {n}", "note": r} for n, r in exceptions.get("elements", {}).items()]
 
@@ -292,10 +299,11 @@ def render_html(r):
             elif c["status"] != "measured":
                 cells.append(f"<td class=na>{e(c['status'])}<br><small>{e(c['board'])}</small></td>")
             else:
+                text_note = "" if c.get("ssim_text") is None else f" (text {c['ssim_text']:.3f})"
                 cells.append(
                     f"<td class={'pass' if c['pass'] else 'fail'}><a href='#{e(s['screen'])}-{d}'><b>{c['score']:.0f}</b></a>"
                     f"<br><small>geom {fmt_rate(c['geometry'])} · ΔE {'—' if c['max_delta_e'] is None else round(c['max_delta_e'], 2)}"
-                    f" · SSIM {c['ssim']:.3f}<br>missing {len(c['missing'])} · extra {len(c['extra'])}</small></td>")
+                    f" · SSIM {c['ssim']:.3f}{text_note}<br>missing {len(c['missing'])} · extra {len(c['extra'])}</small></td>")
         verdict = "PASS" if s["pass"] else ("fail" if s["implemented"] else "not implemented")
         rows.append(f"<tr><th>{e(s['screen'])}</th>{''.join(cells)}<td>{s['score']:.1f}</td><td>{verdict}</td></tr>")
     details = []
@@ -307,11 +315,16 @@ def render_html(r):
             fills = "".join(f"<li>{e(f['name'])}: board {f['board']} app {f['app']} ΔE "
                             f"{'—' if f['delta_e'] is None else round(f['delta_e'], 2)}</li>" for f in c["fills"])
             offs = "".join(f"<li>{e(o['name'])}: dx {o['dx']} dy {o['dy']} dw {o['dw']} dh {o['dh']}</li>" for o in c["offsets"])
+            ssim_line = f"SSIM {c['ssim']:.3f} non-text"
+            if c.get("ssim_text") is not None:
+                ssim_line += f", {c['ssim_text']:.3f} text ({c['text_coverage']:.0%} of pixels)"
+            if c.get("ssim_raw") is not None:
+                ssim_line += f", {c['ssim_raw']:.3f} whole screen"
             details.append(f"""
 <section id="{e(s['screen'])}-{d}"><h2>{e(s['screen'])} · {d} <small>({e(c['board'])}, {c['size'][0]}×{c['size'][1]} dp)</small></h2>
 <p>Score {c['score']:.1f} — {'PASS' if c['pass'] else 'fail: ' + e('; '.join(c['reasons']))}</p>
 <p>Elements {c['elements']}, paired {c['paired']}, within ±{t['tolerance_dp']:g} dp {c['within']}
- ({fmt_rate(c['geometry'])}); SSIM {c['ssim']:.3f}; colour {fmt_rate(c['colour'])}</p>
+ ({fmt_rate(c['geometry'])}); {ssim_line}; colour {fmt_rate(c['colour'])}</p>
 <figure><img src="{e(c['images']['side'])}" alt="board, app and SSIM heatmap"><figcaption>Board · App · SSIM loss (red)</figcaption></figure>
 <details><summary>Missing tags ({len(c['missing'])})</summary><p>{e(', '.join(c['missing']))}</p></details>
 <details><summary>Extra tags ({len(c['extra'])})</summary><p>{e(', '.join(c['extra']))}</p></details>
@@ -338,7 +351,7 @@ img{{max-width:100%;border:1px solid #ccc}} section{{margin:28px 0}} small{{colo
  {'' if impl is None else f'(mean {impl:.1f})'}; {r['screens_passed']} pass.</p>
 <p>Tokens: {tok_line}.</p>
 <p>Pass: tokens 100%, ≥{t['geometry']:.0%} of elements within ±{t['tolerance_dp']:g} dp, no missing tags,
- fill ΔE₀₀ &lt; {t['delta_e_below']:g}, SSIM ≥ {t['ssim']}. See docs/fidelity.md.</p>
+ fill ΔE₀₀ &lt; {t['delta_e_below']:g}, non-text SSIM ≥ {t['ssim']}. See docs/fidelity.md.</p>
 <table><tr><th>Screen</th>{''.join(f'<th>{d}</th>' for d in DEVICE_ORDER)}<th>Score</th><th>Verdict</th></tr>
 {''.join(rows)}</table>
 <h2>Platform exceptions</h2><ul>{exc}</ul>

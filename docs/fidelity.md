@@ -21,7 +21,7 @@ It takes about a minute for one screen and a few minutes for the whole canvas. T
 |---|---|
 | `report.html` | Screen by device table, then each capture: board, app and SSIM heatmap side by side, missing and extra tags, out-of-tolerance boxes, fills |
 | `report.json` | The same numbers for tools |
-| `boards/<Board>.json`, `.png` | Every `data-el` element of a board: box in dp, text, colours; the board's render |
+| `boards/<Board>.json`, `.png` | Every `data-el` element of a board (box in dp, text, colours), its rendered text boxes, and the board's render |
 | `app/<screen>@<device>.json`, `.png` | Every testTag node of the app scene: box in dp, text; the app's screenshot |
 | `plan.json` | What was captured: screen, device, board and size |
 
@@ -70,7 +70,7 @@ board and tree order in the app.
 | Geometry | Share of the board's elements whose app node is within ±2 dp in x, y, width and height | ≥ 95% |
 | Missing tags | Board elements with no app node of that name | 0 |
 | Colour | CIEDE2000 difference of each fill: board elements with a background colour, sampled on both screenshots | every ΔE < 3 |
-| Whole screen | SSIM of the two screenshots (luma, Gaussian window 11, σ 1.5) | ≥ 0.90 |
+| Whole screen | Non-text SSIM: mean of the SSIM map (luma, Gaussian window 11, σ 1.5) outside the board's rendered text boxes | ≥ 0.92 |
 
 A screen passes when every device it has passes all five. A missing element counts against
 geometry and, when it has a fill, against colour. Extra tags (app nodes the board does not name)
@@ -80,22 +80,38 @@ The fill colour is the most frequent colour in a band 1.5 to 4 dp inside the ele
 the middle half of each side. The band misses a 1 dp border and rounded corners. For a container it
 usually misses the children too. Both sides are sampled the same way.
 
-**Score.** A capture's score is the mean of four rates, 0 to 100: tokens, geometry, the share of
-fills with ΔE < 3, and SSIM. With no token result, tokens count as 0. A board without fills leaves
-colour out. A screen's score is the mean over its devices; a device without a capture counts as 0.
-The overall **match rate** is the mean over every screen of the canvas, so an unimplemented screen
-counts as 0. The report also gives the mean over implemented screens.
+**Non-text SSIM.** Chromium and Robolectric's Skia anti-alias text differently (see Platform
+exceptions). On dark screens, thin anti-aliased strokes that differ by half a pixel score roughly
+0.40 to 0.65 locally, so whole-screen SSIM drops below 0.90 on matching prose-heavy screens
+(`start-2-empty`, `settings-updates` on a bar phone) even when geometry is 100% and every fill has
+ΔE 0. Instead of lowering the threshold on text-heavy screens — which would weaken detection of
+real layout or style regressions and require an arbitrary text-density cutoff — `boards.mjs` records
+the bounding boxes of visible text (`Range.getClientRects()` on text nodes plus the text content
+box of `<input>` and `<textarea>` controls, clipped to any overflow-clipping ancestor). `compare`
+computes the full SSIM map and judges the mean over pixels outside those text boxes, keeping card
+fills, borders, rounded corners, dividers, buttons, switches, icons and spacing unmasked. Because
+removing text anti-aliasing raises matching screens to 0.935–0.999 while real layout shifts, wrong
+fills or mismatched screens fall near or below 0.92, the non-text SSIM pass threshold is **≥ 0.92**
+(raised from 0.90). The report still records `ssim_text` (mean SSIM inside the text boxes, with
+`text_coverage`) and `ssim_raw` (whole-screen SSIM) separately, and the heatmap shows the full map.
+Missing or displaced text elements remain covered by geometry and missing tags.
 
-SSIM alone is weak on these dark screens: two unrelated settings pages score about 0.75, because
-large flat areas agree. Read it together with geometry, which carries most of the verdict.
+**Score.** A capture's score is the mean of four rates, 0 to 100: tokens, geometry, the share of
+fills with ΔE < 3, and non-text SSIM. With no token result, tokens count as 0. A board without fills
+leaves colour out. A screen's score is the mean over its devices; a device without a capture counts
+as 0. The overall **match rate** is the mean over every screen of the canvas, so an unimplemented
+screen counts as 0. The report also gives the mean over implemented screens.
+
+SSIM alone is weak on these dark screens: two unrelated settings pages score about 0.75–0.90,
+because large flat areas agree. Read it together with geometry, which carries most of the verdict.
 
 ## Platform exceptions
 
 The report lists these apart from the scores:
 
 - **Status bar.** Robolectric draws no system bars, and the boards draw none. Nothing is masked.
-- **Font hinting.** Chromium and Robolectric's Skia anti-alias text differently. This lowers SSIM
-  by a few hundredths on screens with much text.
+- **Font hinting.** Chromium and Robolectric's Skia anti-alias text differently. The judged SSIM
+  masks out the board's rendered text boxes and reports text-box SSIM separately.
 - **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
   Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
   Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.

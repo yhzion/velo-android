@@ -34,7 +34,34 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(r["colour"], 1.0)
         self.assertAlmostEqual(r["max_delta_e"], 0.0)
         self.assertAlmostEqual(r["ssim"], 1.0, places=6)
+        self.assertAlmostEqual(r["ssim_raw"], 1.0, places=6)
+        self.assertIsNone(r["ssim_text"])
+        self.assertEqual(r["text_coverage"], 0.0)
         self.assertEqual([x["name"] for x in r["fills"]], ["screen", "card"])
+
+    def test_text_box_anti_aliasing_does_not_fail_judged_ssim(self):
+        board, img = board_and_image()
+        board["text_boxes"] = [{"x": 14, "y": 50, "w": 40, "h": 10}]
+        app_img = img.copy()
+        # Simulate Chromium vs Skia anti-aliasing inside the label's text box only:
+        # shift bright stripes by 1 px so local SSIM inside the text box drops sharply.
+        img[102:118, 30:106:2] = (243, 244, 249)
+        img[102:118, 31:106:2] = (15, 16, 21)
+        app_img[102:118, 30:106:2] = (15, 16, 21)
+        app_img[102:118, 31:106:2] = (243, 244, 249)
+        r, _, _ = f.compare({}, board, app_from(board), img, app_img, {}, DSF)
+        self.assertGreater(r["ssim"], 0.98)
+        self.assertLess(r["ssim_text"], 0.2)
+        self.assertLess(r["ssim_raw"], r["ssim"])
+        self.assertGreater(r["text_coverage"], 0.0)
+
+    def test_non_text_difference_still_drops_judged_ssim(self):
+        board, img = board_and_image()
+        board["text_boxes"] = [{"x": 14, "y": 50, "w": 40, "h": 10}]
+        app_img = img.copy()
+        app_img[20:80, 20:180] = (180, 185, 200)  # bright card fill mismatch outside text_boxes
+        r, _, _ = f.compare({}, board, app_from(board), img, app_img, {}, DSF)
+        self.assertLess(r["ssim"], 0.85)
 
     def test_shift_wrong_fill_and_missing_tag_are_each_reported(self):
         board, img = board_and_image()
