@@ -1,6 +1,8 @@
 package io.github.yhzion.velo
 
 import io.github.yhzion.velo.core.Remote
+import io.github.yhzion.velo.ui.FailureNotice
+import io.github.yhzion.velo.ui.failureNotice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -194,6 +196,26 @@ class HostStoreTest {
         assertNull(keptFailure(failed, "connected"))
         // An error while connected is a command's, not the connection's: the notice alone says it.
         assertNull(keptFailure(null, "connected", "conflict: no tiled pane to dock beside"))
+    }
+
+    @Test
+    fun aRefusedTailnetMemberIsToldWhatTheOwnerMustRun() {
+        // A Rex server answers 403 to every request of a caller it does not let in (llms.txt "Endpoints"), and its
+        // tailnet node lets in only its owner by default (#72). The core reports that 403 as below.
+        val refused = "the server refused the connection (HTTP 403)"
+        val text = "connect_failed: the server refused the connection (HTTP 403)\n" +
+            "If the computer is someone else's, its owner must run `rex server tailscale on --allow-tailnet-members`, " +
+            "or start the server with `--tailscale-allow-tailnet-members`."
+        assertEquals(text, errorText("connect_failed", refused))
+        // The empty pane area and the rail show the kept failure, so the hint is there too, with no command to copy:
+        // the member cannot run it.
+        val failure = connectionFailure("connect_failed", refused, "")
+        assertEquals(FailureNotice(text, null), failureNotice(failure, needsAnswer = false, remote = "studio"))
+        // Any other refusal or failure says only what the core said.
+        assertEquals("connect_failed: the server refused the connection (HTTP 401)",
+            errorText("connect_failed", "the server refused the connection (HTTP 401)"))
+        assertEquals("connect_failed: could not reach the server (ConnectionRefused)",
+            errorText("connect_failed", "could not reach the server (ConnectionRefused)"))
     }
 
     @Test

@@ -909,8 +909,26 @@ private val sshSentenceCodes = setOf(
     "no_common_algorithm", "login_refused",
 )
 
-/** What the app shows for an `onError` report: an SSH sentence as it is, else `code: message`. */
-internal fun errorText(code: String, message: String): String = if (code in sshSentenceCodes) message else "$code: $message"
+/**
+ * What the owner of someone else's Rex server must do to let this tailnet member in. A server's tailnet node lets in
+ * only the Tailscale user who signed it in, unless it allows tailnet members (`rex server tailscale on --help`), and it
+ * answers every request of a caller it does not let in with 403 (llms.txt "Endpoints"). The search then lists no
+ * server, and a server added by its address fails with HTTP 403 (#72).
+ */
+internal const val MemberAccessHint =
+    "If the computer is someone else's, its owner must run `rex server tailscale on --allow-tailnet-members`, " +
+        "or start the server with `--tailscale-allow-tailnet-members`."
+
+/**
+ * What the app shows for an `onError` report: an SSH sentence as it is, else `code: message`. A connection the server
+ * refused with 403 adds [MemberAccessHint] on a line of its own: that is what a tailnet member who is not the
+ * server's owner gets (`Core.runConnection` names the status).
+ */
+internal fun errorText(code: String, message: String): String = when {
+    code in sshSentenceCodes -> message
+    code == "connect_failed" && message.endsWith("(HTTP 403)") -> "$code: $message\n$MemberAccessHint"
+    else -> "$code: $message"
+}
 
 /**
  * The failures retrying cannot fix (`permanent_failures` in `native/src/rex/Core.zig`): the core

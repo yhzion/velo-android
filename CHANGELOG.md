@@ -6,6 +6,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - When Velo finds no Rex server on the tailnet, the start screen now also says to run rex server tailscale on and to turn on the tailnet's MagicDNS and HTTPS certificates.
+- When a Rex server lets in only its owner, Velo now says the owner must allow tailnet members, on the start screen and when the server refuses the connection.
 - A terminal whose program only changes its title, rings the bell or switches a mode no longer redraws its screen, so the phone does less work while an agent updates its title many times a second.
 - A new title no longer rebuilds the whole screen: only the tab's name is drawn again where it is shown. While an agent updates its title, the app's main thread does about a quarter less work.
 - Drawing new characters, such as a screen of Korean text or the text at a new size, no longer holds up the terminal: output keeps arriving and the screen keeps answering a finger while the characters are drawn.

@@ -54,4 +54,34 @@ class NoComputerCardTest {
             assertTrue("$each: before Get Rex for Mac", bounds.bottom <= getRex.top)
         }
     }
+
+    /**
+     * A tailnet member who is not the server node's owner gets 403 for `/llms.txt`, so the search lists no server
+     * (#72): the card says what that owner must run, beside the step about someone else's computer.
+     */
+    @Test fun theCardSaysWhatTheOwnerOfSomeoneElsesComputerMustRun() {
+        val model = StartCardModel(
+            step = StartStep.Found, waitingFor = null, unopened = null, connectedAs = "Connected as velo-phone",
+            found = emptyList(), note = FoundNote.NothingFound, searching = false,
+            logIn = {}, loginPageAgain = { null }, tryAgain = {}, searchAgain = {}, connect = {}, getRex = { true },
+        )
+        var size by mutableStateOf(UiSize.Small)
+        compose.setContent { VeloTheme(size = size) { StartScreenBody(model, onAddByQr = {}, onSettings = {}) } }
+        for (each in UiSize.entries) {
+            size = each
+            compose.waitForIdle()
+            val hint = compose.onNodeWithTag("member-access-hint").performScrollTo().assertIsDisplayed()
+            hint.assertTextEquals(
+                "If the computer is someone else's, its owner must run `rex server tailscale on --allow-tailnet-members`, " +
+                    "or start the server with `--tailscale-allow-tailnet-members`.")
+            val card = compose.onNodeWithTag("no-computer-card").getUnclippedBoundsInRoot()
+            val share = compose.onNodeWithTag("share-hint").getUnclippedBoundsInRoot()
+            val again = compose.onNodeWithTag("search-again-button").getUnclippedBoundsInRoot()
+            val bounds = hint.getUnclippedBoundsInRoot()
+            assertTrue("$each: $bounds inside $card", bounds.top >= card.top && bounds.bottom <= card.bottom &&
+                bounds.left >= card.left && bounds.right <= card.right)
+            assertTrue("$each: after the step about sharing", bounds.top >= share.bottom)
+            assertTrue("$each: before Search again", bounds.bottom <= again.top)
+        }
+    }
 }

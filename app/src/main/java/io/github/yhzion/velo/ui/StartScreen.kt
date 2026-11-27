@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.DiscoveredServer
+import io.github.yhzion.velo.MemberAccessHint
 import io.github.yhzion.velo.R
 import io.github.yhzion.velo.Tailnet
 import io.github.yhzion.velo.TailnetState
@@ -872,6 +873,8 @@ private fun NoComputerCard(model: StartCardModel) {
             Text("Open in a browser: $RexInstallationUrl", style = paragraph(15f), color = VeloTheme.colors.textOnRaised)
         }
         Text(NothingFoundSteps[1], Modifier.fillMaxWidth().testTag("share-hint"), style = paragraph(14f), color = c.secondary)
+        // A computer someone else owns lets in only its owner by default, and the search does not list it then (#72).
+        Text(MemberAccessHint, Modifier.fillMaxWidth().testTag("member-access-hint"), style = paragraph(14f), color = c.secondary)
         VeloButton("Search again", model.searchAgain, Modifier.fillMaxWidth().testTag("search-again-button"), enabled = !model.searching)
     }
 }
