@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.12.4 - 2026-11-27
+
 ### Changed
 - When Velo finds no Rex server on the tailnet, the start screen now also says to run rex server tailscale on and to turn on the tailnet's MagicDNS and HTTPS certificates.
 - When a Rex server lets in only its owner, Velo now says the owner must allow tailnet members, on the start screen and when the server refuses the connection.
