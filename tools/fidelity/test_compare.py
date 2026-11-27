@@ -55,6 +55,26 @@ class CompareTest(unittest.TestCase):
         self.assertLess(r["ssim_raw"], r["ssim"])
         self.assertGreater(r["text_coverage"], 0.0)
 
+    def test_narrow_gutter_text_differences_do_not_lower_judged_ssim(self):
+        # 20-row text bands separated by 2-row gutters (narrower than the 11x11 SSIM window),
+        # plus a clean non-text area at the bottom so non-text SSIM is defined.
+        img = np.full((120, 100, 3), 20, dtype=np.uint8)
+        app_img = img.copy()
+        text_boxes = []
+        for y in (10, 32, 54):  # 20 px bands at DSF=1 with 2 px gutters between them
+            text_boxes.append({"x": 10, "y": y, "w": 80, "h": 20})
+            img[y:y + 20, 10:90:2] = 240
+            app_img[y:y + 20, 11:90:2] = 240
+        board = {"elements": [], "text_boxes": text_boxes, "dsf": 1.0}
+        app = {"w": 100, "h": 120, "nodes": []}
+
+        identical, _, _ = f.compare({}, board, app, img, img.copy(), {}, 1.0)
+        text_only, _, _ = f.compare({}, board, app, img, app_img, {}, 1.0)
+        self.assertAlmostEqual(identical["ssim"], 1.0, places=6)
+        self.assertAlmostEqual(text_only["ssim"], 1.0, places=6)
+        self.assertGreaterEqual(text_only["ssim"], 0.92)
+        self.assertLess(text_only["ssim_raw"], 0.92)
+
     def test_non_text_difference_still_drops_judged_ssim(self):
         board, img = board_and_image()
         board["text_boxes"] = [{"x": 14, "y": 50, "w": 40, "h": 10}]

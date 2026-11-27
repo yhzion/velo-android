@@ -175,7 +175,7 @@ def compare(capture, board, app, board_img, app_img, exceptions, dsf):
         app_img = np.asarray(Image.fromarray(app_img).resize((board_img.shape[1], board_img.shape[0]), Image.BILINEAR))
     raw_ssim, smap = m.ssim(board_img, app_img)
     mask = m.text_mask(smap.shape, board.get("text_boxes", []), scale=dsf)
-    non_text_ssim, text_ssim = m.split_ssim(smap, mask)
+    non_text_ssim, text_ssim = m.split_ssim(smap, mask, margin=m.SSIM_RADIUS)
     judged_ssim = raw_ssim if non_text_ssim is None else non_text_ssim
     return {
         "elements": len(board_els), "paired": len(pairs), "within": len(good),

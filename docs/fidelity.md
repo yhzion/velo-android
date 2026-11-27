@@ -88,13 +88,17 @@ exceptions). On these dark screens, thin strokes that differ by half a pixel sco
 would need a text-density cutoff. So the tool leaves the text out.
 
 `boards.mjs` records the boxes of the board's visible text: `Range.getClientRects()` on text nodes
-and the content box of text inputs and textareas, each clipped to its overflow-clipping ancestors.
-`compare` judges the mean of the SSIM map outside those boxes. Fills, borders, corners, dividers,
-buttons, switches, SVG icons and spacing stay in the measure. A symbol set as text, such as a
-step's ✓, leaves with the text. Without text, matching screens score 0.935 to 0.999. The measured
-regressions score 0.766 to 0.917: a wrong background, step or page, a card 8 dp off, a missing card
-fill. The threshold is therefore 0.92, up from 0.90. The report also gives `ssim_text` (inside the
-boxes, with `text_coverage`) and `ssim_raw` (the whole screen). The heatmap shows the whole map.
+and the occupied lines of text inputs and textareas (measured via a hidden mirror element so
+wrapping, scroll offsets and placeholders are honoured without hiding empty area inside a control),
+each clipped to its control's content box and overflow-clipping ancestors. `compare` dilates that
+mask by the SSIM window's 5 px radius (`(11 - 1) / 2`) before averaging non-text SSIM, so no
+judged map position reads text pixels through its 11×11 Gaussian window. Fills, borders, corners,
+dividers, buttons, switches, SVG icons and spacing stay in the measure. A symbol set as text, such
+as a step's ✓, leaves with the text. Without text, matching screens score 0.935 to 0.999. The
+measured regressions score 0.766 to 0.917: a wrong background, step or page, a card 8 dp off, a
+missing card fill. The threshold is therefore 0.92, up from 0.90. The report also gives `ssim_text`
+(inside the unexpanded text boxes, with `text_coverage`) and `ssim_raw` (the whole screen). The
+heatmap shows the whole map.
 
 Missing tags and geometry still catch a missing text element or a box that moves more than 2 dp.
 Text that spills out of the board's line box still lowers non-text SSIM. **Blind spot:** a change

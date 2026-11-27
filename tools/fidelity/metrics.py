@@ -161,7 +161,11 @@ def within(board_el, app_node, tolerance=TOLERANCE_DP):
 
 # ---- whole screen -------------------------------------------------------------------------
 
-def _gaussian(sigma=1.5, size=11):
+SSIM_WINDOW = 11
+SSIM_RADIUS = SSIM_WINDOW // 2
+
+
+def _gaussian(sigma=1.5, size=SSIM_WINDOW):
     x = np.arange(size) - size // 2
     k = np.exp(-(x ** 2) / (2 * sigma ** 2))
     return k / k.sum()
@@ -209,9 +213,27 @@ def text_mask(shape, text_boxes, scale):
     return mask
 
 
-def split_ssim(smap, mask):
-    """Mean SSIM outside mask (non-text) and inside mask (text), each None if its region is empty."""
-    non_text = float(smap[~mask].mean()) if (~mask).any() else None
+def dilate_mask(mask, radius):
+    """Expands True pixels in a 2D boolean mask by radius px in x and y (a (2*radius+1) square window)."""
+    if radius <= 0 or not mask.any():
+        return mask.copy()
+    h, w = mask.shape
+    v = mask.copy()
+    for d in range(1, min(radius + 1, h)):
+        v[d:, :] |= mask[:-d, :]
+        v[:-d, :] |= mask[d:, :]
+    out = v.copy()
+    for d in range(1, min(radius + 1, w)):
+        out[:, d:] |= v[:, :-d]
+        out[:, :-d] |= v[:, d:]
+    return out
+
+
+def split_ssim(smap, mask, margin=0):
+    """Mean SSIM outside mask (expanded by margin px so SSIM windows do not read masked pixels)
+    and inside mask (text), each None if its region is empty."""
+    excluded = dilate_mask(mask, margin) if margin > 0 else mask
+    non_text = float(smap[~excluded].mean()) if (~excluded).any() else None
     text = float(smap[mask].mean()) if mask.any() else None
     return non_text, text
 

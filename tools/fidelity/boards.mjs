@@ -171,9 +171,20 @@ const EXTRACT = `(() => {
     }
   }
   const textInputTypes = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+  const mirrorProps = [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'fontVariant',
+    'lineHeight', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent',
+    'textAlign', 'direction', 'tabSize', 'overflowWrap', 'wordBreak',
+  ];
   for (const el of document.querySelectorAll('input, textarea')) {
-    if (el.tagName !== 'TEXTAREA' && !textInputTypes.has((el.type || 'text').toLowerCase())) continue;
-    if (!el.value && !el.placeholder) continue;
+    const isTextarea = el.tagName === 'TEXTAREA';
+    const inputType = (el.type || 'text').toLowerCase();
+    if (!isTextarea && !textInputTypes.has(inputType)) continue;
+    const hasValue = Boolean(el.value);
+    const rawText = hasValue
+      ? (!isTextarea && inputType === 'password' ? '•'.repeat(el.value.length) : el.value)
+      : (el.placeholder || '');
+    if (!rawText || !rawText.trim()) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
     const r = el.getBoundingClientRect();
@@ -182,15 +193,50 @@ const EXTRACT = `(() => {
     const pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
     const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
     const left = r.left + bl + pl, right = r.right - br - pr;
-    let top = r.top + bt + pt, bottom = r.bottom - bb - pb;
-    const fs = parseFloat(cs.fontSize) || 16;
-    const lh = parseFloat(cs.lineHeight) || fs * 1.25;
-    if (el.tagName === 'INPUT' && bottom - top > lh) {
-      top += (bottom - top - lh) / 2;
-      bottom = top + lh;
+    const top = r.top + bt + pt, bottom = r.bottom - bb - pb;
+    if (right <= left || bottom <= top) continue;
+
+    // Measure only the occupied lines of value/placeholder using a hidden mirror so empty
+    // space inside tall textareas or wide inputs stays in the judged non-text SSIM.
+    const styleSrc = hasValue ? cs : getComputedStyle(el, '::placeholder');
+    const mirror = document.createElement('div');
+    mirror.style.position = 'fixed';
+    mirror.style.visibility = 'hidden';
+    mirror.style.pointerEvents = 'none';
+    mirror.style.margin = '0';
+    mirror.style.padding = '0';
+    mirror.style.border = '0';
+    mirror.style.boxSizing = 'content-box';
+    mirror.style.overflow = 'visible';
+    mirror.style.width = (right - left) + 'px';
+    mirror.style.left = (left - el.scrollLeft) + 'px';
+    mirror.style.top = (top - (isTextarea ? el.scrollTop : 0)) + 'px';
+    mirror.style.whiteSpace = isTextarea ? (cs.whiteSpace === 'normal' ? 'pre-wrap' : cs.whiteSpace) : 'pre';
+    for (const p of mirrorProps) mirror.style[p] = styleSrc[p] || cs[p];
+    const textNode = document.createTextNode(rawText);
+    mirror.appendChild(textNode);
+    document.body.appendChild(mirror);
+    let rects = [];
+    try {
+      range.selectNodeContents(textNode);
+      rects = [...range.getClientRects()];
+    } finally {
+      mirror.remove();
     }
-    const clipped = clipToAncestors({ left, top, right, bottom }, el.parentElement);
-    if (clipped) textBoxes.push(clipped);
+    if (!rects.length) continue;
+    let dy = 0;
+    if (!isTextarea) {
+      const minT = Math.min(...rects.map((cr) => cr.top));
+      const maxB = Math.max(...rects.map((cr) => cr.bottom));
+      dy = ((top + bottom) - (minT + maxB)) / 2;
+    }
+    for (const cr of rects) {
+      const l = Math.max(cr.left, left), rr = Math.min(cr.right, right);
+      const t = Math.max(cr.top + dy, top), b = Math.min(cr.bottom + dy, bottom);
+      if (rr <= l || b <= t) continue;
+      const clipped = clipToAncestors({ left: l, top: t, right: rr, bottom: b }, el.parentElement);
+      if (clipped) textBoxes.push(clipped);
+    }
   }
   return { elements: out, text_boxes: textBoxes, fonts: document.fonts.status,
     families: [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family + ' ' + f.weight) };

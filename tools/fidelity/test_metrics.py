@@ -130,6 +130,36 @@ class SsimTest(unittest.TestCase):
         self.assertIsNone(non_text_full)
         self.assertAlmostEqual(text_full, float(smap.mean()), places=6)
 
+    def test_dilate_mask_expands_by_radius_and_clamps_to_edges(self):
+        mask = np.zeros((15, 15), dtype=bool)
+        mask[7, 7] = True
+        dilated = m.dilate_mask(mask, 2)
+        self.assertTrue(dilated[5:10, 5:10].all())
+        self.assertEqual(int(dilated.sum()), 25)
+        # Zero radius and empty mask stay unchanged.
+        self.assertTrue(np.array_equal(m.dilate_mask(mask, 0), mask))
+        empty = np.zeros((5, 5), dtype=bool)
+        self.assertFalse(m.dilate_mask(empty, 5).any())
+        # Radius larger than the image fills the whole mask without wrapping.
+        tiny = np.zeros((3, 4), dtype=bool)
+        tiny[0, 0] = True
+        self.assertTrue(m.dilate_mask(tiny, 5).all())
+
+    def test_split_ssim_margin_excludes_window_halo(self):
+        smap = np.full((30, 30), 1.0)
+        mask = np.zeros((30, 30), dtype=bool)
+        mask[12:18, 12:18] = True
+        # Drop SSIM in the 5 px halo around the text box, mimicking the 11x11 window bleed.
+        halo = m.dilate_mask(mask, m.SSIM_RADIUS) & ~mask
+        smap[halo] = 0.25
+        smap[mask] = 0.40
+        raw_non_text, raw_text = m.split_ssim(smap, mask, margin=0)
+        clean_non_text, clean_text = m.split_ssim(smap, mask, margin=m.SSIM_RADIUS)
+        self.assertLess(raw_non_text, 0.90)
+        self.assertAlmostEqual(clean_non_text, 1.0, places=6)
+        self.assertAlmostEqual(raw_text, 0.40, places=6)
+        self.assertAlmostEqual(clean_text, 0.40, places=6)
+
 
 class ScreensTest(unittest.TestCase):
     def test_screen_ids_from_board_names(self):
