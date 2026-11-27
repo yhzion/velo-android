@@ -36,7 +36,8 @@ internal object Speech {
         val words = mutableListOf<String>()
         fun gather(parent: AccessibilityNodeInfo) {
             for (c in 0 until parent.childCount) {
-                val child = provider.createAccessibilityNodeInfo(childVirtualId(parent, c)) ?: continue
+                val id = childVirtualId(parent, c) ?: continue
+                val child = provider.createAccessibilityNodeInfo(id) ?: continue
                 if (focusable(child)) continue
                 words += words(child)
                 gather(child)
@@ -57,7 +58,7 @@ internal object Speech {
         fun walk(id: Int) {
             val info = provider.createAccessibilityNodeInfo(id) ?: return
             if (focusable(info)) result += info to said(view, info)
-            for (c in 0 until info.childCount) walk(childVirtualId(info, c))
+            for (c in 0 until info.childCount) childVirtualId(info, c)?.let(::walk)
         }
         walk(AccessibilityNodeProvider.HOST_VIEW_ID)
         return result
@@ -67,11 +68,15 @@ internal object Speech {
     fun virtualId(info: AccessibilityNodeInfo): Int =
         (AccessibilityNodeInfo::class.java.getMethod("getSourceNodeId").invoke(info) as Long ushr 32).toInt()
 
-    // AccessibilityNodeInfo keeps each child, and its own source, as a long whose high half is the
-    // virtual view id; getChildId and getSourceNodeId are hidden, so they are read by reflection, as Robolectric allows.
-    private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int {
+    /**
+     * The virtual view id of [info]'s child at [index]; null for a view of its own, such as a pane's surface in an
+     * AndroidView (#174): its high half is the host's id, and read as a node of this provider it would be the root again.
+     */
+    private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int? {
+        // AccessibilityNodeInfo keeps each child, and its own source, as a long whose high half is the
+        // virtual view id; getChildId and getSourceNodeId are hidden, so they are read by reflection, as Robolectric allows.
         val id = AccessibilityNodeInfo::class.java.getMethod("getChildId", Int::class.javaPrimitiveType).invoke(info, index) as Long
-        return (id ushr 32).toInt()
+        return (id ushr 32).toInt().takeIf { it != AccessibilityNodeProvider.HOST_VIEW_ID }
     }
 
     /**

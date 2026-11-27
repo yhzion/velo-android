@@ -4,6 +4,7 @@ import android.app.Application
 import android.view.View
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -12,6 +13,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -23,8 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The checks DoubleSpeechTest and MenuSpeechTest scan by, on words given here, so they need no width
- * and run once (#175): [Speech.saysTwice] (#147, #167), that the scan hears a state, and the kind
- * check of an [Opened] menu.
+ * and run once (#175): [Speech.saysTwice] (#147, #167), that the scan hears a state and passes a
+ * view of its own (#174), and the kind check of an [Opened] menu.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -95,6 +97,24 @@ class SpeechCheckTest {
         compose.waitForIdle()
         val said = compose.runOnIdle { Speech.focusableNodes(view).map { it.second }.filter { it.isNotEmpty() } }
         assertTrue("$said", said.single() == listOf("Unread", "Unread") && twice(said.single()))
+    }
+
+    /**
+     * A view of its own in the tree, as a pane's surface is in its AndroidView (#174), is not read as a node of the
+     * Compose view: read so, it is the root again and the scan never ends. The nodes beside it are still heard.
+     */
+    @Test fun theScanPassesAViewOfItsOwn() {
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            Column {
+                AndroidView({ View(it).apply { contentDescription = "Surface"; isFocusable = true } }, Modifier.size(40.dp))
+                Box(Modifier.size(40.dp).semantics { contentDescription = "Beside" }.clickable {})
+            }
+        }
+        compose.waitForIdle()
+        val said = compose.runOnIdle { Speech.focusableNodes(view).map { it.second }.filter { it.isNotEmpty() } }
+        assertTrue("$said", said == listOf(listOf("Beside")))
     }
 
     @Test fun theKindCheckMatchesATagFromItsStart() {
