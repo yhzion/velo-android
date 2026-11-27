@@ -20,6 +20,21 @@ class KeyBarTest {
         assertEquals("enter", keyName("enter"))
     }
 
+    @Test fun eachKeyHasOneSpokenNameAndAWordKeepsItsOwn() {
+        for ((key, said) in listOf(
+            "Ctrl" to "Control", "Esc" to "Escape", "PgUp" to "Page Up", "PgDn" to "Page Down",
+            "-" to "Minus", "|" to "Pipe", "/" to "Slash", "~" to "Tilde",
+        )) assertEquals(key, said, spokenKeyName(key))
+        for (key in listOf("Tab", "Enter", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "Backspace"))
+            assertEquals(key, spokenKeyName(key))
+        // A key saved by an older Velo that is no longer offered is said as it is written.
+        assertEquals("xY", spokenKeyName("xY"))
+    }
+
+    @Test fun everyOfferedKeyIsSaidInWords() {
+        for (key in Settings.ALL_KEYS) assertTrue(key, spokenKeyName(key).all { it.isLetter() || it == ' ' })
+    }
+
     @Test fun upgradesKeepTheOrderThatWasVisibleIncludingUnknownKeys() {
         assertEquals(listOf("Ctrl", "Esc", "Tab", "Left", "Down", "Up", "Right"),
             readKeyOrder("Esc,Tab,Ctrl,Left,Down,Up,Right", ordered = false))

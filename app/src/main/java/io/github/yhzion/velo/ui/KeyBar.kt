@@ -34,6 +34,22 @@ val StickyKeys = setOf("Ctrl", "Alt", "Shift")
 /** The name remains available to accessibility even when the button displays an arrow. */
 internal fun keyName(key: String): String = if (key in KEY_CODES || key in StickyKeys) key.uppercase() else key
 
+/**
+ * What a screen reader says for [key], the one name the key bar and the Keyboard settings use,
+ * as the boards name them: a short label or a symbol in full words, a key named in a word as it is.
+ */
+fun spokenKeyName(key: String): String = when (key) {
+    "Ctrl" -> "Control"
+    "Esc" -> "Escape"
+    "PgUp" -> "Page Up"
+    "PgDn" -> "Page Down"
+    "-" -> "Minus"
+    "|" -> "Pipe"
+    "/" -> "Slash"
+    "~" -> "Tilde"
+    else -> key
+}
+
 /** [armed] after a tap on the sticky key [key]: armed when it was not, else not armed. The other one stays as it is. */
 fun toggleSticky(armed: Set<String>, key: String): Set<String> = if (key in armed) armed - key else armed + key
 
@@ -186,7 +202,7 @@ internal fun KeyBar(keys: List<String>, armed: Set<String>, modifier: Modifier, 
                                 else -> Alignment.Center
                             }
                             KeyCap(key, { onKey(key, false) }, armed = key in armed, latching = key in StickyKeys,
-                                contentDescription = if (key == "Ctrl") "Control" else key, enabled = enabled,
+                                contentDescription = spokenKeyName(key), enabled = enabled,
                                 holdRepeat = key in REPEAT_KEYS, onRepeat = { onKey(key, true) },
                                 capAlignment = place, capModifier = Modifier.testTag(keyTestTag(key)))
                         }

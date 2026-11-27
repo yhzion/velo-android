@@ -3,6 +3,7 @@ package io.github.yhzion.velo.ui.theme
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.github.yhzion.velo.ui.keyName
+import io.github.yhzion.velo.ui.spokenKeyName
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -603,7 +604,7 @@ fun KeyChoice(key: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
         // A key's least touch target, 44 (MinKey), as on the key bar: chips wrap in rows the boards space 8 apart.
         modifier.heightIn(min = VeloTheme.medium(44.dp).coerceAtLeast(MinKey)).widthIn(min = VeloTheme.medium(48.dp)).then(frame)
             .selectable(selected, role = Role.Checkbox, onClick = onClick)
-            .semantics { contentDescription = key }
+            .semantics { contentDescription = spokenKeyName(key) }
             // The rim takes room beside the words, as the boards' border does.
             .padding(horizontal = VeloTheme.medium(14.dp) + s.edge),
         contentAlignment = Alignment.Center,

@@ -156,15 +156,15 @@ private fun OrderList(s: Settings) {
                 ) {
                     Text("${index + 1}", Modifier.width(space.s20).testTag("keyboard-order-position-$id"), style = VeloTheme.type.caption, color = c.secondary)
                     // As tall as the boards' line of 15 in JetBrains Mono, an arrow's icon or a key's name.
-                    Box(Modifier.weight(1f).height(VeloTheme.medium(20.dp)).testTag("keyboard-order-key-$id").semantics(mergeDescendants = true) { contentDescription = name },
+                    Box(Modifier.weight(1f).height(VeloTheme.medium(20.dp)).testTag("keyboard-order-key-$id").semantics(mergeDescendants = true) { contentDescription = spokenKeyName(name) },
                         contentAlignment = Alignment.CenterStart) {
                         if (name in IconKeys) KeyLegend(name, c.text)
                         else Text(keyName(name), style = monoAt(15f, FontWeight.Medium), color = c.text, maxLines = 1, softWrap = false)
                     }
-                    OrderButton(Icons.Default.ArrowUpward, "Move ${keyName(name)} earlier", index > 0, "keyboard-order-earlier-$id") {
+                    OrderButton(Icons.Default.ArrowUpward, "Move ${spokenKeyName(name)} earlier", index > 0, "keyboard-order-earlier-$id") {
                         s.saveKeyBar(moveKey(s.keyBar, name, -1))
                     }
-                    OrderButton(Icons.Default.ArrowDownward, "Move ${keyName(name)} later", index < s.keyBar.lastIndex, "keyboard-order-later-$id") {
+                    OrderButton(Icons.Default.ArrowDownward, "Move ${spokenKeyName(name)} later", index < s.keyBar.lastIndex, "keyboard-order-later-$id") {
                         s.saveKeyBar(moveKey(s.keyBar, name, 1))
                     }
                 }
