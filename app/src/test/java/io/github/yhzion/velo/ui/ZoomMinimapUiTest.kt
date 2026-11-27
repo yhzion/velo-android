@@ -159,6 +159,10 @@ class ZoomMinimapUiTest {
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("minimap-picker-covered-b").assertDoesNotExist()
         compose.onNodeWithTag("minimap-picker-covered-c").assertDoesNotExist()
+        // The row is no wider than the map: the popover keeps its end at the minimap's (#144).
+        val row = compose.onNodeWithTag("minimap-picker-covered").getBoundsInRoot()
+        val map = compose.onNodeWithTag("minimap-picker-map").getBoundsInRoot()
+        assertTrue("row ${row.left}..${row.right} in map ${map.left}..${map.right}", row.right <= map.right + 0.5.dp)
         compose.onNodeWithTag("minimap-picker-covered-a").performClick()
         assertEquals(listOf("a"), zoomedTo)
         compose.onNodeWithTag("minimap-picker").assertDoesNotExist()

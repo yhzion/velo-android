@@ -460,21 +460,22 @@ private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least
             }
         }
     }
-    if (covered.isNotEmpty()) CoveredCells(map, covered, name, onPick)
+    if (covered.isNotEmpty()) CoveredCells(map, covered, width, name, onPick)
 }
 
 /**
  * The row under the picker's map: a capsule for each cell of [map] in [covered], in the panes' order, as tall as a
- * minimized pane's ([MinimizedCapsuleHeight]) and named with [name]. A row wider than the popover scrolls sideways.
+ * minimized pane's ([MinimizedCapsuleHeight]) and named with [name]. It is no wider than the map, [width], and scrolls
+ * sideways past it: a wider row would widen the popover, whose end would then leave the minimap's.
  */
 @Composable
-private fun CoveredCells(map: ZoomMap, covered: Set<String>, name: (String) -> String, onPick: (String) -> Unit) {
+private fun CoveredCells(map: ZoomMap, covered: Set<String>, width: Dp, name: (String) -> String, onPick: (String) -> Unit) {
     val c = VeloTheme.surface
     val sheet = VeloTheme.colors.sheet
     val sizes = VeloTheme.sizes
     val unit = VeloTheme.medium(1.dp)
     Text("Under floating panes", Modifier.padding(top = unit * 8, bottom = unit * 6), color = c.secondary, style = VeloTheme.type.caption)
-    Row(Modifier.testTag("minimap-picker-covered").horizontalScroll(rememberScrollState()),
+    Row(Modifier.testTag("minimap-picker-covered").widthIn(max = width).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(sizes.gapCompact)) {
         for ((index, cell) in map.cells.withIndex()) {
             if (cell.block !in covered) continue
