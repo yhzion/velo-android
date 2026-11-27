@@ -6,6 +6,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Fixed
 - A screen reader gives each key one name on the key bar and in Keyboard settings, in full words: Control, Escape, Page Up, Page Down, Minus, Pipe, Slash and Tilde.
+- The This Device dot in the sidebar tells a screen reader the Tailscale settings page's word for the node's state, such as Connected, instead of Node Running.
 
 ## 2.13.0 - 2026-11-27
 

@@ -129,7 +129,7 @@ private fun WorkspaceScene(sidebar: SidebarPlace?) = VeloTheme(UiSize.Medium) {
     Row(Modifier.testTag("screen-workspace").fillMaxSize().background(VeloTheme.colors.backdrop.surface).padding(gap)) {
         if (sidebar != null) {
             val host = SidebarHost(Remote("remote:studio", Host, "https://studio-mac.example.ts.net"), state, readState, active = true, removed = false)
-            Sidebar(DeviceRow("velo-phone", "100.101.12.7 · Running", "Running"), listOf(host), sidebarSlot(sidebar), NoActions,
+            Sidebar(DeviceRow("velo-phone", "100.101.12.7 · Running", "Running", "Connected"), listOf(host), sidebarSlot(sidebar), NoActions,
                 // Only the docked board's window can dock: its pin is on (WsOpenDocked).
                 settingsBadge = true, docked = if (sidebar == SidebarPlace.Beside) true else null, state = remember(shape) { SidebarState(if (shape == Shape.Closed) setOf(Dev) else emptySet()) })
             if (sidebar == SidebarPlace.Beside) Spacer(Modifier.width(gap))

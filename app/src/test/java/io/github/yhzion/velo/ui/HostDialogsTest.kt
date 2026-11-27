@@ -151,20 +151,20 @@ class HostDialogsTest {
     @Test
     fun deviceSummaryShowsTheNodeNameFirstAddressAndState() {
         val running = TailnetState.Running("velo.tailnet.example", listOf("192.0.2.40", "2001:db8:1::1"))
-        assertEquals(DeviceRow("velo.tailnet.example", "192.0.2.40 · Running", "Running"), deviceRow(running))
+        assertEquals(DeviceRow("velo.tailnet.example", "192.0.2.40 · Running", "Running", "Connected"), deviceRow(running))
     }
 
     @Test
     fun deviceSummaryKeepsItsNameWithoutAnAddressAndDoesNotShortenLongNames() {
         val name = "a-very-long-node-name-that-needs-ellipsis-on-a-narrow-sidebar.tailnet.example"
-        assertEquals(DeviceRow(name, "Running", "Running"), deviceRow(TailnetState.Running(name, emptyList())))
-        assertEquals(DeviceRow(name, "Running", "Running"), deviceRow(TailnetState.Running(name, listOf(""))))
+        assertEquals(DeviceRow(name, "Running", "Running", "Connected"), deviceRow(TailnetState.Running(name, emptyList())))
+        assertEquals(DeviceRow(name, "Running", "Running", "Connected"), deviceRow(TailnetState.Running(name, listOf(""))))
     }
 
     @Test
     fun deviceSummaryUsesTheFallbackForBlankNames() {
         for (name in listOf("", "  ")) {
-            assertEquals(name, DeviceRow("This Device", "192.0.2.40 · Running", "Running"),
+            assertEquals(name, DeviceRow("This Device", "192.0.2.40 · Running", "Running", "Connected"),
                 deviceRow(TailnetState.Running(name, listOf("192.0.2.40"))))
         }
     }
@@ -172,7 +172,7 @@ class HostDialogsTest {
     @Test
     fun deviceSummaryShowsUnknownAsAValidName() {
         for ((name, expected) in listOf("unknown" to "unknown", " Unknown " to "Unknown")) {
-            assertEquals(name, DeviceRow(expected, "192.0.2.40 · Running", "Running"),
+            assertEquals(name, DeviceRow(expected, "192.0.2.40 · Running", "Running", "Connected"),
                 deviceRow(TailnetState.Running(name, listOf("192.0.2.40"))))
         }
     }
@@ -184,7 +184,21 @@ class HostDialogsTest {
             TailnetState.NeedsLogin("https://login.example/abc") to "Needs login",
             TailnetState.LoggedOut to "Logged out",
             TailnetState.Error("the node is stopped") to "Error", TailnetState.Running("", emptyList()) to "Running",
-        )) assertEquals(DeviceRow("This Device", word, word), deviceRow(state))
+        )) assertEquals(DeviceRow("This Device", word, word, tailnetChip(state, paused = false).text), deviceRow(state))
+    }
+
+    @Test
+    fun theDeviceDotSaysWhatTheTailscalePageSaysForEachState() {
+        for ((state, said) in listOf(
+            TailnetState.Off to "Off", TailnetState.Starting to "Starting",
+            TailnetState.NeedsLogin("https://login.example/abc") to "Needs login",
+            TailnetState.LoggedOut to "Logged out",
+            TailnetState.Error("the node is stopped") to "Error",
+            TailnetState.Running("velo", listOf("192.0.2.40")) to "Connected",
+        )) {
+            assertEquals(said, deviceRow(state).spoken)
+            assertEquals(tailnetChip(state, paused = false).text, deviceRow(state).spoken)
+        }
     }
 
     @Test

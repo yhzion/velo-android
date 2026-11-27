@@ -116,7 +116,7 @@ private fun SidebarSample(modifier: Modifier) {
                 }
             }
             ListRow("velo", {}, subtitle = "192.0.2.7 · Running", strong = true,
-                leading = { Icon(Icons.Outlined.Smartphone, "This Device", Modifier.size(s.icon), tint = VeloTheme.surface.text) }, trailing = { StatusMark(Status.Ok, "Node Running") })
+                leading = { Icon(Icons.Outlined.Smartphone, "This Device", Modifier.size(s.icon), tint = VeloTheme.surface.text) }, trailing = { StatusMark(Status.Ok, "Connected") })
             ListRow("workstation", {}, strong = true, leading = { Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(s.icon), tint = VeloTheme.surface.text) },
                 trailing = { StatusMark(Status.Ok, "Connected"); RowIconButton(Icons.Default.MoreHoriz, "Remote menu", {}) })
             SectionHeader("ios-crash-report", trailing = {

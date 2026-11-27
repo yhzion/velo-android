@@ -60,7 +60,7 @@ class SidebarDockPinTest {
                 val gap = VeloTheme.sizes.gap
                 val fit = sidebarFit(settings.sidebarDocked, gap, gap)
                 Row(Modifier.fillMaxSize()) {
-                    if (open) Sidebar(DeviceRow("velo-phone", "Running", "Running"), emptyList(), sidebarSlot(fit.place),
+                    if (open) Sidebar(DeviceRow("velo-phone", "Running", "Running", "Connected"), emptyList(), sidebarSlot(fit.place),
                         actions { open = toggleSidebarDock(settings.sidebarDocked, settings::saveSidebarDocked) },
                         docked = dockSwitch(fit.dockable, settings.sidebarDocked))
                     if (!open || fit.place == SidebarPlace.Beside) Box(Modifier.testTag("panes").weight(1f).fillMaxHeight())

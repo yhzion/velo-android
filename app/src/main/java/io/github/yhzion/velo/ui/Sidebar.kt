@@ -71,8 +71,11 @@ internal class SidebarHost private constructor(
         this(remote, { state }, readState, active, removed, needsAnswer)
 }
 
-/** Status of the local phone, shown above (not as part of) the remote list. */
-data class DeviceRow(val name: String, val line: String, val state: String)
+/**
+ * Status of the local phone, shown above (not as part of) the remote list: its [name], the [line]
+ * under it, the node's [state] word, and what its dot says ([spoken]).
+ */
+data class DeviceRow(val name: String, val line: String, val state: String, val spoken: String)
 
 fun deviceRow(state: TailnetState): DeviceRow {
     val word = when (state) {
@@ -87,7 +90,8 @@ fun deviceRow(state: TailnetState): DeviceRow {
     val name = running?.name?.trim()?.takeUnless { it.isEmpty() }
         ?: "This Device"
     val ip = running?.ips?.firstOrNull()
-    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word)
+    // The dot says the state in the Tailscale page's words, so a screen reader hears one name for it.
+    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, tailnetChip(state, paused = false).text)
 }
 
 /**
@@ -504,7 +508,7 @@ private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
             Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth(), color = c.secondary, style = type.caption.naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        StatusMark(status, "Node ${device.state}", Modifier.testTag("this-device-dot"))
+        StatusMark(status, device.spoken, Modifier.testTag("this-device-dot"))
     }
 }
 
