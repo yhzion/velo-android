@@ -253,6 +253,8 @@ pub const RenderLink = struct {
     done: bool = false,
     /// The pane gave the thread up (`waitEnd`): the thread enters no more.
     given_up: bool = false,
+    /// The pane asked the thread to quit (`stop`): it draws no further glyph (`stopAsked`).
+    stopping: bool = false,
 
     /// Called by the pane, which has the source: the count is not 0.
     pub fn create(gpa: std.mem.Allocator, window: *anyopaque, glyphs: GlyphSource) !*RenderLink {
@@ -288,12 +290,24 @@ pub const RenderLink = struct {
         return true;
     }
 
-    /// Whether the pane gave the thread up. Outside the pane the thread asks before it calls
-    /// what the pane's owner may free once the thread is given up: the glyph source.
-    pub fn givenUp(l: *RenderLink) bool {
+    /// Whether the pane asked the thread to quit (`stop`) or gave it up. Outside the pane the
+    /// thread asks before each glyph it has the glyph source draw: one asked to quit draws no
+    /// more of a frame that is never shown, and one given up asks nothing more of a source whose
+    /// owner may be gone.
+    pub fn stopAsked(l: *RenderLink) bool {
         l.lock.lock();
         defer l.lock.unlock();
-        return l.given_up;
+        return l.given_up or l.stopping;
+    }
+
+    /// The pane's side, as it asks the thread to quit and before it waits (`waitEnd`). The thread
+    /// sees `quit` only inside the pane, and a frame that lacks many glyphs (Hangul, CJK) keeps it
+    /// outside for long. It sees this between two glyphs: a thread that is not stuck then ends
+    /// within one and is joined, also within `burst_wait_ns` (#178).
+    pub fn stop(l: *RenderLink) void {
+        l.lock.lock();
+        defer l.lock.unlock();
+        l.stopping = true;
     }
 
     pub fn leave(l: *RenderLink) void {
@@ -975,6 +989,8 @@ pub const Pane = struct {
             self.quit = true;
             self.lock.signal();
             self.lock.unlock();
+            // After `quit`: a thread that stops drawing glyphs then finds it at once.
+            link.stop();
             const start = monoNow();
             if (link.waitEnd(stopBound(start))) {
                 t.join();
