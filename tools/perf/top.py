@@ -4,7 +4,7 @@
   uv run --with perfetto python tools/perf/top.py TRACE THREAD_NAME [LIMIT]
 
 THREAD_NAME as the trace has it: the app's main thread is the package name cut to 15
-characters (yhzion.velo), the render threads velo-draw-<tag>, Compose's RenderThread.
+characters (hub.yhzion.velo), the render threads velo-draw-<tag>, Compose's RenderThread.
 """
 import os
 import sys

@@ -1,0 +1,33 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index bc0b0dd..9ed42f3 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -76,7 +76,8 @@ android {
+         // x86_64 lets debug builds run on an x86_64 emulator.
+         debug { ndk { abiFilters += "x86_64" } }
+         release {
+-            isMinifyEnabled = true
++            // R8 removes the trace calls of the composer: a measuring build keeps them (tools/perf/compose-tracing.patch).
++            isMinifyEnabled = false
+             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+             signingConfig = releaseSigning
+         }
+diff --git a/app/src/main/java/io/github/yhzion/velo/VeloApplication.kt b/app/src/main/java/io/github/yhzion/velo/VeloApplication.kt
+index bbd8e4c..ab98f9e 100644
+--- a/app/src/main/java/io/github/yhzion/velo/VeloApplication.kt
++++ b/app/src/main/java/io/github/yhzion/velo/VeloApplication.kt
+@@ -45,6 +45,14 @@ class VeloApplication : Application() {
+ 
+     override fun onCreate() {
+         super.onCreate()
++        // Composition tracing for a measuring build (tools/perf/compose-tracing.patch, docs/perf.md): every
++        // composable that is composed is a section of the app's trace, named after it and its line.
++        @OptIn(androidx.compose.runtime.InternalComposeTracingApi::class)
++        androidx.compose.runtime.Composer.setTracer(object : androidx.compose.runtime.CompositionTracer {
++            override fun isTraceInProgress() = android.os.Trace.isEnabled()
++            override fun traceEventStart(key: Int, dirty1: Int, dirty2: Int, info: String) = android.os.Trace.beginSection(info.take(120))
++            override fun traceEventEnd() = android.os.Trace.endSection()
++        })
+         // Replace any per-app light override from an older install, never the device-wide mode.
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+             getSystemService(UiModeManager::class.java)?.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
