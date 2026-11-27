@@ -10,7 +10,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - The command palette's Focus Pane and Full Screen Pane commands name each pane as the minimap's picker does, such as Pane 2 · zsh, so a pane without a title is no longer just Pane 2.
-- A pane whose program Velo has not heard of yet is named Terminal in the minimap's picker and the command palette, instead of Tab.
+- A pane whose program Velo has not heard of yet is named Terminal in the minimap's picker and the command palette, instead of Tab or an ID the server gave it, such as Block 9ac42573.
 
 ### Fixed
 - A floating pane made full screen from the menu now shows Full Screen and the minimap in the caption. The minimap draws floating panes over the tab's layout, so you can pick them or swipe to them too.
@@ -28,7 +28,6 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Upload and error notices now show a whole line in landscape with the keyboard up, and sit under the sidebar's Filter field instead of over it and the rail.
 - A screen reader says Compose's Draft field once, instead of saying its name twice.
 - In landscape with the keyboard up, two or three notices at once now sit side by side above the key bar, so at the default text size none covers it or runs under the keyboard.
-- A pane the server names only by its ID, such as Block 9ac42573, is now called Terminal in the full screen minimap's picker and the command palette.
 
 ## 2.14.0 - 2026-11-27
 

@@ -449,6 +449,11 @@ class MenuModelTest {
             assertEquals(label, "zsh", TabInfo("window:b", label, program = "zsh").displayName("s"))
             assertEquals(label, "Tab", tabTitle(UiState(session = "s"), WindowInfo("window:b", label, layout = LayoutNode(block = "b"))))
         }
+        val window = WindowInfo("window:b", "Window 0b0b0b0b", layout = LayoutNode(block = "b"))
+        fun titled(block: BlockInfo) = tabTitle(UiState(session = "s", blocks = mapOf("b" to block)), window)
+        assertEquals("Tab", titled(BlockInfo(title = "Block 9ac42573", titleIsLabel = true)))
+        assertEquals("zsh", titled(BlockInfo(program = "zsh", title = "Block 9ac42573", titleIsLabel = true)))
+        assertEquals("Block 9ac42573", titled(BlockInfo(title = "Block 9ac42573")))
     }
 
     @Test

@@ -168,7 +168,7 @@ class ReadOnceTest {
         assertMenuRowSaysItsLabelOnce("appearance-minimized", "Minimized windows: Bottom Left", "Bottom Left")
     }
 
-    @Test fun eachTapGestureRowSaysItsLabelOnce() {
+    @Test fun theDoubleTapRowSaysItsLabelOnceAndItsMenuOpens() {
         showTapGestureRows()
         assertMenuRowSaysItsLabelOnce("keyboard-double-tap", "Double tap: Tab", "Tab")
     }
