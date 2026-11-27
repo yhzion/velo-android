@@ -57,6 +57,7 @@ import io.github.yhzion.velo.ui.theme.WarningNote
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.hairline
 import io.github.yhzion.velo.ui.theme.lineBox
+import io.github.yhzion.velo.ui.theme.saidBy
 
 /** A key's name in test tags, as the boards name them: `/` is slash, PgUp page-up, Backspace backspace. */
 fun keyTagId(key: String): String = when (key) {
@@ -159,7 +160,7 @@ private fun OrderList(s: Settings) {
                     Box(Modifier.weight(1f).height(VeloTheme.medium(20.dp)).testTag("keyboard-order-key-$id").semantics(mergeDescendants = true) { contentDescription = spokenKeyName(name) },
                         contentAlignment = Alignment.CenterStart) {
                         if (name in IconKeys) KeyLegend(name, c.text)
-                        else Text(keyName(name), style = monoAt(15f, FontWeight.Medium), color = c.text, maxLines = 1, softWrap = false)
+                        else Text(keyName(name), Modifier.saidBy(spokenKeyName(name)), style = monoAt(15f, FontWeight.Medium), color = c.text, maxLines = 1, softWrap = false)
                     }
                     OrderButton(Icons.Default.ArrowUpward, "Move ${spokenKeyName(name)} earlier", index > 0, "keyboard-order-earlier-$id") {
                         s.saveKeyBar(moveKey(s.keyBar, name, -1))

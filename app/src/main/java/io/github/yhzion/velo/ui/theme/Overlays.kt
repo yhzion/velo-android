@@ -267,14 +267,17 @@ fun MenuSurface(modifier: Modifier = Modifier, content: @Composable ColumnScope.
 @Composable
 fun MenuItem(
     text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true, destructive: Boolean = false,
-    note: String? = null,
-) = MenuItem(text, onClick, glyph = icon?.let { rememberVectorPainter(it) }, modifier = modifier, enabled = enabled, destructive = destructive, note = note)
+    note: String? = null, contentDescription: String? = null,
+) = MenuItem(text, onClick, glyph = icon?.let { rememberVectorPainter(it) }, modifier = modifier, enabled = enabled, destructive = destructive, note = note,
+    contentDescription = contentDescription)
 
 /** A [MenuItem] whose icon is a drawable ([glyph]): one Rex for Mac draws, tinted like the text. */
 @Composable
 fun MenuItem(
     text: String, onClick: () -> Unit, glyph: Painter?, modifier: Modifier = Modifier, enabled: Boolean = true, destructive: Boolean = false,
     note: String? = null,
+    /** What a screen reader says in place of [text] and [note], such as which key Copy copies. */
+    contentDescription: String? = null,
 ) {
     val icon = glyph
     val c = VeloTheme.surface
@@ -283,16 +286,19 @@ fun MenuItem(
     // An item's icon is the secondary colour beside its words, the red with a destructive item's (Overlays board).
     val iconColor = if (!enabled || destructive) color else c.secondary
     Row(
-        modifier.fillMaxWidth().heightIn(min = s.menuItem).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = VeloTheme.space.s20),
+        modifier.fillMaxWidth().heightIn(min = s.menuItem).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
+            .padding(horizontal = VeloTheme.space.s20),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
             Icon(icon, null, Modifier.size(VeloTheme.space.s20), tint = iconColor)
             Spacer(Modifier.width(VeloTheme.medium(14.dp)))
         }
+        // Hidden one by one: a hidden node's children are still said.
         Column(Modifier.padding(vertical = if (note != null) s.menuPadding else 0.dp)) {
-            Text(text, style = VeloTheme.type.body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (note != null) Text(note, style = VeloTheme.type.caption, color = c.secondary)
+            Text(text, Modifier.saidBy(contentDescription), style = VeloTheme.type.body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (note != null) Text(note, Modifier.saidBy(contentDescription), style = VeloTheme.type.caption, color = c.secondary)
         }
     }
 }

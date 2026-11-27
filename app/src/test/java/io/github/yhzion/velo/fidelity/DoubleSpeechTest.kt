@@ -54,15 +54,6 @@ class DoubleSpeechTest {
         Known("workspace-docked", "Claude Code", 150),
         Known("workspace-docked", "Codex, 2 panes", 150),
         Known("workspace-docked", "zsh, 4 panes", 150),
-        Known("settings-key-order", "Tab", 149),
-        Known("settings-notif", "Background notification, Needs your response", 149),
-        Known("settings-notif", "Activity sound, Needs your response", 149),
-        Known("settings-notif", "Background notification, Work completed", 149),
-        Known("settings-notif", "Activity sound, Work completed", 149),
-        Known("settings-ssh", "Copy install command for this phone's key", 149),
-        Known("settings-ssh", "Copy this phone's key", 149),
-        Known("settings-ssh", "Share install command for this phone's key", 149),
-        Known("settings-ssh", "Remove imported key", 149),
     )
 
     /** What one focusable node says: its own words first, then its descendants'. */

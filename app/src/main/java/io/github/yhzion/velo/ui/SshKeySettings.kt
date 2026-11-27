@@ -556,7 +556,6 @@ internal fun SshKeySettings(secrets: SshSecrets, io: CoroutineContext = Dispatch
 private fun PhoneKeyCard(row: KeyRow, onAction: (KeyRow, KeyAction) -> Unit) {
     val c = VeloTheme.surface
     val space = VeloTheme.space
-    fun Modifier.said(action: KeyAction) = semantics { contentDescription = keyActionDescription(action, row) }
     RaisedCard(Modifier.testTag("ssh-phone-key-card"), padding = VeloTheme.medium(18.dp) + VeloTheme.sizes.edge) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.s12)) {
             Box(Modifier.size(VeloTheme.medium(44.dp)).clip(rounded(space.s12)).background(c.glass), contentAlignment = Alignment.Center) {
@@ -577,11 +576,13 @@ private fun PhoneKeyCard(row: KeyRow, onAction: (KeyRow, KeyAction) -> Unit) {
                 .clearAndSetSemantics { text = AnnotatedString(row.key.publicLine) },
             style = monoAt(12f).paragraph(1.5.em), color = VeloTheme.colors.textOnRaised,
         )
-        VeloButton(KeyAction.CopyInstallCommand.label, { onAction(row, KeyAction.CopyInstallCommand) }, Modifier.fillMaxWidth().said(KeyAction.CopyInstallCommand),
-            kind = ButtonKind.Primary, tag = "ssh-copy-install-command")
+        VeloButton(KeyAction.CopyInstallCommand.label, { onAction(row, KeyAction.CopyInstallCommand) }, Modifier.fillMaxWidth(),
+            kind = ButtonKind.Primary, tag = "ssh-copy-install-command", contentDescription = keyActionDescription(KeyAction.CopyInstallCommand, row))
         Row(horizontalArrangement = Arrangement.spacedBy(space.s8)) {
-            VeloButton(KeyAction.Copy.label, { onAction(row, KeyAction.Copy) }, Modifier.weight(1f).said(KeyAction.Copy), row = true, tag = "ssh-copy-key")
-            VeloButton(KeyAction.Share.label, { onAction(row, KeyAction.Share) }, Modifier.weight(1f).said(KeyAction.Share), row = true, tag = "ssh-share-key")
+            VeloButton(KeyAction.Copy.label, { onAction(row, KeyAction.Copy) }, Modifier.weight(1f), row = true, tag = "ssh-copy-key",
+                contentDescription = keyActionDescription(KeyAction.Copy, row))
+            VeloButton(KeyAction.Share.label, { onAction(row, KeyAction.Share) }, Modifier.weight(1f), row = true, tag = "ssh-share-key",
+                contentDescription = keyActionDescription(KeyAction.Share, row))
         }
     }
 }
@@ -614,13 +615,13 @@ private fun ImportedKeyRow(row: KeyRow, place: String, busy: Boolean, onAction: 
                 for (action in row.actions - KeyAction.Remove) MenuItem(action.label, {
                     menu = false
                     onAction(row, action)
-                }, Modifier.semantics { contentDescription = keyActionDescription(action, row) })
+                }, contentDescription = keyActionDescription(action, row))
             }
         }
         if (KeyAction.Remove in row.actions) VeloButton(
             KeyAction.Remove.label, { onAction(row, KeyAction.Remove) },
-            Modifier.semantics { contentDescription = keyActionDescription(KeyAction.Remove, row) },
             kind = ButtonKind.Text, row = true, enabled = !busy, danger = true, tag = "ssh-imported-key-remove-$place",
+            contentDescription = keyActionDescription(KeyAction.Remove, row),
         )
     }
 }

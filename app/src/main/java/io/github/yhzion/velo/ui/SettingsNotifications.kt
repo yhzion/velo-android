@@ -50,6 +50,7 @@ import io.github.yhzion.velo.ui.theme.VeloSwitch
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.saidBy
 import io.github.yhzion.velo.ui.theme.textAt
 import kotlin.math.roundToInt
 
@@ -156,13 +157,13 @@ private fun AlertSettings(host: SettingsHost, kind: PaneAlertKind) {
             Text(kind.label, style = VeloTheme.type.body, fontWeight = FontWeight.Medium, color = c.text)
         }
         GroupDivider()
-        AlertRow("$id-notification-row", settings.posts(kind), { settings.savePosts(kind, it) }, "Background notification, ${kind.label}") {
-            Text("Background notification", Modifier.weight(1f), style = words, color = ink)
+        AlertRow("$id-notification-row", settings.posts(kind), { settings.savePosts(kind, it) }, "Background notification, ${kind.label}") { description ->
+            Text("Background notification", Modifier.weight(1f).saidBy(description), style = words, color = ink)
             VeloSwitch(settings.posts(kind), Modifier.testTag("alert-$id-notification-switch"))
         }
         GroupDivider()
-        AlertRow("$id-sound-row", settings.plays(kind), { settings.savePlays(kind, it) }, "Activity sound, ${kind.label}") {
-            Text("Activity sound", Modifier.weight(1f), style = words, color = ink)
+        AlertRow("$id-sound-row", settings.plays(kind), { settings.savePlays(kind, it) }, "Activity sound, ${kind.label}") { description ->
+            Text("Activity sound", Modifier.weight(1f).saidBy(description), style = words, color = ink)
             if (settings.plays(kind)) {
                 var choosing by remember { mutableStateOf(false) }
                 val sound = settings.soundFor(kind)
@@ -181,19 +182,19 @@ private fun AlertSettings(host: SettingsHost, kind: PaneAlertKind) {
 
 /**
  * A row of an alert, 56 high, its words and controls 10 apart: a tap anywhere but on a menu in it
- * turns its switch; a screen reader says [description], which names the kind.
+ * turns its switch; a screen reader says [description], which names the kind. [content] is given
+ * the description, to hide the row's words under it ([saidBy]).
  */
 @Composable
 private fun AlertRow(
     tag: String, checked: Boolean, onChange: (Boolean) -> Unit, description: String,
-    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+    content: @Composable androidx.compose.foundation.layout.RowScope.(description: String) -> Unit,
 ) = Row(
     Modifier.groupBleed().testTag("alert-$tag").fillMaxWidth().heightIn(min = VeloTheme.medium(56.dp))
         .toggleable(checked, role = Role.Switch, onValueChange = onChange).semantics { contentDescription = description }
         .groupInset().padding(vertical = VeloTheme.space.s4).padding(end = VeloTheme.space.s4),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(10.dp)),
-    content = content,
-)
+) { content(description) }
 
 /** The colour that marks a kind of alert, as Rex for Mac's badges do. */
 @Composable

@@ -55,6 +55,7 @@ import io.github.yhzion.velo.ui.theme.VeloButton
 import io.github.yhzion.velo.ui.theme.VeloMenu
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.glass
+import io.github.yhzion.velo.ui.theme.saidBy
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -203,16 +204,17 @@ internal fun AttachControl(draft: ComposerDraft, enabled: Boolean, onAction: (At
     val s = VeloTheme.sizes
     var menu by remember { mutableStateOf(false) }
     val name = draft.attachment?.name
+    val description = name?.let { "Attachment $it" }
     val color = if (enabled) c.onGlass else c.disabled
     Box {
         Row(
             Modifier.fillMaxWidth().glass().clickable(enabled = enabled, role = Role.Button) { menu = true }
                 .heightIn(min = s.control).padding(horizontal = s.rowPadding)
-                .semantics(mergeDescendants = true) { if (name != null) contentDescription = "Attachment $name" },
+                .semantics(mergeDescendants = true) { if (description != null) contentDescription = description },
             horizontalArrangement = Arrangement.spacedBy(s.rowGap), verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Default.AttachFile, null, Modifier.size(s.iconSmall), tint = color)
-            Text(name ?: if (draft.loading) "Loading…" else "Attach…", Modifier.weight(1f), style = VeloTheme.type.bodyStrong,
+            Text(name ?: if (draft.loading) "Loading…" else "Attach…", Modifier.weight(1f).saidBy(description), style = VeloTheme.type.bodyStrong,
                 color = color, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
         }
         VeloMenu(menu && enabled, onDismissRequest = { menu = false }) {

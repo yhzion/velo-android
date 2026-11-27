@@ -16,7 +16,11 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import io.github.yhzion.velo.ui.AttachControl
+import io.github.yhzion.velo.ui.ComposerAttachment
+import io.github.yhzion.velo.ui.ComposerDraft
 import io.github.yhzion.velo.ui.SettingsCategory
 import io.github.yhzion.velo.ui.SettingsPanel
 import io.github.yhzion.velo.ui.SettingsRoute
@@ -37,7 +41,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Controls whose description sits over visible words say the description alone to a screen
- * reader: the menu buttons (#148). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
+ * and the SSH key actions (#149). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -100,5 +105,50 @@ class ReadOnceTest {
         scene("settings-notif")
         assertEquals(listOf("Sound, Attention"), said("alert-needs-response-sound-menu"))
         assertEquals(listOf("Sound, Success"), said("alert-work-completed-sound-menu"))
+    }
+
+    // #149: the rows.
+
+    @Test fun anAlertRowSaysItsDescriptionOnce() {
+        scene("settings-notif")
+        assertEquals(listOf("Background notification, Needs your response"), said("alert-needs-response-notification-row"))
+        // The sound menu in the row is a control of its own, said apart.
+        assertEquals(listOf("Activity sound, Work completed"), said("alert-work-completed-sound-row"))
+        val id = compose.onNodeWithTag("alert-work-completed-notification-row").fetchSemanticsNode().id
+        val info = compose.runOnIdle { Speech.node(view, id) }
+        assertTrue("the row is still a switch", info.isCheckable && info.isChecked)
+    }
+
+    @Test fun aKeyInTheKeyOrderIsNamedOnce() {
+        scene("settings-key-order")
+        assertEquals(listOf("Escape"), said("keyboard-order-key-esc"))
+        assertEquals(listOf("Control"), said("keyboard-order-key-ctrl"))
+        assertEquals(listOf("Slash"), said("keyboard-order-key-slash"))
+        assertEquals(listOf("Tab"), said("keyboard-order-key-tab"))
+    }
+
+    @Test fun theAttachmentSaysItsFileOnce() {
+        val draft = ComposerDraft()
+        show { VeloTheme(UiSize.Medium) { AttachControl(draft, enabled = true) {} } }
+        compose.waitForIdle()
+        assertEquals(listOf("Attach…"), compose.runOnIdle { Speech.focusableNodes(view).single().second })
+        draft.attachment = ComposerAttachment("report.pdf", byteArrayOf(1))
+        compose.waitForIdle()
+        assertEquals(listOf("Attachment report.pdf"), compose.runOnIdle { Speech.focusableNodes(view).single().second })
+    }
+
+    @Test fun eachSshKeyActionIsSaidOnce() {
+        scene("settings-ssh")
+        assertEquals(listOf("Copy install command for this phone's key"), said("ssh-copy-install-command"))
+        assertEquals(listOf("Copy this phone's key"), said("ssh-copy-key"))
+        assertEquals(listOf("Share install command for this phone's key"), said("ssh-share-key"))
+        assertEquals(listOf("Remove imported key Uf/c48n6"), said("ssh-imported-key-remove-2"))
+        assertStillActs("ssh-copy-key", Role.Button)
+        // The imported key's menu holds the phone key's buttons as items.
+        compose.onNodeWithTag("ssh-imported-key-name-2", useUnmergedTree = true).performScrollTo().performClick()
+        compose.waitForIdle()
+        val items = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        for (item in listOf("Copy imported key Uf/c48n6", "Copy install command for imported key Uf/c48n6", "Share install command for imported key Uf/c48n6"))
+            assertTrue("$item said once, among $items", listOf(item) in items)
     }
 }

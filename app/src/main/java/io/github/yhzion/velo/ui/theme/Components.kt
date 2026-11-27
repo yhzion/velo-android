@@ -397,6 +397,8 @@ fun VeloButton(
     danger: Boolean = false,
     /** The test tag of the drawn button, inside the least touch target. */
     tag: String? = null,
+    /** What a screen reader says in place of [text], such as which key Copy copies. */
+    contentDescription: String? = null,
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
@@ -437,13 +439,14 @@ fun VeloButton(
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
             .heightIn(min = height).then(frame)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
             .padding(horizontal = padding, vertical = VeloTheme.space.s4),
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null && !iconAtEnd) Icon(icon, null, Modifier.size(VeloTheme.medium(18.dp)), tint = label)
         // Large text wraps to a second line instead of losing its end; the button grows to hold it.
-        Text(text, style = style, color = label, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+        Text(text, Modifier.saidBy(contentDescription), style = style, color = label, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
         if (icon != null && iconAtEnd) Icon(icon, null, Modifier.size(VeloTheme.space.s16), tint = label)
     }
 }

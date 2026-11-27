@@ -11,6 +11,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A pane no longer stays blank, and Velo no longer stops responding, after you come back to it from another app while the keyboard was up.
 - The front of a tab's tile in the sidebar shows the program of the pane you have selected, such as zsh beside a Claude Code pane. A report from another pane still puts its dot on the tile.
 - A screen reader says each menu button in settings once, such as Sound, Attention, instead of also saying the choice shown.
+- A screen reader also says the alert rows in Notifications settings, the keys in Edit order, Compose's attachment and the SSH key's buttons once, without the words shown.
 
 ## 2.14.0 - 2026-11-27
 

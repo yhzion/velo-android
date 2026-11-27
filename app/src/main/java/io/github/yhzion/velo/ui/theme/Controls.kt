@@ -566,7 +566,8 @@ private fun <T> SettingsChoices(
 /**
  * Hides visible words from a screen reader when [description], set on the control around them,
  * says them already: Compose gives a merging control's description as a child beside its texts,
- * so a service would say both (#134, #148). The words stay in the semantics tree for tests.
+ * so a service would say both (#134, #148). The words stay in the semantics tree for tests. It
+ * hides only the node it is set on, whose children are still said: set it on each text.
  */
 fun Modifier.saidBy(description: String?): Modifier = if (description == null) this else semantics { hideFromAccessibility() }
 
