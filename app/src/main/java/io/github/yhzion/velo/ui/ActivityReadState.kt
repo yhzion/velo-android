@@ -90,15 +90,17 @@ internal class ActivityReadState(saved: String? = null, private val persist: (St
     }
 
     /**
-     * The tab's tile, mark and badge: its panes' unseen or animating report with the highest rank, then the newest.
-     * A seen report loses its mark but keeps the agent it names on the tile: when the shown report names no agent,
-     * the tile shows the agent of the best seen report, ranked the same way, and else the program ([TabRow.icon]).
-     * Both come from [records] as they are now, so a report that has left the pane takes its agent with it.
+     * The tab's tile, mark and badge. The mark and the badge are its panes' unseen or animating report with the
+     * highest rank, then the newest, from any pane. The tile names the program of the focused pane ([TabRow.block])
+     * alone (#162): the agent of that pane's best unseen report, else of its best seen one, ranked the same way, and
+     * else the program ([TabRow.icon]). A seen report loses its mark but keeps the agent it names. Both come from
+     * [records] as they are now, so a report that has left the pane takes its agent with it.
      */
     fun activity(row: TabRow, connected: Boolean): TabActivity {
         if (!connected) return TabActivity(row.icon, row.indicatorWhile(false), null, null)
         var selected: Candidate? = null
-        var seenAgent: Candidate? = null
+        var leadShown: Candidate? = null
+        var leadSeen: Candidate? = null
         for (block in row.terminalBlocks.ifEmpty { listOfNotNull(row.block) }) {
             val target = PaneAddress(row.session, row.tab, block)
             val lead = block == row.block
@@ -122,16 +124,17 @@ internal class ActivityReadState(saved: String? = null, private val persist: (St
                 val receipt = candidate.receipt
                 if (!candidate.mark.animates && seen[target to receipt.id] == receipt) {
                     // Seen: no mark, but the agent it names still runs in the pane.
-                    if (candidate.agent != null && outranks(candidate, seenAgent)) seenAgent = candidate
+                    if (lead && candidate.agent != null && outranks(candidate, leadSeen)) leadSeen = candidate
                     continue
                 }
                 if (outranks(candidate, selected)) selected = candidate
+                if (lead && outranks(candidate, leadShown)) leadShown = candidate
             }
         }
-        val fallback = seenAgent?.agent ?: row.icon
-        val result = selected ?: return TabActivity(fallback, row.indicator, null, row.since)
-        return TabActivity(result.agent ?: fallback, result.mark, result.mark.takeUnless { it.animates },
-            result.at?.toEpochMilli())
+        // Another pane's report marks the tile but never names it: the front face is the focused pane's program.
+        val icon = leadShown?.agent ?: leadSeen?.agent ?: row.icon
+        val result = selected ?: return TabActivity(icon, row.indicator, null, row.since)
+        return TabActivity(icon, result.mark, result.mark.takeUnless { it.animates }, result.at?.toEpochMilli())
     }
 
     /** The agent this report names, or null when its icon is a program's (a snapshot's [TabRow.icon]). */

@@ -16,13 +16,14 @@ class ActivityReadStateTest {
     private val time = "2026-11-21T01:00:00.123456Z"
     private val later = "2026-11-21T01:00:00.123789Z"
 
-    @Test fun splitPromotesItsOwnIconAndOnlyTheActuallyVisiblePanesAreRead() {
+    @Test fun aSplitMarksTheTileButTheFocusedPaneNamesItAndOnlyTheActuallyVisiblePanesAreRead() {
         val state = ActivityReadState()
         state.update(lead, mapOf("work" to SeenReport("working", time)))
         state.update(split, mapOf("error" to SeenReport("error", time, agent = "codex")))
         assertEquals(setOf(lead), state.show(1, mapOf(lead to null)))
         assertEquals(TabIndicator.Error, state.activity(row, true).badge)
-        assertEquals("codex", state.activity(row, true).icon)
+        // The split's report gives the tile its dot; the focused pane still names it (#162).
+        assertEquals("claude", state.activity(row, true).icon)
         assertEquals(setOf(lead, split), state.show(2, mapOf(split to null)))
         assertEquals(setOf(split), state.hide(1))
         assertNull(state.activity(row, true).badge)
@@ -117,18 +118,36 @@ class ActivityReadStateTest {
 
     @Test fun aSeenAgentStaysWhenTheShownReportNamesNone() {
         val state = ActivityReadState()
-        state.update(lead, mapOf("turn" to SeenReport("working", time)))
-        state.update(split, mapOf("turn" to SeenReport("done", time, agent = "claude")))
-        state.show(1, mapOf(split to null))
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(lead to null))
         state.hide(1)
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude"), "work" to SeenReport("working", time)))
         val working = state.activity(node, true)
         assertEquals("claude", working.icon)
         assertEquals(TabIndicator.Working, working.indicator)
         assertNull(working.badge)
         // Both seen: the agentless Error outranks the Done, but only the Done names an agent.
-        state.update(lead, mapOf("turn" to SeenReport("error", time)))
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude"), "work" to SeenReport("error", time)))
         state.show(1, mapOf(lead to null))
         state.hide(1)
+        assertEquals("claude", state.activity(node, true).icon)
+    }
+
+    @Test fun movingTheFocusMovesTheTilesFrontFace() {
+        val state = ActivityReadState()
+        state.update(lead, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        // Claude runs in the first pane; the focus moves to the zsh pane beside it.
+        val onShell = node.copy(icon = "zsh", program = "zsh", block = split.block)
+        val unseen = state.activity(onShell, true)
+        assertEquals("zsh", unseen.icon)
+        assertEquals(TileBrand.Zsh, tabTile(onShell, unseen).brand)
+        // Claude's finish in the other pane still puts its dot on the tile.
+        assertEquals(TabIndicator.Done, unseen.badge)
+        state.show(1, mapOf(lead to null))
+        state.hide(1)
+        assertEquals("zsh", state.activity(onShell, true).icon)
+        assertNull(state.activity(onShell, true).badge)
+        // The focus comes back: Claude's seen report names the tile again.
         assertEquals("claude", state.activity(node, true).icon)
     }
 
@@ -141,12 +160,11 @@ class ActivityReadStateTest {
         assertEquals("node", state.activity(node, false).icon)
     }
 
-    /** Both panes hold one seen report; returns the tile's icon and checks the seen reports show no badge. */
-    private fun seenIcon(onLead: SeenReport, onSplit: SeenReport): String? {
+    /** The focused pane holds two seen reports; returns the tile's icon and checks the seen reports show no badge. */
+    private fun seenIcon(first: SeenReport, second: SeenReport): String? {
         val state = ActivityReadState()
-        state.update(lead, mapOf("turn" to onLead))
-        state.update(split, mapOf("turn" to onSplit))
-        state.show(1, mapOf(lead to null, split to null))
+        state.update(lead, mapOf("one" to first, "two" to second))
+        state.show(1, mapOf(lead to null))
         state.hide(1)
         assertNull(state.activity(node, true).badge)
         return state.activity(node, true).icon
@@ -155,9 +173,17 @@ class ActivityReadStateTest {
     @Test fun amongSeenReportsTheAgentFollowsTheShownReportsRanking() {
         // Error outranks Done, as it would if both were unseen, although the Done report is newer and comes later.
         assertEquals("codex", seenIcon(SeenReport("error", time, agent = "codex"), SeenReport("done", later, agent = "claude")))
-        // On equal rank the newer report wins, wherever its pane is.
+        // On equal rank the newer report wins, whichever comes first.
         assertEquals("claude", seenIcon(SeenReport("done", later, agent = "claude"), SeenReport("done", time, agent = "codex")))
         assertEquals("codex", seenIcon(SeenReport("done", time, agent = "claude"), SeenReport("done", later, agent = "codex")))
+    }
+
+    @Test fun anotherPanesSeenAgentNeverNamesTheTile() {
+        val state = ActivityReadState()
+        state.update(split, mapOf("turn" to SeenReport("done", time, agent = "claude")))
+        state.show(1, mapOf(split to null))
+        state.hide(1)
+        assertEquals("node", state.activity(node, true).icon)
     }
 
     @Test fun aNodeTabWhoseReportNamesGeminiGetsGeminisTile() {
