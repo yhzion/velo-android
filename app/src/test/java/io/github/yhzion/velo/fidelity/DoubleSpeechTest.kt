@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.test.junit4.createComposeRule
+import io.github.yhzion.velo.ui.WheelName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -40,6 +41,9 @@ import org.robolectric.annotation.GraphicsMode
  * focusable themselves. The node says a thing twice by [Speech.saysTwice]: a part comes again, as it
  * is or by a short or full name of one thing (#167), or one of its words is said inside another.
  * MenuSpeechTest opens the scenes' menus and scans their options the same way.
+ *
+ * The scenes of the screens no board draws (#174: the rail's window wheel, the overview, its drum, a pane move and a
+ * zoomed tab's minimap) must say what [Heard] lists, so that a scene which did not draw its screen fails.
  *
  * The scan runs at each [ScanWidth], the phone's and the unfolded Fold8's (#175), and its name says which.
  * Unfolded, a scene draws its wide layout, and settings-remotes draws studio-mac's menu open. The
@@ -80,13 +84,41 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         assertEquals("The scenes are drawn at $width", width.w to width.h, drawn)
         assertEquals("The window is $width", (width.w * density).toInt() to (width.h * density).toInt(), window)
         val twiceSaid = mutableListOf<String>()
+        val heard = mutableMapOf<String, List<Said>>()
         for (name in names) {
             current = name
             compose.waitForIdle()
-            for (said in compose.runOnIdle { utterances(view) }.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $said"
+            val said = compose.runOnIdle { utterances(view) }
+            heard[name] = said
+            for (s in said.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $s"
         }
         assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
+        // The screens no board draws were drawn and heard (#174), so the scan is not empty by a screen that did not draw.
+        for (must in Heard) {
+            val said = heard[must.scene].orEmpty()
+            assertTrue("${must.scene} ${if (must.heard) "says" else "never says"} ${must.what} at $width, among:\n" + said.joinToString("\n"),
+                said.any(must.test) == must.heard)
+        }
     }
+
+    /** What a [scene] says, or with [heard] false never says: [what], found by [test]. */
+    private class MustHear(val scene: String, val what: String, val heard: Boolean = true, val test: (Said) -> Boolean)
+
+    /**
+     * What each scene of a screen no board draws (#174) says at every width: the rail's window wheel its slider with the
+     * window in front, the zoomed tab its minimap with the pane it marks, the overview a tab's card and its session
+     * strip, and a pane move its capsule and Cancel. No pane is named here: the scan reads pane names as they are. The
+     * drum's cards say nothing, for the rail's slider names its tabs: a card would say a tab again.
+     */
+    private val Heard = listOf(
+        MustHear("workspace-wheel", "the window wheel's slider and its window") { it.parts.size == 2 && it.parts[0] == WheelName },
+        MustHear("workspace-zoom", "the minimap and the pane it marks") { it.node == "caption-minimap" && it.parts.size == 2 },
+        MustHear("workspace-overview", "a tab's card, not selected") { it.parts.size == 2 && it.parts[1] == "Not selected" && !it.parts[0].startsWith("Session ") },
+        MustHear("workspace-overview", "the session strip's remote") { it.parts.size == 1 && it.parts[0].startsWith("Remote ") },
+        MustHear("workspace-pane-move", "the move's capsule") { it.parts.size == 1 && it.parts[0].startsWith("Choose where") },
+        MustHear("workspace-pane-move", "the move's Cancel") { it.parts == listOf("Cancel") },
+        MustHear("workspace-drum", "a card's selection", heard = false) { it.parts.lastOrNull() in setOf("Selected", "Not selected") },
+    )
 
     /** Each focusable node that says something, with the words it says. */
     private fun utterances(view: View): List<Said> =

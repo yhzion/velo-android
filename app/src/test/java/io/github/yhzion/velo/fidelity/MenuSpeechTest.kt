@@ -59,8 +59,8 @@ import org.robolectric.annotation.GraphicsMode
  * Minimized windows, sound and channel menus), a sidebar session's or remote's More button, a saved
  * remote's Actions, an imported SSH key's row, and a long press on a tab's row (the VeloMenus). From
  * #174 also the rail's connection mark (its popover) and Pane menu (the focused pane's menu), the
- * pane menu's Paste of two lines (its question), Compose's attach control, and a long press on a
- * chip of the overview's session strip. The scenes are drawn over an overlay layer, so a menu opens
+ * pane menu's Paste of two lines (its question), Compose's attach control, a long press on a
+ * chip of the overview's session strip, and a zoomed tab's minimap (its picker). The scenes are drawn over an overlay layer, so a menu opens
  * in the same window and its nodes are read.
  *
  * Each test runs at each [ScanWidth] (#175); its name says which. Unfolded, the scenes draw their wide
@@ -108,6 +108,8 @@ class MenuSpeechTest(private val width: ScanWidth) {
             SemanticsActions.OnClick in it.config && (it.config.getOrNull(SemanticsProperties.Text)?.any { t -> t.text == "Attach…" } == true ||
                 it.config.getOrNull(SemanticsProperties.ContentDescription)?.any { d -> d.startsWith("Attachment ") } == true)
         }, open = tap),
+        // A zoomed tab's minimap in the caption, whose tap opens its picker of panes.
+        Opener("minimap", tagMatches(Regex("caption-minimap")), open = tap),
         // A chip of the overview's session strip.
         Opener("long press on a session chip", SemanticsMatcher("opens the session's menu") {
             it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Show session menu"
@@ -151,17 +153,19 @@ class MenuSpeechTest(private val width: ScanWidth) {
         "updates-channel-menu", "tab-row-", "session-menu-", "remote-menu-", "saved-remote-menu-", "imported key row")
 
     /** The scenes that draw the rail: each opens its popover and the pane menu, and the connected ones the paste prompt (#174). */
-    private val RailScenes = listOf("workspace-terminal", "workspace-sidebar", "workspace-docked", "workspace-panes", "workspace-pane-menu", "workspace-offline")
+    private val RailScenes = listOf("workspace-terminal", "workspace-sidebar", "workspace-docked", "workspace-panes", "workspace-pane-menu", "workspace-offline",
+        "workspace-wheel", "workspace-overview", "workspace-drum", "workspace-pane-move", "workspace-zoom")
 
     /**
      * Openers each width draws in one scene: the sidebar scene shows the remote's More button, as the
      * docked one does; the rail's scenes their rail; the Compose dialog, and the draft with a file,
-     * the attach control; and the session strip its chips (#174).
+     * the attach control; the overview its session strip's chips; and the zoomed tab its minimap (#174).
      */
     private val InScene = listOf("workspace-sidebar" to "remote-menu-", "workspace-docked" to "remote-menu-") +
         RailScenes.flatMap { listOf(it to "rail-connection", it to "rail-pane-menu") } +
         RailScenes.filter { it != "workspace-offline" }.map { it to "paste prompt of rail-pane-menu" } +
-        listOf("workspace-compose" to "attach control", "compose-attachment" to "attach control", "session-strip" to "long press on a session chip")
+        listOf("workspace-compose" to "attach control", "compose-attachment" to "attach control", "workspace-overview" to "long press on a session chip",
+            "workspace-zoom" to "caption-minimap")
 
     /**
      * Openers only the unfolded width draws, by scene and kind: settings' home shows Appearance beside
