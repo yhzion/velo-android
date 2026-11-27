@@ -11,6 +11,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - The tap gesture menus in Keyboard settings also say Escape, not Esc, to a screen reader.
 - The Tailscale dot in Remotes settings has the Tailscale settings page's colour in every state, such as blue while the node starts, as the sidebar's dot does.
 - While Android holds the network back, the line under This Device in the sidebar says Paused, as its dot does, instead of Running.
+- A screen reader says the state of This Device in the sidebar once, in its dot's word, such as Connected, instead of twice.
 
 ## 2.13.0 - 2026-11-27
 

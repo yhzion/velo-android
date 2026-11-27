@@ -75,30 +75,31 @@ internal class SidebarHost private constructor(
  * Status of the local phone, shown above (not as part of) the remote list: its [name], the [line]
  * under it, the node's [state] word, and its dot ([chip]): the Tailscale page's words and colour.
  */
-data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip)
+data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip) {
+    /**
+     * What the row says to a screen reader before its dot: its name and the line's address, not
+     * the line's state word, so that the state is said once, in the dot's word (#134).
+     */
+    val description: String get() {
+        val address = line.removeSuffix(state).removeSuffix(" · ")
+        return listOfNotNull("This Device", name.takeUnless { it == "This Device" }, address.ifEmpty { null }).joinToString(", ")
+    }
+}
 
 /**
- * The This Device row of the node's [state]; while Android holds the network back ([paused]) its
- * dot and its line say Paused, unless the node is off, so a screen reader does not hear Running beside Paused.
+ * The This Device row of the node's [state]. Its line says the dot's word, the Tailscale page's
+ * chip ([tailnetChip]), except that a running node says Running; so while Android holds the network
+ * back ([paused]) both say Paused, unless the node is off.
  */
 fun deviceRow(state: TailnetState, paused: Boolean): DeviceRow {
-    val word = if (paused && state != TailnetState.Off) "Paused" else nodeWord(state)
+    // The dot is the Tailscale page's chip, so its words and colour agree with that page in every state.
+    val chip = tailnetChip(state, paused)
     val running = state as? TailnetState.Running
+    val word = if (running != null && !paused) "Running" else chip.text
     val name = running?.name?.trim()?.takeUnless { it.isEmpty() }
         ?: "This Device"
     val ip = running?.ips?.firstOrNull()
-    // The dot is the Tailscale page's chip, so its words and colour agree with that page in every state.
-    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, tailnetChip(state, paused))
-}
-
-/** The node's own state in a word or two, as This Device's line says it. */
-private fun nodeWord(state: TailnetState): String = when (state) {
-    TailnetState.Off -> "Off"
-    TailnetState.Starting -> "Starting"
-    is TailnetState.NeedsLogin -> "Needs login"
-    TailnetState.LoggedOut -> "Logged out"
-    is TailnetState.Running -> "Running"
-    is TailnetState.Error -> "Error"
+    return DeviceRow(name, if (ip.isNullOrBlank()) word else "$ip · $word", word, chip)
 }
 
 /**
@@ -489,7 +490,7 @@ fun FoundServerRow(server: DiscoveredServer, modifier: Modifier = Modifier, onAd
  * It has no connection and no sessions; a tap opens its own screen.
  */
 @Composable
-private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
+internal fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
     val line = VeloTheme.sizes.edge
@@ -497,10 +498,8 @@ private fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
     Row(Modifier.padding(horizontal = 12.bd).testTag("this-device-row").fillMaxWidth()
         .drawBehind { drawRect(c.divider, Offset(0f, size.height - line.toPx()), Size(size.width, line.toPx())) }
         .clickable(role = Role.Button, onClickLabel = "Tailscale settings", onClick = onClick)
-        .semantics {
-            contentDescription = if (device.name == "This Device") "This Device, ${device.line}"
-                else "This Device, ${device.name}, ${device.line}"
-        }.heightIn(min = 53.bd).padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd),
+        // The dot's description follows this one in the merged node and says the state.
+        .semantics { contentDescription = device.description }.heightIn(min = 53.bd).padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
         Icon(Icons.Outlined.Smartphone, null, Modifier.size(20.bd), tint = c.secondary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.bd)) {

@@ -210,6 +210,19 @@ class HostDialogsTest {
     }
 
     @Test
+    fun theDeviceLinesWordIsTheChipsWordButARunningNodeSaysRunning() {
+        // One table of words: the line says what the dot says, except that a running node that is not held back says Running (#134).
+        for (state in listOf(
+            TailnetState.Off, TailnetState.Starting, TailnetState.NeedsLogin("https://login.example/abc"), TailnetState.LoggedOut,
+            TailnetState.Error("the node is stopped"), TailnetState.Running("velo", listOf("192.0.2.40")),
+        )) for (paused in listOf(false, true)) {
+            val word = if (state is TailnetState.Running && !paused) "Running" else tailnetChip(state, paused).text
+            assertEquals("$state paused=$paused", word, deviceRow(state, paused).state)
+            assertEquals("$state paused=$paused", word, deviceRow(state, paused).line.substringAfterLast(" · "))
+        }
+    }
+
+    @Test
     fun theDeviceLineSaysPausedAsItsDotDoes() {
         // While Android holds the network back, the line under the name does not say Running beside a Paused dot (#127).
         assertEquals("192.0.2.40 · Paused", deviceRow(TailnetState.Running("velo", listOf("192.0.2.40")), paused = true).line)
