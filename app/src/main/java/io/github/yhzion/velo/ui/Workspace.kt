@@ -843,7 +843,7 @@ internal fun Workspace(
             if (fold.tabletop) Spacer(Modifier.weight(1f))
             // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
             val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-            ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle)
+            ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle, notification = notification)
             if (keyboard || s.keyBar.isNotEmpty() && focused != null) {
                 KeyBar(s.keyBar, armed, keyBarSlot(gap),
                     enabled = !paused && activeSearch == null && pendingSearch == null) { k, repeated ->
@@ -1025,8 +1025,8 @@ internal fun Workspace(
             // What a tap on that pane does: it leaves the pane a notification opened, then moves the focus.
             PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("focus", "block" to c.block) }
         } + window?.let { fullScreenPaneCommands(it, live.blocks) }.orEmpty().map { c ->
-            // What the minimap's picker does with that pane (#157).
-            PaletteCommand(c.label, connected) { conn.op("zoom", "block" to c.block) }
+            // What the minimap's picker does with that pane (#157): it leaves the pane a notification opened, too.
+            PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("zoom", "block" to c.block) }
         } + state.sessions.filter { it.id != state.session }.map { s ->
             PaletteCommand("Switch to Session: ${s.label.ifEmpty { "Session" }}") { notification?.leave?.invoke(); conn.selectSession(s.id) }
         } + state.windows.filter { it.id != state.window }.map { w ->
@@ -1140,7 +1140,9 @@ private fun UploadToast(conn: HostConnection) {
  * titles, so that a new title composes the caption again and not the workspace.
  */
 @Composable
-private fun ShownCaption(conn: HostConnection, connected: Boolean, host: String, modifier: Modifier, compact: Boolean) {
+private fun ShownCaption(
+    conn: HostConnection, connected: Boolean, host: String, modifier: Modifier, compact: Boolean, notification: PaneNotificationGate?,
+) {
     // Derived: a title that leaves the tab's row as it was (a tab named by its label) composes nothing again.
     val row by remember(conn) {
         derivedStateOf { conn.state.let { shownWindow(it)?.row(it, it.session.orEmpty(), true) } }
@@ -1160,7 +1162,8 @@ private fun ShownCaption(conn: HostConnection, connected: Boolean, host: String,
     }
     PaneCaption(row, connected, conn.activityReadState, host = host, modifier = modifier, compact = compact,
         zoom = zoom, paneName = { block -> conn.state.let { s -> shownWindow(s)?.let { zoomPaneName(s, it, block) }.orEmpty() } },
-        onZoom = { conn.op("zoom", "block" to it) })
+        // A zoom moves the focus, so it leaves the pane a notification opened, as a tap on another pane does.
+        onZoom = { notification?.leave?.invoke(); conn.op("zoom", "block" to it) })
 }
 
 @Composable
