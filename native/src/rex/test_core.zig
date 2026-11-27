@@ -47,6 +47,21 @@ test "touchAction maps Android MotionEvent actions to pane actions" {
     try testing.expectEqual(@as(?u8, null), core_mod.touchAction(5)); // ACTION_POINTER_DOWN
 }
 
+test "a REJECT for a connection the server still holds is tried again within 4 s, not 15 s" {
+    // The server holds this client's connection to the block: a killed process of the app left
+    // it, and the server lets go only once it stops answering pings.
+    try testing.expectEqual(ds.AfterReject.wait_busy, ds.afterReject(protocol.reject_busy, false));
+    // A refused RESUME starts over with a new ticket; any other reason backs off as before.
+    try testing.expectEqual(ds.AfterReject.start_over, ds.afterReject(protocol.reject_busy, true));
+    try testing.expectEqual(ds.AfterReject.start_over, ds.afterReject(0x01, true));
+    for ([_]u8{ 0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x99 }) |reason| {
+        try testing.expectEqual(ds.AfterReject.back_off, ds.afterReject(reason, false));
+    }
+    const expected = [_]u32{ 1000, 2000, 4000, 4000, 4000 };
+    for (expected, 0..) |ms, attempt| try testing.expectEqual(ms, ds.busyBackoffMs(@intCast(attempt)));
+    try testing.expectEqual(@as(u32, 4000), ds.busyBackoffMs(std.math.maxInt(u32)));
+}
+
 test "backoff goes from 1 s to 15 s" {
     const expected = [_]u32{ 1000, 2000, 4000, 8000, 15_000, 15_000, 15_000 };
     for (expected, 0..) |ms, attempt| {

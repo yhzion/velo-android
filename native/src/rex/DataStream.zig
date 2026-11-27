@@ -48,6 +48,32 @@ pub fn backoffMs(attempt: u32) u32 {
     return @min(@as(u32, 1000) << @intCast(attempt), 15_000);
 }
 
+/// Reconnect delay after a REJECT `protocol.reject_busy`: 1 s doubling to a 4 s cap. The app
+/// comes back as the same client after its process was killed, and the server holds the
+/// killed process's connections until they stop answering its pings: for a tab not shown, a
+/// minute or two, while the tab and its overview card show an empty terminal. Tried every 4 s
+/// meanwhile, the stream starts soon after the server lets go. Every attempt is a new
+/// connection and handshake, so it is not tried every second for all that time.
+pub fn busyBackoffMs(attempt: u32) u32 {
+    return @min(backoffMs(attempt), 4_000);
+}
+
+/// What a stream does after a REJECT.
+pub const AfterReject = enum {
+    /// A refused RESUME: start over with a new ticket and a HELLO, at once.
+    start_over,
+    /// `protocol.reject_busy`: wait for the server to let go of the connection it holds.
+    wait_busy,
+    /// Any other reason: back off.
+    back_off,
+};
+
+pub fn afterReject(reason: u8, resuming: bool) AfterReject {
+    if (resuming) return .start_over;
+    if (reason == protocol.reject_busy) return .wait_busy;
+    return .back_off;
+}
+
 pub fn nowMs(io: std.Io) i64 {
     return std.Io.Clock.boot.now(io).toMilliseconds();
 }
@@ -297,7 +323,7 @@ pub const DataStream = struct {
         title_len: usize = 0,
     };
 
-    const Outcome = enum { finished, retry_soon, retry_backoff };
+    const Outcome = enum { finished, retry_soon, retry_backoff, retry_busy };
 
     fn run(self: *DataStream) void {
         pane.Trace.nameThread("velo-data-", self.pane.threadTag());
@@ -319,6 +345,11 @@ pub const DataStream = struct {
                 },
                 .retry_backoff => blk: {
                     const d = backoffMs(attempt);
+                    attempt +|= 1;
+                    break :blk d;
+                },
+                .retry_busy => blk: {
+                    const d = busyBackoffMs(attempt);
                     attempt +|= 1;
                     break :blk d;
                 },
@@ -418,13 +449,14 @@ pub const DataStream = struct {
                     self.restored.store(false, .release);
                 }
             },
-            .reject => {
+            .reject => |reason| switch (afterReject(reason, resuming)) {
                 // A refused RESUME ends the stream: start over with a new ticket.
-                if (resuming) {
+                .start_over => {
                     st.have_token = false;
                     return .retry_soon;
-                }
-                return .retry_backoff;
+                },
+                .wait_busy => return .retry_busy,
+                .back_off => return .retry_backoff,
             },
             .invalid => return .retry_backoff,
         }

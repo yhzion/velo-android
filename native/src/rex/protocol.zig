@@ -893,6 +893,9 @@ pub const data_hello: u8 = 0x01;
 pub const data_resume: u8 = 0x02;
 pub const data_welcome: u8 = 0x81;
 pub const data_reject: u8 = 0x82;
+/// REJECT reason: this client has a connection to that data source of the block already, and
+/// a client has one at a time. The server lets go of one that dropped only once it notices.
+pub const reject_busy: u8 = 0x02;
 
 /// HELLO: 0x01 then the 16 ticket bytes (`ticket_b64url` is 22 base64url characters).
 pub fn dataHello(ticket_b64url: []const u8, out: *[17]u8) error{InvalidTicket}!void {

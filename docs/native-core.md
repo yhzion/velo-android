@@ -416,6 +416,13 @@ Behaviour:
   keeps it. Then `StreamFilter` → `pane.write` / `pane.resize` /
   `pane.setTheme`. Count consumed stream bytes; on drop RESUME within the resume window,
   else new ticket + HELLO (pane gets a fresh snapshot). Close code 4000 = block closed.
+  A failed attempt waits 1 s doubling to 15 s (`backoffMs`), except REJECT `0x02`
+  (`protocol.reject_busy`): the server holds this client's connection to the block. The app
+  comes back as the same client after its process was killed (its reconnect token), with no
+  RESUME token for the old process's streams, and the server lets go of one only when it
+  stops answering pings: about two minutes for a tab not shown, which shows an empty
+  terminal meanwhile. Those attempts wait 1 s doubling to 4 s (`busyBackoffMs`), so the
+  stream starts within about 4 s of the server letting go.
 - Panes live in a `block id → *pane.Pane` map, created on first sight with
   `host.glyphs`, `setFontSizePx(font_sp * px_per_sp)`; destroyed when the block leaves
   every window of the selected session. Pane title changes (poll `generation()` on the
