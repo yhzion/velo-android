@@ -10,6 +10,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ### Changed
 - Velo's own code is now compiled ahead of time with the app's profile, as the libraries' code already was. Once Android has compiled the app (usually overnight while charging), screen updates take a few percent less of the main thread's time, and rebuilding the screen after a change takes about a fifth less.
 
+### Fixed
+- The command Velo gives to compare an SSH host's key fingerprint on the host now also works when the host is Termux, which keeps its host keys under its own folder instead of /etc/ssh.
+
 ## 2.12.4 - 2026-11-27
 
 ### Changed

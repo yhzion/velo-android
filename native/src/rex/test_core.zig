@@ -1045,7 +1045,7 @@ test "Core: an ssh failure retrying cannot fix is reported after a first connect
     const changed = "Verify the new SSH fingerprint with the host administrator.";
     var fake: SshFake = .{
         .mode = .serve_first,
-        .problem = .{ .code = "host_key_changed", .sentence = changed, .fix = "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub" },
+        .problem = .{ .code = "host_key_changed", .sentence = changed, .fix = "ssh-keygen -lf ${PREFIX:-}/etc/ssh/ssh_host_ed25519_key.pub" },
     };
     defer fake.finish();
     const core = try Core.create(testing.allocator, recorder.host(), fake.net(), 1);
@@ -1062,7 +1062,7 @@ test "Core: an ssh failure retrying cannot fix is reported after a first connect
     const got = try recorder.errorAt(arena.allocator(), 0);
     try testing.expectEqualStrings("host_key_changed", got.code);
     try testing.expectEqualStrings(changed, got.message);
-    try testing.expectEqualStrings("ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub", got.fix);
+    try testing.expectEqualStrings("ssh-keygen -lf ${PREFIX:-}/etc/ssh/ssh_host_ed25519_key.pub", got.fix);
     // Not `reconnecting`: nothing will reconnect until the user does.
     try testing.expectEqualStrings("error", try recorder.lastStatus(arena.allocator()));
 
