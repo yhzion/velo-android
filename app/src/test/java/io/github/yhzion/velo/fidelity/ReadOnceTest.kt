@@ -156,6 +156,60 @@ class ReadOnceTest {
         assertStillActs("updates-channel-menu", Role.DropdownList)
     }
 
+    // #197: a row whose menu button says "<label>: <value>" says its label once: the label beside the button is no stop.
+
+    @Test fun theChannelRowSaysItsLabelOnce() {
+        scene("settings-updates")
+        assertMenuRowSaysItsLabelOnce("updates-channel", "Channel: Stable", "Stable")
+    }
+
+    @Test fun theMinimizedWindowsRowSaysItsLabelOnce() {
+        scene("settings-appearance")
+        assertMenuRowSaysItsLabelOnce("appearance-minimized", "Minimized windows: Bottom Left", "Bottom Left")
+    }
+
+    @Test fun eachTapGestureRowSaysItsLabelOnce() {
+        show {
+            val context = LocalContext.current
+            val host = remember {
+                FakeSettingsHost(context).apply {
+                    settings.saveTapGestures(true)
+                    settings.saveDoubleTapKey(TapKey.Tab)
+                    settings.saveTripleTapKey(TapKey.Enter)
+                }
+            }
+            val layer = remember { OverlayLayer() }
+            VeloTheme(UiSize.Medium) {
+                OverlayLayerBox(layer, Modifier.fillMaxSize().background(Color.Black)) {
+                    SettingsPanel(host, onClose = {}, start = SettingsRoute(SettingsCategory.Keyboard))
+                }
+            }
+        }
+        assertEquals(listOf(listOf("Triple tap: Enter")), rowStops("keyboard-triple-tap"))
+        assertMenuRowSaysItsLabelOnce("keyboard-double-tap", "Double tap: Tab", "Tab")
+    }
+
+    /** What each focus stop of the row tagged `<tag>-row` says, in order. */
+    private fun rowStops(tag: String): List<List<String>> {
+        val node = compose.onNodeWithTag("$tag-row").performScrollTo()
+        compose.waitForIdle()
+        val id = node.fetchSemanticsNode().id
+        return compose.runOnIdle { Speech.focusableNodes(view, id).map { it.second } }
+    }
+
+    /**
+     * The row tagged `<tag>-row` has one stop, its menu button, which says [said] ("<label>: <value>"): the label is
+     * heard once. The button is still a dropdown that a tap opens, on a menu where [value] is the selected choice.
+     */
+    private fun assertMenuRowSaysItsLabelOnce(tag: String, said: String, value: String) {
+        assertEquals(listOf(listOf(said)), rowStops(tag))
+        assertStillActs("$tag-menu", Role.DropdownList)
+        compose.onNodeWithTag("$tag-menu").performClick()
+        compose.waitForIdle()
+        val stops = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        assertTrue("$value selected in the open menu, among $stops", listOf("Selected", value) in stops)
+    }
+
     // #167: About's Updates row says the release by its text, and no state says it again.
 
     @Test fun aboutsUpdatesRowSaysTheReleaseOnce() {

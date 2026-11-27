@@ -213,15 +213,19 @@ internal fun tagged(tag: String?, part: String): Modifier = if (tag != null) Mod
  * (`<tag>-row`, `<tag>-label`). The label takes the room the control leaves, as Appearance's
  * labels do, or with [labelFills] false only its words' width, as Keyboard's. A control that does not fit
  * beside the label (a long segmented control on the folded screen, or at large text) goes
- * under it, at the start.
+ * under it, at the start. With [saidByControl] the control says the label itself, as a [MenuButton]'s
+ * "<label>: <value>" does (#151), so a screen reader skips the label's text and hears the label once (#197).
  */
 @Composable
-fun SettingRow(label: String, modifier: Modifier = Modifier, tag: String? = null, labelFills: Boolean = true, control: @Composable () -> Unit) {
+fun SettingRow(
+    label: String, modifier: Modifier = Modifier, tag: String? = null, labelFills: Boolean = true, saidByControl: Boolean = false,
+    control: @Composable () -> Unit,
+) {
     val s = VeloTheme.sizes
     val gapDp = VeloTheme.medium(14.dp)
     Layout(
         content = {
-            Text(label, tagged(tag, "label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
+            Text(label, tagged(tag, "label").saidBy(label.takeIf { saidByControl }), style = VeloTheme.type.body, color = VeloTheme.surface.text)
             Box { control() }
         },
         modifier = modifier.groupBleed().then(tagged(tag, "row")).fillMaxWidth().heightIn(min = s.row).groupInset().padding(vertical = VeloTheme.medium(6.dp)),

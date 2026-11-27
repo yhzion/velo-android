@@ -23,7 +23,7 @@ fun pickedCorner(choice: CapsuleCorner, shown: CapsuleCorner): CapsuleCorner? = 
 @Composable
 internal fun CapsuleCornerRow(shown: CapsuleCorner, onPick: (CapsuleCorner) -> Unit) {
     var choosing by remember { mutableStateOf(false) }
-    SettingRow("Minimized windows", tag = "appearance-minimized") {
+    SettingRow("Minimized windows", tag = "appearance-minimized", saidByControl = true) {
         Box {
             MenuButton(shown.label, { choosing = true }, contentDescription = "Minimized windows: ${shown.label}", tag = "appearance-minimized-menu")
             SelectMenu(choosing, { choosing = false }, CapsuleCorner.entries, shown, { it.label }, onPick = { choice ->

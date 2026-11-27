@@ -210,7 +210,7 @@ private fun TapGestureSettings(s: Settings) {
 @Composable
 private fun TapKeyRow(label: String, tag: String, key: TapKey, onPick: (TapKey) -> Unit) {
     var choosing by remember { mutableStateOf(false) }
-    SettingRow(label, tag = tag, labelFills = false) {
+    SettingRow(label, tag = tag, labelFills = false, saidByControl = true) {
         Box {
             MenuButton(key.label, { choosing = true }, contentDescription = "$label: ${key.spoken}", tag = "$tag-menu")
             SelectMenu(choosing, { choosing = false }, TapKey.entries, key, { it.label }, onPick = onPick, spoken = { it.spoken })

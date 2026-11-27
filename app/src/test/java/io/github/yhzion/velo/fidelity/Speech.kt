@@ -51,8 +51,8 @@ internal object Speech {
     /** What the semantics node [id] says, as [said]. */
     fun saidAt(view: View, id: Int): List<String> = said(view, node(view, id))
 
-    /** Every focusable node in [view], in tree order, with what it says. */
-    fun focusableNodes(view: View): List<Pair<AccessibilityNodeInfo, List<String>>> {
+    /** Every focusable node in [view], or under the semantics node [root] and itself, in tree order, with what it says. */
+    fun focusableNodes(view: View, root: Int = AccessibilityNodeProvider.HOST_VIEW_ID): List<Pair<AccessibilityNodeInfo, List<String>>> {
         val provider = view.accessibilityNodeProvider ?: return emptyList()
         val result = mutableListOf<Pair<AccessibilityNodeInfo, List<String>>>()
         fun walk(id: Int) {
@@ -60,7 +60,7 @@ internal object Speech {
             if (focusable(info)) result += info to said(view, info)
             for (c in 0 until info.childCount) childVirtualId(info, c)?.let(::walk)
         }
-        walk(AccessibilityNodeProvider.HOST_VIEW_ID)
+        walk(root)
         return result
     }
 
