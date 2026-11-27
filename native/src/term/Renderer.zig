@@ -495,6 +495,8 @@ fn setWindowScaling(window: *anyopaque, mode: Scaling) bool {
 
 /// One line when a thread's buffers stop going out scaled, or stay so for good.
 fn logScaling(what: []const u8, r: *R, now_ns: i128) void {
+    // The host tests drive `planFrameDue`, and they do not link liblog.
+    if (@import("builtin").is_test) return;
     var buf: [128]u8 = undefined;
     const after_ms = @divTrunc(now_ns - r.first_swap_ns, std.time.ns_per_ms);
     const msg = std.mem.printSentinel(&buf, "renderer {s} after {d} ms, {d} scaled off size pane={x}", .{ what, after_ms, r.scaled_off_size, @intFromPtr(r.pane) }, 0) catch return;
@@ -2759,6 +2761,43 @@ test "renderer: a frame the thread asked for itself goes to the window when due,
     try std.testing.expect(!p.present_due);
     try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
     try std.testing.expectEqual(@as(i128, 0), t.r.due_ns);
+}
+
+test "renderer: the frames a scaled thread asks for itself come at the hold, then each retry, then stop" {
+    // #117: the glue between `scalingFrameDue` and `Pane.frame_due_ns`. A thread that never finds
+    // the window's size asks at first swap + hold, then 8 times a retry later, then gives up.
+    var source: CountingSource = .{};
+    const p = try paneWithHistory(&source);
+    defer p.destroy();
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    t.r.scaling = .scale_to_window;
+    t.r.first_swap_ns = 0;
+
+    // Counted from the first swap, not from the time the plan is made.
+    planFrameDue(&t.r, true, 3 * ms);
+    try std.testing.expectEqual(scale_hold_ns, p.frame_due_ns);
+    t.r.due_ns = 0;
+    p.frame_due_ns = 0;
+
+    planFrameDue(&t.r, true, 0);
+    try std.testing.expectEqual(scale_hold_ns, p.frame_due_ns);
+
+    var round: u8 = 1;
+    while (round <= 9) : (round += 1) {
+        const due = p.frame_due_ns;
+        takeFrameDue(&t.r, due);
+        planFrameDue(&t.r, false, due); // the due frame went out scaled again
+        const want: i128 = if (round <= scale_retries) scale_hold_ns + @as(i128, round) * scale_retry_ns else 0;
+        try std.testing.expectEqual(want, p.frame_due_ns);
+    }
+    try std.testing.expectEqual(@as(u8, scale_retries + 1), t.r.due_retries);
+
+    // A tenth round asks for nothing.
+    takeFrameDue(&t.r, scale_hold_ns + 10 * scale_retry_ns);
+    planFrameDue(&t.r, false, scale_hold_ns + 10 * scale_retry_ns);
+    try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
+    try std.testing.expectEqual(@as(u8, scale_retries + 1), t.r.due_retries);
 }
 
 test "gl: the window's perform hook is where the platform's struct ANativeWindow has it" {
