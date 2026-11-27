@@ -29,6 +29,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.LayoutNode
 import io.github.yhzion.velo.core.SessionInfo
@@ -62,6 +63,8 @@ class ZoomMinimapUiTest {
     private var zoomed by mutableStateOf<String?>("b")
     private var connected by mutableStateOf(true)
     private var tab by mutableStateOf("w")
+    private var compact by mutableStateOf(false)
+    private var size by mutableStateOf(UiSize.Medium)
     private val zoomedTo = mutableListOf<String>()
 
     // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
@@ -76,9 +79,9 @@ class ZoomMinimapUiTest {
         val map = zoomMap(window, rtl) { block -> TabIndicator.Done.takeIf { block == "c" } }
         val layer = remember { OverlayLayer() }
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-            VeloTheme(UiSize.Medium) {
+            VeloTheme(size) {
                 val caption = @Composable {
-                    PaneCaption(row, connected, ActivityReadState(), host = "studio", zoom = map,
+                    PaneCaption(row, connected, ActivityReadState(), host = "studio", compact = compact, zoom = map,
                         paneName = { zoomPaneName(state, window, it) }, onZoom = { zoomedTo += it })
                 }
                 if (layered) OverlayLayerBox(layer, Modifier.fillMaxSize()) { caption() } else caption()
@@ -97,6 +100,22 @@ class ZoomMinimapUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("caption-minimap").assertDoesNotExist()
         compose.onNodeWithTag("caption-zoom-label", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun zoomingLeavesTheCaptionAsHighAsItWas() {
+        // The pane above the caption keeps its rows: neither the minimap nor its label makes the caption higher.
+        show()
+        for (style in listOf(false, true)) for (ui in UiSize.entries) {
+            compact = style
+            size = ui
+            zoomed = null
+            compose.waitForIdle()
+            val split = compose.onNodeWithTag("pane-caption").getBoundsInRoot().height
+            zoomed = "b"
+            compose.waitForIdle()
+            compose.onNodeWithTag("caption-minimap").assertIsDisplayed()
+            assertEquals("$ui, compact $style", split, compose.onNodeWithTag("pane-caption").getBoundsInRoot().height)
+        }
     }
 
     @Test fun thePickerLeavesTheKeyboardToTheTerminal() {
