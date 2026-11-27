@@ -112,8 +112,8 @@ are listed per capture (`text_diffs` and `text_compared`) in `report.html` and `
 aggregated per screen in `report.json`, rather than failing the screen or lowering the score.
 
 **Known text.** Some differences are there by nature: the installed version, the clock time of a
-check, the digest of a sample SSH key. `tools/fidelity/known-text.json` accepts
-such an element's text on the screens it names, with the board text it accepts and the reason:
+check. `tools/fidelity/known-text.json` accepts such an element's text on the screens it names, with
+the board text it accepts and the reason:
 
 ```json
 {"elements": {"updates-last-checked": {"screens": ["settings-updates"],
@@ -134,6 +134,10 @@ fixed or renamed element leaves the list.
 Every other difference is new and is settled by its source: when the app's string is the app's own
 copy, the canvas follows the app; when it is a scene's sample data in `FidelityScenes`, the sample
 follows the canvas. A canvas detail the app does not show at all follows the app.
+
+The SSH key boards draw the imported key's name, fingerprint and remove button `aria-label` with the
+digest of the rsa key `SettingsScenes.kt` imports (`BoardImportedKey`), so these canvas strings follow
+the scene's key bytes and a change to that key shows as a new text difference.
 
 **Remaining blind spot and why text colour is not compared.** A change of text colour, weight, or
 within-box size inside a board text box (and copy inside a wrapper whose Compose node carries no

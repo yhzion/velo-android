@@ -24,16 +24,6 @@
       "screens": ["settings-updates"],
       "board": "Last checked: today, 9:41 PM",
       "reason": "the clock time of the scene's update check, which is when the capture runs"
-    },
-    "ssh-imported-key-name-2": {
-      "screens": ["settings-ssh"],
-      "board": "Imported key Xp4Lw0Tq",
-      "reason": "a key without a comment is named by the first 8 characters of its digest (#284), and no key has the board's made-up digest"
-    },
-    "ssh-imported-key-fingerprint-2": {
-      "screens": ["settings-ssh"],
-      "board": "rsa · SHA256:Xp4L…waQ8",
-      "reason": "the digest of the scene's imported key; no key has the board's made-up digest"
     }
   }
 }
