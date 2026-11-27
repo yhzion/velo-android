@@ -251,6 +251,34 @@ class NoticeSpeechTest {
         assertTrue("the notice $error under the Filter field $field", error.top >= field.bottom)
     }
 
+    /**
+     * A sidebar whose body keeps the Filter's band but has no room for the notices under it (#195): a split screen, or
+     * a large display size. Focus on the Filter field at [from] dp, then the sidebar [to] dp tall: the field stays in
+     * the tree with the focus, and the notices lie over the list, not over the field.
+     */
+    private fun theFilterKeepsTheFocusInAShortSidebar(to: Int, uploading: Boolean) {
+        val c = connection()
+        if (uploading) c.uploading = "Uploading report.pdf…"
+        val tall = sidebarWithNotice(c, 860)
+        val filter = filterId()
+        compose.runOnIdle { view.accessibilityNodeProvider.performAction(filter, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
+        settle()
+        val from = mark()
+        tall.value = to
+        settle()
+        val node = compose.runOnIdle { view.accessibilityNodeProvider.createAccessibilityNodeInfo(filter) }
+        assertTrue("the Filter field is still in the tree", node != null)
+        assertTrue("the Filter field keeps the accessibility focus", node!!.isAccessibilityFocused)
+        assertEquals("nothing read out again", emptyList<List<String>>(), readOut(from))
+        val field = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
+        val error = compose.onNodeWithTag("error").getBoundsInRoot()
+        assertTrue("the notice $error above the Filter field $field", error.bottom <= field.top)
+    }
+
+    @Test fun theFilterKeepsTheFocusInAShortSidebarWithOneNotice() = theFilterKeepsTheFocusInAShortSidebar(241, uploading = false)
+
+    @Test fun theFilterKeepsTheFocusInAShortSidebarWithTwoNotices() = theFilterKeepsTheFocusInAShortSidebar(300, uploading = true)
+
     @Test fun anErrorNoticeSaysItIsAnError() {
         val c = connection()
         sidebarWithNotice(c, 860)

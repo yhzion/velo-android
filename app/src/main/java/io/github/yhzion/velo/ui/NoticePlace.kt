@@ -169,12 +169,26 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
  * panes holds notices [notices] px tall with their padding (#165, #195): its column is [height] px tall and its head
  * (the toolbar and This Device) [head] px. The notices go under the body, which grows shorter, while it keeps [least]
  * px beside them (the Filter's band, whole). Else the body keeps all the height under the head and the notices lie
- * over its foot: landscape with the keyboard up, where the Filter field itself has no room. Either way they end at
- * the column's foot, so the keyboard only places them again and never composes them elsewhere ([HeardNotices]).
+ * over it, above its band where it has one ([sidebarNoticesTop]). Either way they stay the column's children, so the
+ * keyboard only places them again and never composes them elsewhere ([HeardNotices]).
  */
 internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int): Int {
     val left = (height - head).coerceAtLeast(0)
     return if (left - notices >= least) left - notices else left
+}
+
+/**
+ * Where the sidebar's notices [notices] px tall start in its column, laid out as [sidebarBodyHeight] says (#195).
+ * Under the body when it makes room for them. Else, while the body keeps the Filter's band ([least]), they end just
+ * above the band, over the list: over the field, Compose would leave it out of what a screen reader sees and take its
+ * focus away. They start at the column's top when they are taller than the room above the band. Only when the body
+ * has no room for the band, where the field has none of its own (landscape with the keyboard up, #209), do they lie
+ * at the column's foot.
+ */
+internal fun sidebarNoticesTop(height: Int, head: Int, notices: Int, least: Int): Int {
+    val left = (height - head).coerceAtLeast(0)
+    return if (left - notices < least && left >= least) (height - least - notices).coerceAtLeast(0)
+    else (height - notices).coerceAtLeast(0)
 }
 
 /**

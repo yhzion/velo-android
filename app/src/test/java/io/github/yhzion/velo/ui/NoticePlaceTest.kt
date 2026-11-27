@@ -140,7 +140,7 @@ class NoticePlaceTest {
     @Test
     fun aSidebarThatJustKeepsTheFilterBandBesideTheNoticesStillGivesThemRoom() {
         assertEquals(band, sidebarBodyHeight(head + band + notices, head, notices, band))
-        // One px less, and the body keeps the whole height: the notices lie over its foot.
+        // One px less, and the body keeps the whole height: the notices lie over it ([sidebarNoticesTop]).
         assertEquals(band + notices - 1, sidebarBodyHeight(head + band + notices - 1, head, notices, band))
     }
 
@@ -149,5 +149,32 @@ class NoticePlaceTest {
         // Landscape with the keyboard up: 358 px (130 dp) leaves 14 under the head; a split screen may leave less.
         assertEquals(14, sidebarBodyHeight(358, head, notices, band))
         assertEquals(0, sidebarBodyHeight(300, head, notices, band))
+    }
+
+    @Test
+    fun aTallSidebarPutsItsNoticesUnderTheFilterBand() {
+        // Where the body makes room for them, they start where it ends, at the column's foot.
+        assertEquals(2400 - notices, sidebarNoticesTop(height = 2400, head = head, notices = notices, least = band))
+        assertEquals(head + band, sidebarNoticesTop(head + band + notices, head, notices, band))
+    }
+
+    @Test
+    fun aSidebarThatKeepsTheFilterBandButNotTheNoticesEndsThemAboveTheBand() {
+        // One px less than room for both (#195): the notices lie over the list, ending where the band starts, so they
+        // do not cover the Filter field, which Compose would then leave out of what a screen reader sees.
+        val height = head + band + notices - 1
+        assertEquals(height - band - notices, sidebarNoticesTop(height, head, notices, band))
+        // The body keeps just its band: they still end above it.
+        assertEquals(head - notices, sidebarNoticesTop(head + band, head, notices, band))
+        // Taller than the room above the band: they start at the column's top, and run on over the band.
+        assertEquals(0, sidebarNoticesTop(head + band, head, 400, band))
+    }
+
+    @Test
+    fun aSidebarWithoutRoomForTheFilterBandHasTheNoticesAtItsFoot() {
+        // Landscape with the keyboard up (358 px, 130 dp): the Filter field has no room of its own (#209).
+        assertEquals(358 - notices, sidebarNoticesTop(358, head, notices, band))
+        assertEquals(head + band - 1 - notices, sidebarNoticesTop(head + band - 1, head, notices, band))
+        assertEquals(0, sidebarNoticesTop(200, head, notices, band))
     }
 }

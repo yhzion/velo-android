@@ -348,10 +348,12 @@ internal fun Sidebar(
 /**
  * The sidebar's column: its [head] (the toolbar and This Device), then its [body] (the list, the Filter field at its
  * foot) in the height left, and the [notices] at its foot, which the body makes room for while it keeps [least] beside
- * them ([sidebarBodyHeight]); else they lie over the body's foot. They are the same children whichever way they lie,
- * so a keyboard that opens from the Filter field only places them again (#195): they are not composed elsewhere,
- * which a screen reader would read again, nor over the field, which Compose then leaves out of what a screen reader
- * sees, taking the field's focus away. The notices keep their own height: only the body is cut.
+ * them ([sidebarBodyHeight]); else they lie over the list, just above the Filter's band ([sidebarNoticesTop]). They
+ * are the same children whichever way they lie, so a keyboard that opens from the Filter field only places them again
+ * (#195): they are not composed elsewhere, which a screen reader would read again, nor over the field, which Compose
+ * then leaves out of what a screen reader sees, taking the field's focus away. Only a body too short for the band,
+ * where the field has no room of its own (#209), or notices taller than the room above it, has them over the band.
+ * The notices keep their own height: only the body is cut.
  */
 @Composable
 private fun SidebarColumn(least: Dp, modifier: Modifier, head: @Composable () -> Unit, body: @Composable () -> Unit,
@@ -369,8 +371,8 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, head: @Composable () ->
         layout(constraints.constrainWidth(all.maxOfOrNull { it.width } ?: 0), constraints.constrainHeight(height)) {
             var y = 0
             (top + inside).forEach { it.placeRelative(0, y); y += it.height }
-            // Placed last, so over the body's foot when it keeps the height under them.
-            var at = (height - stackHeight).coerceAtLeast(0)
+            // Placed last, so over the body when it keeps the height under them.
+            var at = sidebarNoticesTop(height, topHeight, stackHeight, least.roundToPx())
             stack.forEach { it.placeRelative(0, at); at += it.height }
         }
     }
