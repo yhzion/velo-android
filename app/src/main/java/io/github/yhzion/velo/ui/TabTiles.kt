@@ -52,7 +52,7 @@ internal fun tabTileDescription(tile: TabTileLook, hint: String?): String =
 
 /** The program a tile names: its brand's name, or the program's own ([hint]) for one without a brand. */
 private fun tileProgram(tile: TabTileLook, hint: String?): String =
-    if (tile.brand != TileBrand.Terminal) tile.brand.label else hint?.takeIf { it.isNotBlank() } ?: tile.brand.label
+    if (tile.brand != TileBrand.Terminal) tile.brand.label else hint?.trim()?.takeIf { it.isNotEmpty() } ?: tile.brand.label
 
 private fun tilePanes(tile: TabTileLook): String? = if (tile.panes > 1) "${tile.panes} panes" else null
 

@@ -186,9 +186,31 @@ class ReadOnceTest {
         assertEquals(listOf("Claude Code", "Refactor the sync queue", "Working · 2s since report · ~/src/api"), said("tab-row-refactor-sync-queue"))
         assertEquals(listOf("Codex, 2 panes", "Port the parser tests", "Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
         assertEquals(listOf("zsh, 4 panes", "~/src/web"), said("tab-row-zsh"))
-        // The second line says the program works; the tile has no state to add.
-        val tile = compose.onNodeWithTag("tab-tile-refactor-sync-queue", useUnmergedTree = true).fetchSemanticsNode()
-        assertTrue(SemanticsProperties.StateDescription !in tile.config)
+        // The second line says the program works; the tile has no state to add, and the row none either.
+        assertEquals(null, stateOf("tab-tile-refactor-sync-queue"))
+        assertEquals(null, stateOf("tab-row-refactor-sync-queue"))
         assertStillActs("tab-row-zsh", null)
+    }
+
+    /** The state a service says for the node tagged [tag], read from its AccessibilityNodeInfo. */
+    private fun stateOf(tag: String): String? {
+        val id = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().id
+        return compose.runOnIdle { Speech.node(view, id).stateDescription?.toString() }
+    }
+
+    /**
+     * A selected row with an unread report and five or more panes, and a row of a remote that is not
+     * connected: the tile says the panes as a count, it says the finish not yet seen as "Unread" since
+     * the second line says "Completed", and the offline mark adds nothing to the line's "Disconnected".
+     */
+    @Test fun anUnreadSelectedRowAndAnOfflineRowSayEachPartOnce() {
+        show { VeloTheme(UiSize.Medium) { RowCasesSidebar() } }
+        compose.waitForIdle()
+        assertEquals(listOf("htop, 6 panes", "Build the release", "Completed · 26s since report · ~/src/api"), said("tab-row-build"))
+        assertEquals("Unread", stateOf("tab-tile-build"))
+        // Compose gives a selected row that is no tab its state as a checked node: "Selected", once.
+        assertEquals("Selected", stateOf("tab-row-build"))
+        assertEquals(listOf("htop, 5 panes", "Watch the logs", "Disconnected · ~/var/log"), said("tab-row-watch"))
+        assertEquals(null, stateOf("tab-tile-watch"))
     }
 }

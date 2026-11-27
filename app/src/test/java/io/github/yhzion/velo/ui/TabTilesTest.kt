@@ -123,5 +123,7 @@ class TabTilesTest {
         assertEquals(RowTileSpeech("Claude Code", "Unread, Completed", true), tabRowTileSpeech(claude, null, "fix", TabIndicator.Done, null))
         // A program without a brand is named by its hint, and the name the same way.
         assertEquals(RowTileSpeech("node, 2 panes", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 2, null), "node", "node", null, null))
+        // The hint is trimmed as the name is: the tile says "node", and the name "node" is not said again.
+        assertEquals(RowTileSpeech("node", null, false), tabRowTileSpeech(TabTileLook(TileBrand.Terminal, 1, null), " node ", "node", null, null))
     }
 }

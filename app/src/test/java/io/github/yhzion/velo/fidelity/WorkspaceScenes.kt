@@ -292,3 +292,22 @@ private val NoActions = SidebarActions(
     selectSession = { _, _ -> }, newTab = { _, _ -> }, renameSession = { _, _ -> }, closeSession = { _, _ -> },
     selectTab = { _, _ -> }, renameTab = { _, _ -> }, moveTab = { _, _, _ -> }, closeTab = { _, _ -> },
 )
+
+/**
+ * Two remotes whose rows no board draws (ReadOnceTest): on the connected one, the shown tab has six
+ * panes and a finish not yet seen; the other is not connected, and its tab has five panes.
+ */
+@Composable
+internal fun RowCasesSidebar() {
+    val now = remember { System.currentTimeMillis() }
+    fun host(id: String, status: String, tab: TabInfo) = SidebarHost(Remote("remote:$id", id, "https://$id.example.ts.net"),
+        UiState(status = status, server = id, sessions = listOf(SessionInfo("session:$id", id, listOf(tab))), session = "session:$id", window = tab.id),
+        ActivityReadState(), active = status == "connected", removed = false)
+    val live = host("live", "connected", TabInfo("build", label = "Build the release", panes = 6, program = "htop", cwd = "~/src/api",
+        activity = "done", since = now - 26_000, block = "block:build", active = true))
+    val offline = host("offline", "disconnected", TabInfo("watch", label = "Watch the logs", panes = 5, program = "htop", cwd = "~/var/log",
+        activity = "working", since = now - 3_000, block = "block:watch", active = true))
+    Row(Modifier.fillMaxSize()) {
+        Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), listOf(live, offline), sidebarSlot(SidebarPlace.Covers), NoActions)
+    }
+}
