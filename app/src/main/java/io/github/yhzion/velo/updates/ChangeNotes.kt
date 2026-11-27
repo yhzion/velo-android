@@ -10,6 +10,7 @@ data class ChangeSection(val kind: ChangeKind, val items: List<String>)
 private const val CHANGES_START = "<!-- velo-changes -->"
 private const val CHANGES_END = "<!-- /velo-changes -->"
 internal const val MAX_CHANGE_ITEMS = 12
+// Keep in step with max_item_length in .github/scripts/changelog.sh (checked by ChangeNotesTest).
 internal const val MAX_CHANGE_LENGTH = 200
 private val sectionHeading = Regex("""### +(\S+) *""")
 // [text](url), or an image's ![alt](url), with one level of parentheses inside the url.

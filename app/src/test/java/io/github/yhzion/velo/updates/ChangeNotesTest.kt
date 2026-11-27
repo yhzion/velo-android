@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.updates
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -83,5 +84,18 @@ class ChangeNotesTest {
         assertEquals(emptyList<ChangeSection>(), changeNotes("<!-- /velo-changes -->\n### Added\n- x\n<!-- velo-changes -->"))
         assertEquals(emptyList<ChangeSection>(), changeNotes(block("### Added")))
         assertEquals(emptyList<ChangeSection>(), changeNotes("quoted <!-- velo-changes -->\n### Added\n- x\n<!-- /velo-changes -->"))
+    }
+
+    @Test fun maxLengthMatchesChangelogScript() {
+        val start = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        val script = generateSequence(start) { it.parentFile }
+            .map { File(it, ".github/scripts/changelog.sh") }
+            .firstOrNull(File::isFile)
+            ?: error("Could not find .github/scripts/changelog.sh above $start")
+        val matches = Regex("""^max_item_length=(\d+)$""", RegexOption.MULTILINE)
+            .findAll(script.readText())
+            .toList()
+        assertEquals("Expected one max_item_length assignment in ${script.path}", 1, matches.size)
+        assertEquals(MAX_CHANGE_LENGTH, matches.single().groupValues[1].toInt())
     }
 }

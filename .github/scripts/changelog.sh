@@ -16,6 +16,7 @@ export LC_ALL=C
 die() { echo "changelog.sh: $1" >&2; exit 1; }
 root=$(cd "$(dirname "$0")/../.." && pwd)
 changelog=${CHANGELOG:-$root/CHANGELOG.md}
+# Keep in step with MAX_CHANGE_LENGTH in app/src/main/java/io/github/yhzion/velo/updates/ChangeNotes.kt.
 max_item_length=200
 
 check_version() {
