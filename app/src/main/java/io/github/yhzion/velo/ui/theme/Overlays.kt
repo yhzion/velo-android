@@ -345,14 +345,18 @@ fun <T> SelectMenu(
     }
 }
 
-/** A popover: free [content] on an overlay surface, placed as a [VeloMenu] is. */
+/**
+ * A popover: free [content] on an overlay surface, placed as a [VeloMenu] is. With [keepImeTarget] it leaves the keyboard
+ * to the terminal under it, as a pane menu does: for a popover over the panes that edits no text.
+ */
 @Composable
 fun VeloPopover(
     expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, anchor: (() -> IntRect?)? = null,
+    keepImeTarget: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val at = anchor ?: rememberAnchor()
-    if (expanded) OverlayHost(onDismissRequest) { Anchored(at()) { PopoverSurface(modifier, content) } }
+    if (expanded) OverlayHost(onDismissRequest, keepImeTarget) { Anchored(at()) { PopoverSurface(modifier, content) } }
 }
 
 /** The surface of a popover. */

@@ -1,7 +1,9 @@
 package io.github.yhzion.velo.ui
 
 import android.app.Application
+import android.view.WindowManager
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +48,7 @@ import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
 
 /** The caption of a zoomed tab shows its minimap (#141); the picker and a swipe zoom another pane. */
 @RunWith(RobolectricTestRunner::class)
@@ -61,7 +64,8 @@ class ZoomMinimapUiTest {
     private var tab by mutableStateOf("w")
     private val zoomedTo = mutableListOf<String>()
 
-    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false) = compose.setContent {
+    // [layered]: overlays open over the caption, for the test to see them; else in a window of their own, as in the app.
+    private fun show(layout: LayoutNode = this.layout, rtl: Boolean = false, layered: Boolean = true) = compose.setContent {
         val window = WindowInfo(tab, layout = layout, zoomed = zoomed)
         val state = UiState(
             status = "connected", session = "s", window = tab, windows = listOf(window),
@@ -73,10 +77,11 @@ class ZoomMinimapUiTest {
         val layer = remember { OverlayLayer() }
         CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
             VeloTheme(UiSize.Medium) {
-                OverlayLayerBox(layer, Modifier.fillMaxSize()) {
+                val caption = @Composable {
                     PaneCaption(row, connected, ActivityReadState(), host = "studio", zoom = map,
                         paneName = { zoomPaneName(state, window, it) }, onZoom = { zoomedTo += it })
                 }
+                if (layered) OverlayLayerBox(layer, Modifier.fillMaxSize()) { caption() } else caption()
             }
         }
     }
@@ -92,6 +97,15 @@ class ZoomMinimapUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("caption-minimap").assertDoesNotExist()
         compose.onNodeWithTag("caption-zoom-label", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun thePickerLeavesTheKeyboardToTheTerminal() {
+        // As a pane menu: the picker's window edits no text, so the keyboard stays up and the pane keeps its size.
+        show(layered = false)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker").assertIsDisplayed()
+        val flags = ShadowDialog.getLatestDialog().window!!.attributes.flags
+        assertTrue("FLAG_ALT_FOCUSABLE_IM", flags and WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM != 0)
     }
 
     @Test fun aPickerTapZoomsThatPane() {

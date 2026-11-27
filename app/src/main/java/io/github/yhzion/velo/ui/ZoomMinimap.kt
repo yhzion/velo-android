@@ -247,7 +247,9 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean
             IntRect(left, mini.top, left + width, Int.MAX_VALUE / 2)
         }
     }
-    VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"), anchor = anchor) {
+    // It edits no text: the keyboard stays up for the full screen pane, which keeps its size.
+    VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"),
+        anchor = anchor, keepImeTarget = true) {
         ZoomPicker(map, mapW.dp, mapH.dp, name) { block ->
             openFor = null
             if (block != map.zoomed) zoom(block)
