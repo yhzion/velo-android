@@ -70,5 +70,9 @@ interface CoreListener {
     fun onReconnectToken(token: String)
     /** [fix]: a one-line command that fixes the failure, for "Copy command" (from the SSH pool); "" when none. */
     fun onError(code: String, message: String, fix: String)
+    /**
+     * Runs on a render thread, also after `VeloCore.destroy`: a render thread the core gave up may
+     * still call it (#178). Use only app-wide state, never the core or this connection's state.
+     */
     fun rasterizeGlyph(utf8: ByteArray, bold: Boolean, italic: Boolean, cellW: Int, cellH: Int, columns: Int): ByteArray?
 }

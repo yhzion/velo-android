@@ -776,6 +776,7 @@ class HostConnection(
         }
     }
 
+    // May run after destroy, on a render thread the core gave up: see CoreListener.rasterizeGlyph (#178).
     override fun rasterizeGlyph(utf8: ByteArray, bold: Boolean, italic: Boolean, cellW: Int, cellH: Int, columns: Int): ByteArray? =
         env.rasterizer.rasterize(utf8, bold, italic, cellW, cellH, columns)
 
