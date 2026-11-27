@@ -2,7 +2,6 @@ package io.github.yhzion.velo.ui
 
 import android.app.Application
 import android.view.View
-import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,10 +9,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.fidelity.Speech
 import io.github.yhzion.velo.TailnetState
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -24,8 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The This Device row tells a screen reader the node's state once, in the dot's word, in every
- * state (#134). It reads what an accessibility service gets: the AccessibilityNodeInfo tree the
- * Compose view's node provider gives for the row, every node a service would speak.
+ * state (#134). It reads what an accessibility service gets for the row ([Speech]): the words and
+ * states of the row's node and of its descendants in the Compose view's AccessibilityNodeInfo tree.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -47,32 +48,14 @@ class DeviceHeaderSpeechTest {
             device = deviceRow(state, paused)
             compose.waitForIdle()
             val row = compose.onNodeWithTag("this-device-row").fetchSemanticsNode().id
-            val said = compose.runOnIdle { spoken(view, row) }.joinToString(", ")
+            val words = compose.runOnIdle { Speech.saidAt(view, row) }
+            // One description that says a part twice ("velo, velo") is said twice too (#167).
+            assertFalse("$state paused=$paused: $words", Speech.saysTwice(words))
+            val said = words.joinToString(", ")
             val running = state as? TailnetState.Running
             val expected = listOfNotNull("This Device", running?.name?.ifEmpty { null }, running?.ips?.firstOrNull(),
                 tailnetChip(state, paused).text).joinToString(", ")
             assertEquals("$state paused=$paused", expected, said)
         }
-    }
-
-    /** The text or description of [id] and each descendant a service would speak, in tree order. */
-    private fun spoken(view: View, id: Int): List<String> {
-        val provider = view.accessibilityNodeProvider
-        val words = mutableListOf<String>()
-        fun walk(virtual: Int) {
-            val info = provider.createAccessibilityNodeInfo(virtual) ?: return
-            if (info.isImportantForAccessibility && info.isVisibleToUser)
-                (info.contentDescription ?: info.text)?.toString()?.takeIf { it.isNotEmpty() }?.let(words::add)
-            for (i in 0 until info.childCount) walk(childVirtualId(info, i))
-        }
-        walk(id)
-        return words
-    }
-
-    // AccessibilityNodeInfo keeps each child as a long whose high half is the virtual view id;
-    // getChildId is hidden, so it is read by reflection, as Robolectric allows.
-    private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int {
-        val id = AccessibilityNodeInfo::class.java.getMethod("getChildId", Int::class.javaPrimitiveType).invoke(info, index) as Long
-        return (id ushr 32).toInt()
     }
 }

@@ -121,8 +121,10 @@ class ReadOnceTest {
         compose.onNodeWithTag("keyboard-double-tap-menu").performScrollTo().performClick()
         compose.waitForIdle()
         val options = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
-        // The drawn "Esc" is said as Escape, and never beside it. The key bar also says Escape and Tab, so no option may say its words twice.
-        for (option in listOf("Escape", "Tab", "None")) assertTrue("$option said once, among $options", listOf(option) in options)
+        // The drawn "Esc" is said as Escape, and never beside it; each option says its state too (#167). The key bar
+        // also says Escape and Tab, so no option may say its words twice.
+        for (option in listOf(listOf("Selected", "Escape"), listOf("Not selected", "Tab"), listOf("Not selected", "None")))
+            assertTrue("$option said once, among $options", option in options)
         for (twice in listOf(listOf("Escape", "Esc"), listOf("Tab", "Tab"), listOf("None", "None"))) assertFalse("$twice not said, among $options", twice in options)
     }
 
@@ -150,9 +152,10 @@ class ReadOnceTest {
 
     @Test fun anAlertRowSaysItsDescriptionOnce() {
         scene("settings-notif")
-        assertEquals(listOf("Background notification, Needs your response"), said("alert-needs-response-notification-row"))
+        // The switch's state follows its words (#167).
+        assertEquals(listOf("On", "Background notification, Needs your response"), said("alert-needs-response-notification-row"))
         // The sound menu in the row is a control of its own, said apart.
-        assertEquals(listOf("Activity sound, Work completed"), said("alert-work-completed-sound-row"))
+        assertEquals(listOf("On", "Activity sound, Work completed"), said("alert-work-completed-sound-row"))
         val id = compose.onNodeWithTag("alert-work-completed-notification-row").fetchSemanticsNode().id
         val info = compose.runOnIdle { Speech.node(view, id) }
         assertTrue("the row is still a switch", info.isCheckable && info.isChecked)
@@ -205,11 +208,14 @@ class ReadOnceTest {
 
     @Test fun aDockedTabRowSaysEachPartOnce() = assertTabRowsSayEachPartOnce("workspace-docked")
 
-    /** The tile names the program and the panes, the name follows unless it is the program, and the second line says the state and the folder. */
+    /**
+     * The tile names the program and the panes, the name follows unless it is the program, and the second line says the
+     * state and the folder. The row of the shown tab says it is selected (#167).
+     */
     private fun assertTabRowsSayEachPartOnce(name: String) {
         scene(name)
         assertEquals(listOf("Claude Code", "Refactor the sync queue", "Working · 2s since report · ~/src/api"), said("tab-row-refactor-sync-queue"))
-        assertEquals(listOf("Codex, 2 panes", "Port the parser tests", "Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
+        assertEquals(listOf("Selected", "Codex, 2 panes", "Port the parser tests", "Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
         assertEquals(listOf("zsh, 4 panes", "~/src/web"), said("tab-row-zsh"))
         // The second line says the program works; the tile has no state to add, and the row none either.
         assertEquals(null, stateOf("tab-tile-refactor-sync-queue"))
@@ -231,7 +237,7 @@ class ReadOnceTest {
     @Test fun anUnreadSelectedRowAndAnOfflineRowSayEachPartOnce() {
         show { VeloTheme(UiSize.Medium) { RowCasesSidebar() } }
         compose.waitForIdle()
-        assertEquals(listOf("htop, 6 panes", "Build the release", "Completed · 26s since report · ~/src/api"), said("tab-row-build"))
+        assertEquals(listOf("Selected", "htop, 6 panes", "Unread", "Build the release", "Completed · 26s since report · ~/src/api"), said("tab-row-build"))
         assertEquals("Unread", stateOf("tab-tile-build"))
         // Compose gives a selected row that is no tab its state as a checked node: "Selected", once.
         assertEquals("Selected", stateOf("tab-row-build"))
