@@ -813,7 +813,11 @@ pub const FrameDue = enum {
     after_hold,
     /// A frame `scale_retry_ns` later.
     retry,
-    /// The buffers stay scaled: the last retry did not find the window's size.
+    /// No more frames are asked for: the last retry did not find the window's size. A later
+    /// frame still goes back to FREEZE when its buffer has the window's size and the window
+    /// held still. A due frame whose build fails ends the chain the same way, without this
+    /// answer or its log line (`takeFrameDue` has spent the due): an idle pane then stays
+    /// scaled until its next frame, as the rule for failed builds has it.
     give_up,
 };
 
@@ -831,9 +835,12 @@ pub fn scalingFrameDue(mode: Scaling, first: bool, pending: bool, retries: u8) F
 
 /// Called with the pane lock held, as a frame begins to build: the frame the thread asked for
 /// itself (`askFrame`) is due, and goes to the window even when it draws what the window
-/// shows, while the thread's buffers go out scaled.
+/// shows, while the thread's buffers go out scaled. It keys on `Pane.frame_due_ns`, what the
+/// loop wakes on, so that no past-due frame is left to wake it at once forever; `R.due_ns` is
+/// only `planFrameDue`'s lock-free "pending".
 fn takeFrameDue(r: *R, now_ns: i128) void {
-    if (r.due_ns == 0 or now_ns < r.due_ns) return;
+    const wait = r.pane.frameWaitLocked(now_ns) orelse return;
+    if (wait != 0) return;
     r.due_ns = 0;
     r.pane.frame_due_ns = 0;
     if (r.scaling == .scale_to_window) r.pane.present_due = true;
@@ -2576,7 +2583,7 @@ test "scalingFrameDue: a frame after the hold that still went out scaled asks ag
         try std.testing.expectEqual(FrameDue.retry, scalingFrameDue(.scale_to_window, false, false, retries));
     }
     try std.testing.expectEqual(FrameDue.give_up, scalingFrameDue(.scale_to_window, false, false, scale_retries));
-    // Given up: the buffers stay scaled and nothing more is asked or logged.
+    // Given up: nothing more is asked or logged; a later frame can still go back to FREEZE.
     try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.scale_to_window, false, false, scale_retries + 1));
 }
 
@@ -2763,6 +2770,24 @@ test "renderer: a frame the thread asked for itself goes to the window when due,
     try std.testing.expectEqual(@as(i128, 0), t.r.due_ns);
 }
 
+test "renderer: a past-due frame the loop waits on is taken even when the thread's copy says none" {
+    // The loop wakes on `Pane.frame_due_ns`. Were it past due with `R.due_ns` at 0, a take keyed
+    // on `R.due_ns` would leave it, and the loop would wake at once forever (#117 review N1).
+    var source: CountingSource = .{};
+    const p = try paneWithHistory(&source);
+    defer p.destroy();
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    t.r.scaling = .scale_to_window;
+    t.r.due_ns = 0;
+    p.frame_due_ns = 1000;
+    p.present_due = false;
+    takeFrameDue(&t.r, 1500);
+    try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
+    try std.testing.expectEqual(@as(?u64, null), p.frameWaitLocked(1500));
+    try std.testing.expect(p.present_due);
+}
+
 test "renderer: the frames a scaled thread asks for itself come at the hold, then each retry, then stop" {
     // #117: the glue between `scalingFrameDue` and `Pane.frame_due_ns`. A thread that never finds
     // the window's size asks at first swap + hold, then 8 times a retry later, then gives up.
@@ -2806,4 +2831,8 @@ test "gl: the window's perform hook is where the platform's struct ANativeWindow
     if (@sizeOf(usize) != 8) return error.SkipZigTest;
     try std.testing.expectEqual(@as(usize, 56), @sizeOf(gl.NativeBase));
     try std.testing.expectEqual(@as(usize, 152), @offsetOf(gl.NativeWindow, "perform"));
+    // `setWindowScaling` checks these two before the call: the magic ('_wnd') and the version
+    // (the struct's size) that reaches past `perform`.
+    try std.testing.expectEqual(@as(c_int, 0x5f776e64), gl.ANDROID_NATIVE_WINDOW_MAGIC);
+    try std.testing.expectEqual(@as(usize, 160), @offsetOf(gl.NativeWindow, "perform") + @sizeOf(usize));
 }

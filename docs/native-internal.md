@@ -193,9 +193,18 @@ the last one read, whatever the count.
 
 A new render thread's buffers go to the window scaled (`SCALE_TO_WINDOW`, through the
 window's `perform` hook) until 150 ms after its first swap and a buffer of the window's size,
-then FREEZE as before, so that BLAST rejects none while the window returns: a buffer it
-rejects during a window sync stops the swap for good (#117; logcat `renderer freezes its
-buffers after … ms`).
+with the window the size it had at the previous swap, then FREEZE as before, so that BLAST
+rejects none while the window returns or resizes: a buffer it rejects during a window sync
+stops the swap for good (#117; logcat `renderer freezes its buffers after … ms`). A pane that
+draws nothing asks for a frame of its own when the hold ends (`Pane.frame_due_ns`, woken in
+`run`'s wait), then every 50 ms while it is still scaled, 8 times at most; after that it asks
+for none, and its next frame can still go back to FREEZE. The swap that goes back can still
+be rejected if the window's update and a sync land between its check and the queue, and the
+join in `stopRenderer` is unbounded, so a stuck thread still ends in an ANR. The design
+assumes the driver queues inside `eglSwapBuffers` on the calling thread (Adreno does; other
+GPUs are not checked). The Vulkan swapchain sets `SCALE_TO_WINDOW` on its window, so where
+GLES is ANGLE over Vulkan, FREEZE lasts only until ANGLE's next swapchain and the window
+stays scaled after that, as all buffers were before #117.
 
 A renderer that cannot set up EGL for its window, or whose `eglSwapBuffers` fails, marks
 the pane (`render_failed`) and its thread ends, releasing its EGL surface, EGL context
@@ -204,7 +213,10 @@ the thread and starts again even for the same window (`alive` is `!render_failed
 loop is `Renderer.run(pane, draw)`, which the host tests run with a drawing of their own.
 Logcat tag `VeloTerm` has one line per renderer start and end (`renderer start pane=…
 window=…`), and `renderer setup failed` or `renderer swap failed` before the end of one
-that failed; an attach in place writes none.
+that failed; an attach in place writes none. A new thread writes `renderer freezes its
+buffers after …` when it goes back to FREEZE, or `renderer keeps its buffers scaled …` when
+its retries end first; `renderer could not scale its first buffers …` or `renderer could
+not freeze its buffers again …` means the window's `perform` hook refused the mode.
 
 ## Host tests
 
