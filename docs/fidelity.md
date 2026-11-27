@@ -111,6 +111,13 @@ button/row wrappers carry no text while HTML `innerText` concatenates descendant
 are listed per capture (`text_diffs` and `text_compared`) in `report.html` and `report.json`, and
 aggregated per screen in `report.json`, rather than failing the screen or lowering the score.
 
+**Labels.** `compare` also compares a paired element's `aria-label` with the app node's content
+description, whitespace-normalised, where both sides carry one. They are listed per capture
+(`label_diffs` and `label_compared`) and per screen like text differences, without a verdict or a
+known list; the summary line ends with `label differences on L screens (V unique)`. A label on one
+side alone is not compared: Compose often puts a button's description on a child node without the
+testTag, and the app labels some rows that the board draws as text.
+
 **Known text.** Some differences are there by nature: the installed version, the clock time of a
 check. `tools/fidelity/known-text.json` accepts such an element's text on the screens it names, with
 the board text it accepts and the reason:

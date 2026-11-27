@@ -186,6 +186,23 @@ def text_diffs(pairs):
     return compared, diffs
 
 
+def label_diffs(pairs):
+    """Compares the whitespace-normalised screen-reader labels of paired elements: the board's `aria-label` and
+    the app node's content description. Only pairs where both sides carry one are compared. Compose often puts a
+    button's description on a child node, and the app labels rows the board draws as text, so a label on one side
+    alone says little. Returns (compared_count, [{"name", "board", "app"}, ...])."""
+    compared = 0
+    diffs = []
+    for b, n in pairs:
+        board_label, app_label = normalise_text(b.get("label")), normalise_text(n.get("label"))
+        if not board_label or not app_label:
+            continue
+        compared += 1
+        if board_label != app_label:
+            diffs.append({"name": b["name"], "board": board_label, "app": app_label})
+    return compared, diffs
+
+
 # ---- whole screen -------------------------------------------------------------------------
 
 SSIM_WINDOW = 11

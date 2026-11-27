@@ -39,6 +39,7 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(r["text_coverage"], 0.0)
         self.assertEqual([x["name"] for x in r["fills"]], ["screen", "card"])
         self.assertEqual((r["text_compared"], r["text_diffs"]), (0, []))
+        self.assertEqual((r["label_compared"], r["label_diffs"]), (0, []))
 
     def test_paired_text_differences_are_reported_without_failing_verdict(self):
         board, img = board_and_image()
@@ -193,6 +194,39 @@ class CompareTest(unittest.TestCase):
         self.assertIn("the clock time of the check", page)
         self.assertIn("0 new differences on 0 screens; 1 known", page)
         self.assertIn("Known text that matched nothing", page)
+
+    def test_label_differences_are_listed_without_failing_verdict(self):
+        board, img = board_and_image()
+        board["elements"][2]["label"] = "Needs your response"
+        app = app_from(board)
+        app["nodes"][2]["label"] = "Waiting for an answer"
+        r, _, _ = f.compare({"screen": "workspace-test"}, board, app, img, img.copy(), {}, DSF)
+        self.assertEqual(r["label_compared"], 1)
+        self.assertEqual(r["label_diffs"], [{"name": "label", "board": "Needs your response", "app": "Waiting for an answer"}])
+        self.assertEqual(r["text_diffs"], [])
+        v = f.m.verdict(tokens=1.0, geometry=r["geometry"], missing=len(r["missing"]),
+                        max_delta_e=r["max_delta_e"], ssim=r["ssim"])
+        self.assertTrue(v["pass"])
+        entry = {"board": "WsBarTest", "title": "t", "size": [100, 80], "status": "measured", **r, **v,
+                 "score": 100.0, "images": {"side": "side.png", "heat": "heat.png"}}
+        devices = {"bar": entry}
+        rows = [{"screen": "workspace-test", "implemented": True, "score": 100.0, "pass": True,
+                 "text_diffs": [], "text_known": [], "label_diffs": f.by_screen(devices, "label_diffs"),
+                 "devices": devices}]
+        self.assertEqual(f.text_diff_counts(rows, "label_diffs"), (1, 1))
+        page = f.render_html({
+            "generated": "2026-11-27T00:00:00+00:00",
+            "thresholds": {"tokens": 1.0, "geometry": 0.95, "tolerance_dp": 2.0,
+                           "missing": 0, "delta_e_below": 3.0, "ssim": 0.92},
+            "tokens": {"rate": 1.0, "cases": 1, "failed": [], "classes": ["T"]},
+            "match_rate": 100.0, "match_rate_implemented": 100.0,
+            "screens_total": 1, "screens_implemented": 1, "screens_passed": 1,
+            "platform_exceptions": [], "screens": rows,
+        })
+        self.assertIn("label diff 1", page)
+        self.assertIn("Label differences (1 of 1 compared)", page)
+        self.assertIn("Labels: 1 differences on 1 screens", page)
+        self.assertIn("Waiting for an answer", page)
 
     def test_text_box_anti_aliasing_does_not_fail_judged_ssim(self):
         board, img = board_and_image()

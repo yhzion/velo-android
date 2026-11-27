@@ -92,6 +92,19 @@ class PairingTest(unittest.TestCase):
             {"name": "unexpected", "board": "", "app": "Extra copy"},
         ])
 
+    def test_label_diffs_compare_only_where_both_sides_carry_a_label(self):
+        pairs = [
+            # Compose often puts a button's description on a child node: a board label alone is not compared.
+            ({"name": "back", "label": "Back"}, {"tag": "back"}),
+            # The app labels a row the board draws as text: an app label alone is not compared either.
+            ({"name": "row", "label": None}, {"tag": "row", "label": "Channel, Stable"}),
+            ({"name": "dot", "label": "Waiting  for an answer"}, {"tag": "dot", "label": "Waiting for an answer"}),
+            ({"name": "chip", "label": "Control"}, {"tag": "chip", "label": "Ctrl"}),
+        ]
+        compared, diffs = m.label_diffs(pairs)
+        self.assertEqual(compared, 2)
+        self.assertEqual(diffs, [{"name": "chip", "board": "Control", "app": "Ctrl"}])
+
 
 class SsimTest(unittest.TestCase):
     def test_identical_images_score_one(self):
