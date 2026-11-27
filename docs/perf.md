@@ -323,3 +323,25 @@ against the stills, two runs each, in ms:
   screen, with those out of it live, saved half as much SurfaceFlinger time.
 - The surfaces stay: each render thread starts and ends as on main. A pane whose stream came
   late after the cold start drew its first frame within one of the runs.
+
+A pane that has drawn nothing new since its last still needs no copy: the core counts the frames
+each pane's surfaces take (`paneSwaps`), and a pane keeps its last still with that count while it
+is a preview. Same device, three runs of main and of a copy each swipe, four of a copy only
+after a change (the second batch of main and of a copy each swipe could not be installed over
+the newer build's version code, and ran it):
+
+| | Main | A copy each swipe | A copy after a change |
+|---|---|---|---|
+| Copies | 0 | 35, 35, 36 | 6, 6, 6, 6 |
+| SurfaceFlinger | 6024, 6197, 6132 | 4833, 4884, 4803 | 4805, 5004, 4852, 4728 |
+| GPU compositions | 293, 313, 295 | 39, 39, 39 | 27, 28, 27, 27 |
+| Gaps over 25 ms, of the frames while moving | 82/481, 66/500, 77/482 | 28/580, 36/582, 34/583 | 26/584, 25/590, 24/585, 27/582 |
+| Main-thread frames over 16.7 ms | 152, 129, 140 | 11, 17, 26 | 2, 1, 4, 6 |
+| Main thread | 2014, 2019, 2010 | 2580, 2523, 2503 | 2373, 2309, 2557, 2637 |
+| RenderThread | 2737, 2909, 2788 | 3671, 3556, 3506 | 3505, 3496, 3516, 3547 |
+
+- Each pane is copied at the first swipe, and drawn from that still at the next seven. The
+  scene's terminals print nothing meanwhile; a pane that does is copied again.
+- The copies took 250 ms of RenderThread less as wall time; its CPU did not change much: most
+  of a copy is a wait for the GPU.
+

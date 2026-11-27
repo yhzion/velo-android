@@ -81,14 +81,42 @@ internal class RowMotionClock(private val quietMs: Long = ROW_QUIET_MS) {
 }
 
 /**
+ * The last still of a pane and the pane's swaps when it was copied ([PaneStillOver]). Plain, on the main thread.
+ */
+internal class LastStill<T : Any> {
+    private var image: T? = null
+    private var swaps = -1L
+    private var size = 0 to 0
+
+    /** The kept still, when the pane has taken no frame since it was copied ([swaps] the same) and it is of [size]. */
+    fun unchanged(swaps: Long, size: Pair<Int, Int>): T? =
+        image?.takeIf { swaps >= 0 && swaps == this.swaps && size == this.size }
+
+    /** [image] was copied when the pane had taken [swaps] frames, at [size]. */
+    fun keep(image: T, swaps: Long, size: Pair<Int, Int>) {
+        this.image = image
+        this.swaps = swaps
+        this.size = size
+    }
+
+    fun forget() {
+        image = null
+        swaps = -1
+    }
+}
+
+/**
  * The still of one pane of [card] ([PaneStill]): while [preview] and the row moves, a copy of [view] drawn over it, and its
  * layer hidden once the copy is there. A copy that fails (no frame yet, the surface went) leaves the pane live. At rest the
  * layer shows again, with the core's last frame; the copy stays over it for two frames more, until that layer is on the
  * screen. The motion is followed in an effect, not in composition: the row starting or stopping composes nothing.
+ * The last copy is kept while the pane is a preview, with the pane's swaps when it was made ([PaneSurfaceView.swaps]): a
+ * pane that has taken no frame since, at the same size, is drawn from it again and not copied.
  */
 @Composable
 internal fun PaneStillOver(view: PaneSurfaceView?, preview: Boolean, card: PaneStill) {
     var still by remember(view) { mutableStateOf<ImageBitmap?>(null) }
+    val last = remember(view) { LastStill<ImageBitmap>() }
     val previewNow by rememberUpdatedState(preview)
     LaunchedEffect(view, card) {
         val v = view ?: return@LaunchedEffect
@@ -99,13 +127,19 @@ internal fun PaneStillOver(view: PaneSurfaceView?, preview: Boolean, card: PaneS
                 if (v.held) return@collectLatest
                 // A frame later than the cards on the screen, which are then before it in the turns.
                 if (!card.onScreen()) withFrameNanos {}
-                val copy = stillTurns.withLock {
+                val scale = card.scale().coerceIn(0.1f, 1f)
+                val image = stillTurns.withLock {
                     withFrameNanos {}
-                    v.still(card.scale().coerceIn(0.1f, 1f))
+                    // Read before the copy: a frame that comes meanwhile makes the next motion copy again.
+                    val swaps = v.swaps()
+                    val size = v.stillSize(scale)
+                    last.unchanged(swaps, size) ?: v.still(scale)?.asImageBitmap()?.also { last.keep(it, swaps, size) }
                 } ?: return@collectLatest
-                still = copy.asImageBitmap()
+                still = image
                 v.hold(true)
             } else {
+                // No longer a preview: the pane is shown or goes, and the copy is of no more use.
+                if (!previewNow) last.forget()
                 if (v.held) stillTurns.withLock {
                     withFrameNanos {}
                     v.hold(false)

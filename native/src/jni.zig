@@ -747,6 +747,20 @@ export fn Java_io_github_yhzion_velo_core_VeloCore_paneSelectedText(
     return jni.newString(gpa, env, text orelse "") orelse jni.newString(gpa, env, "");
 }
 
+/// paneSwaps(core: Long, block: String): Long
+/// How many frames the pane's surfaces have taken; the same number again is the same picture.
+export fn Java_io_github_yhzion_velo_core_VeloCore_paneSwaps(
+    env: Env,
+    _: c.jclass,
+    handle: c.jlong,
+    block: c.jstring,
+) callconv(.c) c.jlong {
+    const self = handleFrom(handle) orelse return 0;
+    const block_text = Text.init(env, block) orelse return 0;
+    defer block_text.deinit();
+    return @bitCast(self.core.paneSwaps(block_text.bytes));
+}
+
 /// paneHasSelection(core: Long, block: String): Boolean
 export fn Java_io_github_yhzion_velo_core_VeloCore_paneHasSelection(
     env: Env,

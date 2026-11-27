@@ -203,6 +203,7 @@ const R = struct {
         // Blocks until vsync (swap interval 1).
         if (gl.eglSwapBuffers(r.dpy, r.surf) != 0) {
             remember(r);
+            _ = r.pane.swaps.fetchAdd(1, .monotonic);
             return true;
         }
         logWarn("renderer swap failed");

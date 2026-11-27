@@ -87,6 +87,7 @@ Handles are opaque `Long`s. Every call returns quickly; work happens on core thr
 | `paneCopy(core, block: String): String` | Selected text (or screen text). |
 | `paneBracketedPaste(core, block: String): Boolean` | Whether a paste into the pane would be framed as a bracketed paste: its terminal has the mode on. The pane menu's Paste asks before it pastes a text with a line break or a control character into a pane without it (`pasteQuestion`). The `{"op":"paste",…}` command reads the mode again when it runs and reports `paste_needs_confirm` for an unconfirmed text that needs the question. False when the pane is unavailable, so such a paste is asked about, never framed unseen. |
 | `paneHasSelection(core, block: String): Boolean` | Whether the pane has a selection, which `paneCopy` then copies. A long press on such a pane opens the pane menu without the touch-down that would replace the selection; a move after the press sends it and starts a new selection. A tap on such a pane clears the selection (`paneClearSelection`); a tap on a pane without one sends nothing. |
+| `paneSwaps(core, block: String): Long` | How many frames the pane's surfaces have taken: the render thread counts each swap of a frame that drew something new (`Pane.swaps`). The same number again is the same picture on the surface, so the overview draws a preview's last still again instead of copying the surface (`ui/PaneStill.kt`). 0 for no such pane. |
 | `paneClearSelection(core, block: String)` | Ends the pane's selection: `paneCopy` copies the screen again. |
 | `forwardOpen(core, block: String, host: String, port: Int): String` | Blocking, on an app thread: forwards `host`:`port` of the remote, which a link in the terminal `block` names, to the phone (see "Port forwards"). Answers `{"status":"ok","port":N}` for the phone's `127.0.0.1:N`, or `{"status":"error","code","message"?}` (`too_old` for a server without tunnel blocks). A forward of the same host and port is used again. |
 | `forwardClose(core, block: String)` | Blocking: ends the forward of the tunnel block `block`, its connections, and the block. |
@@ -231,7 +232,8 @@ client's until the pane is touched. The selected tab and two tabs on each side o
 a tab farther away is a plain card until it comes near. While the row moves (a finger or a
 throw changes its scroll), every preview pane is a still (`ui/PaneStill.kt`): its surface is
 copied with `PixelCopy` into a picture that the window draws, one pane per frame, and the
-surface's own layer is hidden. The surface stays, attached to the view and not to its
+surface's own layer is hidden. A pane that has taken no frame since its last still
+(`paneSwaps`) is drawn from that still again, without a copy. The surface stays, attached to the view and not to its
 visibility (API 34 and later), and so does the core's renderer: at rest the layer shows again
 with the core's last frame. SurfaceFlinger then moves and composes the window alone; with more
 than two cards' layers moving it composed most frames on the GPU (see [Measuring](perf.md)).

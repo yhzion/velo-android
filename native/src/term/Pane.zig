@@ -372,6 +372,10 @@ pub const Pane = struct {
     gesture: c.GhosttySelectionGesture = null,
     gesture_event: [3]c.GhosttySelectionGestureEvent = .{ null, null, null },
     gen: std.atomic.Value(u64) = .init(1),
+    /// The frames the pane's surfaces have taken, each a swap of a frame that drew something
+    /// new (`Renderer.present`). The same number twice is the same picture on the surface: the
+    /// app keeps a still of a preview until it changes (`ui/PaneStill.kt`).
+    swaps: std.atomic.Value(u64) = .init(0),
 
     /// Theme as last set by Core (re-applied after a snapshot restore).
     theme_fg: ?[3]u8 = null,

@@ -1772,6 +1772,15 @@ pub const Core = struct {
         return entry.pane.selectedText(gpa);
     }
 
+    /// How many frames the pane's surfaces have taken (`Pane.swaps`); 0 for no such pane. The
+    /// same number again is the same picture on the surface.
+    pub fn paneSwaps(self: *Core, block: []const u8) u64 {
+        self.lock.lock();
+        defer self.lock.unlock();
+        const entry = self.entries.get(block) orelse return 0;
+        return entry.pane.swaps.load(.monotonic);
+    }
+
     /// True when the active screen of this pane has a selection.
     pub fn paneHasSelection(self: *Core, block: []const u8) bool {
         self.lock.lock();

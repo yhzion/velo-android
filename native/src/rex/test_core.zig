@@ -2485,6 +2485,22 @@ test "Core: the app is told whether a pane has a selection" {
     core.paneClearSelection("block:none");
 }
 
+test "Core: the app reads how many frames a pane's surfaces have taken" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    const core = try withTerminal(&recorder, me);
+    defer core.destroy();
+    try testing.expectEqual(@as(u64, 0), core.paneSwaps(term_block));
+    // The render thread counts each swap; two of them here.
+    core.lock.lock();
+    const swaps = &core.entries.get(term_block).?.pane.swaps;
+    core.lock.unlock();
+    _ = swaps.fetchAdd(1, .monotonic);
+    _ = swaps.fetchAdd(1, .monotonic);
+    try testing.expectEqual(@as(u64, 2), core.paneSwaps(term_block));
+    try testing.expectEqual(@as(u64, 0), core.paneSwaps("block:none"));
+}
+
 test "range edits and selection-only copy stay on the requested block" {
     var recorder: Recorder = .{};
     defer recorder.deinit();

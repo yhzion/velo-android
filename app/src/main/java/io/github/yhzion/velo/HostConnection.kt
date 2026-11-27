@@ -471,6 +471,9 @@ class HostConnection(
     fun selectedText(block: String): String = if (destroyed) "" else VeloCore.paneSelectedText(core, block)
     /** True when the pane has a selection: [copy] then copies it, else the whole screen. */
     fun hasSelection(block: String): Boolean = !destroyed && VeloCore.paneHasSelection(core, block)
+
+    /** How many frames the pane's surfaces have taken; the same number again is the same picture (`ui/PaneStill.kt`). */
+    fun swaps(block: String): Long = if (destroyed) -1 else VeloCore.paneSwaps(core, block)
     /** Ends the pane's selection: [copy] copies the whole screen again. */
     fun clearSelection(block: String) { if (!destroyed) VeloCore.paneClearSelection(core, block) }
     /** The keyboard's composition, drawn at the pane's cursor until committed ("" clears it). Nothing is sent. */

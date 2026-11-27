@@ -385,6 +385,7 @@ pub const Core = struct {
     pub fn paneBracketedPaste(self: *Core, block: []const u8) bool; // would a paste be framed now
     pub fn paneHasSelection(self: *Core, block: []const u8) bool; // would paneCopy copy a selection
     pub fn paneClearSelection(self: *Core, block: []const u8) void; // a tap on the pane ends its selection
+    pub fn paneSwaps(self: *Core, block: []const u8) u64; // frames its surfaces took (Pane.swaps); 0 for no pane
 };
 ```
 
@@ -742,7 +743,7 @@ feeds it and sends what it returns through the request queue, the take before th
 
 Exports `Java_io_github_yhzion_velo_core_VeloCore_{start,connect,disconnect,requestState,destroy,selectSession,
 command,key,paneSurface,panePreview,paneResume,paneSuspend,paneScale,panePan,paneTouch,paneCopy,
-paneBracketedPaste,paneHasSelection,paneClearSelection}` and `JNI_OnLoad`
+paneBracketedPaste,paneHasSelection,paneClearSelection,paneSwaps}` and `JNI_OnLoad`
 (caches `JavaVM`). Signatures per `app/src/main/java/io/github/yhzion/velo/core/VeloCore.kt`.
 `start` keeps a global ref to the listener and method IDs for `onState(long,boolean,String)`,
 `onReconnectToken(String)`, `onError(String,String,String)` (code, message, fix),

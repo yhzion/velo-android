@@ -55,6 +55,7 @@ object VeloCore {
     @JvmStatic external fun paneSelectionBounds(core: Long, block: String): IntArray?
     @JvmStatic external fun paneSelectedText(core: Long, block: String): String
     @JvmStatic external fun paneHasSelection(core: Long, block: String): Boolean
+    @JvmStatic external fun paneSwaps(core: Long, block: String): Long
     @JvmStatic external fun paneClearSelection(core: Long, block: String)
     @JvmStatic external fun panePreedit(core: Long, block: String, text: String)
 }

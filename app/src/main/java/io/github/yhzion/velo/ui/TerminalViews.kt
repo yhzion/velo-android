@@ -206,12 +206,18 @@ class PaneSurfaceView(
         return true
     }
 
+    /** How many frames the pane's surfaces have taken ([HostConnection.swaps]); -1 for no pane. */
+    internal fun swaps(): Long = if (block.isEmpty()) -1 else conn.swaps(block)
+
+    /** The size of a still at [scale] of the view's size ([still]). */
+    internal fun stillSize(scale: Float): Pair<Int, Int> =
+        (width * scale).roundToInt().coerceIn(1, maxOf(width, 1)) to (height * scale).roundToInt().coerceIn(1, maxOf(height, 1))
+
     /** A copy of what the surface shows, [scale] of the view's size; null when it has no frame yet or goes meanwhile. */
     internal suspend fun still(scale: Float): android.graphics.Bitmap? {
         val main = handler
         if (!attached || main == null || width <= 0 || height <= 0) return null
-        val w = (width * scale).roundToInt().coerceIn(1, width)
-        val h = (height * scale).roundToInt().coerceIn(1, height)
+        val (w, h) = stillSize(scale)
         val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
         val ok = suspendCancellableCoroutine { next ->
             try {
