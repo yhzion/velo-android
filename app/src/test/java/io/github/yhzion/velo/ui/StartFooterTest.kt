@@ -9,8 +9,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
-import io.github.yhzion.velo.DiscoveredServer
 import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.fidelity.StartSceneModels
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.mediumAt
@@ -26,9 +26,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The links at the bottom of the start screen stay whole: when the window is too low for the card and the links (the
  * empty search on the bar phone from the Medium size, more steps on the folded Fold8 at Large), the page scrolls on
- * to the links and their bottom margin, Settings' update dot inside the window (#86). Every step, every UI size, on
- * each device shape. Native graphics, so text is measured and wraps as on a device: the legacy mode gives text almost
- * no width, and the card would then fit the window where it does not on the phone.
+ * to the links and their bottom margin, Settings' update dot inside the window (#86). Every step, with the fidelity
+ * scenes' models ([StartSceneModels]), every UI size, on each device shape. Native graphics, so text is measured and
+ * wraps as on a device: the legacy mode gives text almost no width, and the card would then fit the window where it
+ * does not on the phone.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -49,11 +50,11 @@ class StartFooterTest {
     /** Each step at each size has its links whole once scrolled to; the page [scrolls] (a step at a size) must scroll to them. */
     private fun linksStayWhole(scrolls: String? = null) {
         var size by mutableStateOf(UiSize.Small)
-        var step by mutableStateOf(Steps.keys.first())
+        var step by mutableStateOf(StartSceneModels.keys.first())
         compose.setContent {
-            VeloTheme(size = size) { StartScreenBody(Steps.getValue(step), onAddByQr = {}, onSettings = {}, settingsBadge = true) }
+            VeloTheme(size = size) { StartScreenBody(StartSceneModels.getValue(step), onAddByQr = {}, onSettings = {}, settingsBadge = true) }
         }
-        for (each in UiSize.entries) for (name in Steps.keys) {
+        for (each in UiSize.entries) for (name in StartSceneModels.keys) {
             size = each
             step = name
             compose.waitForIdle()
@@ -77,27 +78,5 @@ class StartFooterTest {
             assertTrue("$at: the update dot $dot inside the window $screen", dot.top >= screen.top && dot.bottom <= screen.bottom &&
                 dot.left >= screen.left && dot.right <= screen.right)
         }
-    }
-
-    private companion object {
-        val Computers = listOf(DiscoveredServer("studio-mac", "macOS · 100.101.4.20"), DiscoveredServer("build-server", "Linux · 100.101.9.3"))
-
-        fun model(step: StartStep, waitingFor: String? = null, found: List<DiscoveredServer> = emptyList(),
-                  note: FoundNote = FoundNote.None, searching: Boolean = false, opening: String? = null) = StartCardModel(
-            step = step, waitingFor = waitingFor, unopened = null,
-            connectedAs = if (step == StartStep.Found) "Connected as velo-phone" else null,
-            found = found, note = note, searching = searching,
-            logIn = {}, loginPageAgain = { null }, tryAgain = {}, searchAgain = {}, connect = {}, getRex = { true },
-            opening = opening, openingProgress = 0.62f,
-        )
-
-        /** The StartKit board's five steps, as the fidelity scenes draw them. */
-        val Steps = linkedMapOf(
-            "start-1" to model(StartStep.LogIn(null)),
-            "start-1-wait" to model(StartStep.LogIn("https://login.tailscale.com/a/sample"), waitingFor = "https://login.tailscale.com/a/sample"),
-            "start-2" to model(StartStep.Found, found = Computers, searching = true),
-            "start-2-empty" to model(StartStep.Found, note = FoundNote.NothingFound),
-            "start-3" to model(StartStep.Found, opening = "studio-mac"),
-        )
     }
 }
