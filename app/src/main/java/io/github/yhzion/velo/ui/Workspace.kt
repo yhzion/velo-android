@@ -1024,6 +1024,9 @@ internal fun Workspace(
         } else null) + window?.let { focusPaneCommands(it, live.blocks, focused) }.orEmpty().map { c ->
             // What a tap on that pane does: it leaves the pane a notification opened, then moves the focus.
             PaletteCommand(c.label, connected) { notification?.leave?.invoke(); conn.op("focus", "block" to c.block) }
+        } + window?.let { fullScreenPaneCommands(it, live.blocks) }.orEmpty().map { c ->
+            // What the minimap's picker does with that pane (#157).
+            PaletteCommand(c.label, connected) { conn.op("zoom", "block" to c.block) }
         } + state.sessions.filter { it.id != state.session }.map { s ->
             PaletteCommand("Switch to Session: ${s.label.ifEmpty { "Session" }}") { notification?.leave?.invoke(); conn.selectSession(s.id) }
         } + state.windows.filter { it.id != state.window }.map { w ->

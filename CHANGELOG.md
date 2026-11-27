@@ -5,6 +5,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ## Unreleased
 
 ### Added
+- While a pane is full screen, the command palette offers Full Screen Pane for each other pane of the tab, so you can switch the full screen pane from a hardware keyboard.
 - An image inserted from the keyboard, such as one from Gboard's clipboard strip, is now sent to the remote, and its path is typed into the pane, as Paste does for a copied file.
 
 ### Fixed

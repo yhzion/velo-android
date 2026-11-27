@@ -348,10 +348,32 @@ data class FocusPaneCommand(val label: String, val block: String)
 fun focusPaneCommands(window: WindowInfo, blocks: Map<String, BlockInfo>, focused: String?): List<FocusPaneCommand> {
     val tabPanes = tabBlocks(window)
     return keyboardPaneBlocks(window).filter { it != focused }.mapNotNull { block ->
-        val label = paneLabel(tabPanes, block) ?: return@mapNotNull null
-        val title = blocks[block]?.title.orEmpty()
-        FocusPaneCommand("Focus Pane: $label" + if (title.isEmpty()) "" else " · $title", block)
+        paneCommandLabel("Focus Pane", tabPanes, block, blocks)?.let { FocusPaneCommand(it, block) }
     }
+}
+
+/** A palette command that makes [block] the full screen pane in place of the one that is (#157). */
+data class FullScreenPaneCommand(val label: String, val block: String)
+
+/**
+ * The palette's `Full Screen Pane` commands while the shown tab [window] is zoomed: one for every other pane of the
+ * tab, tiled or floating, in the order the minimap's picker has them ([tabBlocks]), named as the `Focus Pane` ones
+ * are. They are the picker's taps for a keyboard: the zoom hides the tiled panes, so no `Focus Pane` reaches them.
+ */
+fun fullScreenPaneCommands(window: WindowInfo, blocks: Map<String, BlockInfo>): List<FullScreenPaneCommand> {
+    val zoomed = window.zoomed ?: return emptyList()
+    val tabPanes = tabBlocks(window)
+    if (zoomed !in tabPanes) return emptyList()
+    return tabPanes.filter { it != zoomed }.mapNotNull { block ->
+        paneCommandLabel("Full Screen Pane", tabPanes, block, blocks)?.let { FullScreenPaneCommand(it, block) }
+    }
+}
+
+/** "[verb]: Pane n", then " · " and the pane's title in [blocks] when it has one; null for a pane not in [tabPanes]. */
+private fun paneCommandLabel(verb: String, tabPanes: List<String>, block: String, blocks: Map<String, BlockInfo>): String? {
+    val label = paneLabel(tabPanes, block) ?: return null
+    val title = blocks[block]?.title.orEmpty()
+    return "$verb: $label" + if (title.isEmpty()) "" else " · $title"
 }
 
 /** How a remote's connection reads: the colour and the glyph of its mark. */

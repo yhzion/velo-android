@@ -437,6 +437,35 @@ class MenuModelTest {
     }
 
     @Test
+    fun aZoomedTabOffersEveryOtherPaneFullScreenInThePickersOrder() {
+        // The keyboard's way to the minimap's picker (#157): the tiled panes the zoom hides, then the floating one.
+        val window = tiled("a", "b", "c").copy(floating = listOf(FloatingLayer("f")), zoomed = "b")
+        val blocks = mapOf("a" to BlockInfo(title = "zsh"), "f" to BlockInfo(title = "htop"))
+
+        val commands = fullScreenPaneCommands(window, blocks)
+        assertEquals(
+            listOf(
+                FullScreenPaneCommand("Full Screen Pane: Pane 1 · zsh", "a"),
+                FullScreenPaneCommand("Full Screen Pane: Pane 3", "c"),
+                FullScreenPaneCommand("Full Screen Pane: Pane 4 · htop", "f"),
+            ),
+            commands,
+        )
+        // In the order of the picker's cells, as the minimap numbers them.
+        val map = zoomMap(window, rtl = false) { null }!!
+        assertEquals(map.cells.map { it.block } - "b", commands.map { it.block })
+        // A floating pane made full screen offers the tiled ones.
+        assertEquals(listOf("a", "b", "c"), fullScreenPaneCommands(window.copy(zoomed = "f"), blocks).map { it.block })
+    }
+
+    @Test
+    fun aTabNotZoomedHasNoFullScreenPaneCommand() {
+        // Zoom Pane makes the focused pane full screen; these switch it once one is.
+        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b"), emptyMap()))
+        assertEquals(emptyList<FullScreenPaneCommand>(), fullScreenPaneCommands(tiled("a", "b").copy(zoomed = "x"), emptyMap()))
+    }
+
+    @Test
     fun menuHeadingAndCommandsUseTheSameTarget() {
         val focused = "block:focused"
         val tapped = "block:tapped"
