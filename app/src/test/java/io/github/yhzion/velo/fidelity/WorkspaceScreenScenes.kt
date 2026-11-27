@@ -241,7 +241,8 @@ private fun ColumnScope.MovedPanes(basis: SceneBasis, conn: HostConnection, pane
     val sizes = VeloTheme.sizes
     Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { box = Rect(Offset.Zero, it.size.toSize()) }) {
         Column(Modifier.fillMaxSize()) { ScenePanes(basis.shape, basis.threePanes, docked = false) }
-        PaneNotices({ box }, sizes.overlayPadding, sizes.gap, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+        // The scene has no key bar: the notice is placed over the pane as without one.
+        PaneNotices({ box }, { null }, sizes.overlayPadding, sizes.gap, lift = 0.dp, modifier = Modifier.matchParentSize()) {
             UndoNotice(conn, notice, onDone = {})
         }
     }
