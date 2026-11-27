@@ -94,7 +94,12 @@ removing text anti-aliasing raises matching screens to 0.935–0.999 while real 
 fills or mismatched screens fall near or below 0.92, the non-text SSIM pass threshold is **≥ 0.92**
 (raised from 0.90). The report still records `ssim_text` (mean SSIM inside the text boxes, with
 `text_coverage`) and `ssim_raw` (whole-screen SSIM) separately, and the heatmap shows the full map.
-Missing or displaced text elements remain covered by geometry and missing tags.
+Missing text elements and size or position changes that move a box by more than 2 dp remain caught
+by missing tags and geometry, and text that spills outside the board's line box still lowers
+non-text SSIM. **Blind spot:** text colour, weight, copy and size changes that stay within the same
+board text box are not caught by the verdict or the score (`fidelity.py` does not compare element
+`text` or `color`, colour checks sample fills only, and `ssim_text` spans roughly 0.39–0.84 on
+matching captures, so it cannot serve as a floor).
 
 **Score.** A capture's score is the mean of four rates, 0 to 100: tokens, geometry, the share of
 fills with ΔE < 3, and non-text SSIM. With no token result, tokens count as 0. A board without fills
@@ -111,7 +116,10 @@ The report lists these apart from the scores:
 
 - **Status bar.** Robolectric draws no system bars, and the boards draw none. Nothing is masked.
 - **Font hinting.** Chromium and Robolectric's Skia anti-alias text differently. The judged SSIM
-  masks out the board's rendered text boxes and reports text-box SSIM separately.
+  masks out the board's rendered text boxes and reports text-box SSIM separately. Because nothing
+  else in the tool compares element `text` or ink `color`, a colour, weight, copy or within-box size
+  difference inside a board text box is not caught by the verdict or score (only missing tags, box
+  shifts over 2 dp and text spilling outside the board's line box are caught).
 - **Font weights.** Both sides use Robolectric's static Roboto faces (300, 400, 500, 700, 900).
   Weight 600 draws as 500 on both: Robolectric's `sans-serif` family lists Medium before Bold, and
   Android's closest match takes the first of the two, so `boards.mjs` gives 600 the Medium face too.
