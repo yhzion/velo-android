@@ -186,6 +186,28 @@ printf '# Changelog\n\n## Unreleased\n\n### Changed\n- %s\n\n## 1.0.0 - 2026-01-
 changelog_only_long=$(commit changelog-only-long)
 reject pr_check "$base" "$changelog_only_long"
 
+# --skip-entry (the skip-changelog label) skips only the entry requirement, not the length limit.
+pr_check --skip-entry "$base" "$app_only"
+pr_check --skip-entry "$base" "$exact_200"
+if out=$(pr_check --skip-entry "$base" "$over_201" 2>&1); then
+  fail "Unexpectedly accepted 201-char Unreleased item with --skip-entry"
+fi
+[[ $out == *'CHANGELOG.md:6'* && $out == *'201'* && $out == *"- $c201"* ]] ||
+  fail "Expected line number, length 201, and line text with --skip-entry, got:"$'\n'"$out"
+reject pr_check --skip-entry "$base" "$changelog_only_long"
+reject pr_check --skip-entry "$base"
+reject pr_check --skip-entry "$base" not-a-commit
+
+# Without a UTF-8 locale to count code points, pr-check must fail loudly instead of counting bytes.
+if out=$(CHANGELOG_LOCALE=C pr_check "$base" "$exact_200" 2>&1); then
+  fail "Unexpectedly succeeded when locale cannot count code points"
+fi
+[[ $out == *'code points'* ]] || fail "Expected locale self-check error, got:"$'\n'"$out"
+if out=$(CHANGELOG_LOCALE=no_such_locale_xyz pr_check "$base" "$exact_200" 2>&1); then
+  fail "Unexpectedly succeeded with invalid locale"
+fi
+[[ $out == *'code points'* ]] || fail "Expected locale self-check error for invalid locale, got:"$'\n'"$out"
+
 reject pr_check "$base"
 reject pr_check "$base" not-a-commit
 

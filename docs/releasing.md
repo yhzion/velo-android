@@ -25,7 +25,7 @@ Velo uses ZXing Core for [on-device QR scanning](../README.md#qr-scanning-and-pr
 
 [CHANGELOG.md](../CHANGELOG.md) lists what changes for users, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) style: `## Unreleased` on top, then one `## X.Y.Z - YYYY-MM-DD` section per release, newest first. Under each section, group items under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`; no other headings are accepted. Write each item as one `- ` line: a short, plain sentence a user understands, without internal names, links or HTML, at most 200 characters after `- `. Velo shows at most 12 items per release and cuts an item at 200 characters.
 
-A pull request that changes `app/` or `native/` must add or change an item under `## Unreleased`, and every item under `## Unreleased` must stay within 200 characters after `- `; the [changelog check](../.github/workflows/pr-check-changelog.yml) fails otherwise. When users see no difference, such as a refactor or a test, label the pull request `skip-changelog` instead.
+A pull request that changes `app/` or `native/` must add or change an item under `## Unreleased`, and every item under `## Unreleased` must stay within 200 characters after `- `; the [changelog check](../.github/workflows/pr-check-changelog.yml) fails otherwise. When users see no difference, such as a refactor or a test, label the pull request `skip-changelog` to skip the entry requirement; the 200-character limit still runs.
 
 ## Choose a version and tag
 

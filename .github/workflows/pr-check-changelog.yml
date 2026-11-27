@@ -2,8 +2,9 @@ name: Pull request check (changelog)
 
 # A pull request that changes app/ or native/ adds a user-facing item under "## Unreleased" in
 # CHANGELOG.md: the release workflow publishes that section, and Velo shows it before updating.
-# Label the pull request skip-changelog when users see no difference. No path filter, so the job
-# reports on every pull request; it only reads git history. No secrets, no artifacts.
+# Label the pull request skip-changelog when users see no difference; that skips only the entry
+# requirement, while the 200-character limit on Unreleased items still runs. No path filter, so
+# the job reports on every pull request; it only reads git history. No secrets, no artifacts.
 on:
   pull_request:
     branches: [main]
@@ -20,7 +21,6 @@ defaults:
 
 jobs:
   changelog:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -34,4 +34,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: bash .github/scripts/changelog.sh pr-check "$BASE_SHA" "$HEAD_SHA"
+          SKIP_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          args=()
+          if [[ $SKIP_CHANGELOG == true ]]; then
+            args+=(--skip-entry)
+          fi
+          bash .github/scripts/changelog.sh pr-check "${args[@]}" "$BASE_SHA" "$HEAD_SHA"
