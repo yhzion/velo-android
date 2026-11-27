@@ -29,7 +29,8 @@ internal fun focusWait(focused: Boolean, waitedMs: Long): FocusWait = when {
 
 /**
  * Sends [file] to [block] as Compose's attachment, with no text: the server types its path into
- * the pane, without Enter (#109). Main thread.
+ * the pane, without Enter (#109). Main thread. True when the paste started; false when it was
+ * refused at once (another send, or no connection), and the error notice says why.
  *
  * The core takes a composer target only in its focused pane, and a pane menu may belong to
  * another pane: the paste then asks the core to focus it and waits for a state that shows it
@@ -37,16 +38,23 @@ internal fun focusWait(focused: Boolean, waitedMs: Long): FocusWait = when {
  * changes while the file is read refuses the send instead of taking it elsewhere. The read is
  * bounded too ([READ_LIMIT_MS]). [HostConnection.uploading] is set from the first tap until the
  * send ends, so a second Paste is refused throughout. Failures go to the error notice.
+ *
+ * [onReadDone] runs once on main when the file is no longer read: after the read, at its limit,
+ * or when the paste ends before it. A keyboard's read grant is released there (#160).
  */
-internal fun pasteClipboardFile(context: Context, conn: HostConnection, block: String, file: ClipboardFile) {
+internal fun pasteClipboardFile(
+    context: Context, conn: HostConnection, block: String, file: ClipboardFile, onReadDone: () -> Unit = {},
+): Boolean {
     if (conn.uploading != null || conn.composerRunning) {
         conn.error = BUSY
-        return
+        onReadDone()
+        return false
     }
     val session = conn.state.session
     if (session == null || !conn.connected) {
         conn.error = TARGET_GONE
-        return
+        onReadDone()
+        return false
     }
     // Each step checks that this paste still owns the toast: a timeout or destroy() takes it away.
     val paste = Any()
@@ -57,24 +65,63 @@ internal fun pasteClipboardFile(context: Context, conn: HostConnection, block: S
     val asked = SystemClock.uptimeMillis()
     if (!conn.state.showsComposerPane(session, block)) conn.op("focus", "block" to block)
     fun step() {
-        if (conn.uploadOwner !== paste) return
+        if (conn.uploadOwner !== paste) return onReadDone()
         when (focusWait(conn.state.showsComposerPane(session, block), SystemClock.uptimeMillis() - asked)) {
-            FocusWait.Take -> readAndSend(conn, paste, session, block, file, resolver, main)
+            FocusWait.Take -> readAndSend(conn, paste, session, block, file, resolver, main, onReadDone)
             FocusWait.Wait -> main.postDelayed({ step() }, FOCUS_POLL_MS)
-            FocusWait.GiveUp -> conn.endUpload(paste, TARGET_GONE)
+            FocusWait.GiveUp -> {
+                onReadDone()
+                conn.endUpload(paste, TARGET_GONE)
+            }
         }
     }
     step()
+    return true
 }
 
 private fun readAndSend(
     conn: HostConnection, paste: Any, session: String, block: String, file: ClipboardFile,
-    resolver: ContentResolver, main: Handler,
+    resolver: ContentResolver, main: Handler, onReadDone: () -> Unit,
 ) {
     val epoch = conn.composerTarget(session, block)
-    if (epoch == 0L) return conn.endUpload(paste, TARGET_GONE)
+    if (epoch == 0L) {
+        onReadDone()
+        return conn.endUpload(paste, TARGET_GONE)
+    }
+    readClipboardFileOnWorker(resolver, file, main) { read ->
+        onReadDone()
+        if (conn.uploadOwner !== paste) return@readClipboardFileOnWorker
+        read.fold(
+            onSuccess = { attachment ->
+                conn.uploading = "Uploading ${attachment.name}…"
+                conn.sendComposer(session, block, "", attachment.name, attachment.bytes, epoch) { f ->
+                    // Nothing was written: the same case as a target gone before the read, so the same text.
+                    conn.endUpload(paste, f?.let { if (it.targetGone && it.wroteNothing) TARGET_GONE else it.message })
+                }
+            },
+            onFailure = { e -> conn.endUpload(paste, e.message ?: UNREADABLE) },
+        )
+    }
+}
+
+/**
+ * Reads [file] on a worker thread and gives [deliver] the result on [main], exactly once: the
+ * read, or [UNREADABLE] when it takes longer than [READ_LIMIT_MS] (a later result then does
+ * nothing), or [NO_MEMORY] when no worker can start. Every failure is an [IOException] whose
+ * message the user can read.
+ */
+internal fun readClipboardFileOnWorker(
+    resolver: ContentResolver, file: ClipboardFile, main: Handler, deliver: (Result<ComposerAttachment>) -> Unit,
+) {
+    // Set and read on main only.
+    var delivered = false
+    fun once(result: Result<ComposerAttachment>) {
+        if (delivered) return
+        delivered = true
+        deliver(result)
+    }
     // A stream that never ends would hold the toast, and refuse every later paste, for good.
-    val timeout = Runnable { conn.endUpload(paste, UNREADABLE) }
+    val timeout = Runnable { once(Result.failure(IOException(UNREADABLE))) }
     main.postDelayed(timeout, READ_LIMIT_MS)
     val worker = Thread({
         // Only the read runs here; the result goes back to main, which owns the connection.
@@ -89,24 +136,14 @@ private fun readAndSend(
         }
         main.post {
             main.removeCallbacks(timeout)
-            if (conn.uploadOwner !== paste) return@post
-            read.fold(
-                onSuccess = { attachment ->
-                    conn.uploading = "Uploading ${attachment.name}…"
-                    conn.sendComposer(session, block, "", attachment.name, attachment.bytes, epoch) { f ->
-                        // Nothing was written: the same case as a target gone before the read, so the same text.
-                        conn.endUpload(paste, f?.let { if (it.targetGone && it.wroteNothing) TARGET_GONE else it.message })
-                    }
-                },
-                onFailure = { e -> conn.endUpload(paste, e.message ?: UNREADABLE) },
-            )
+            once(read)
         }
     }, "clipboard-file")
     try {
         worker.start()
     } catch (_: OutOfMemoryError) {
         main.removeCallbacks(timeout)
-        conn.endUpload(paste, NO_MEMORY)
+        once(Result.failure(IOException(NO_MEMORY)))
     }
 }
 

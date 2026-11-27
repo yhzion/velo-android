@@ -52,7 +52,7 @@ internal fun clipboardFile(context: Context): ClipboardFile? {
 }
 
 /** text/uri-list is what `ClipData.newUri` writes when the provider gave no type; a wildcard names none either. */
-private fun namesAType(mime: String): Boolean = mime != ClipDescription.MIMETYPE_TEXT_URILIST && '*' !in mime
+internal fun namesAType(mime: String): Boolean = mime != ClipDescription.MIMETYPE_TEXT_URILIST && '*' !in mime
 
 /**
  * Reads [file] (8 MiB at most) on the calling thread, a worker: the provider may take long to

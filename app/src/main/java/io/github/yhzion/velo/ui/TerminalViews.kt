@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeProvider
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputContentInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import io.github.yhzion.velo.HostConnection
@@ -854,6 +855,8 @@ class TerminalInputView(context: Context) : View(context) {
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI or
             EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or EditorInfo.IME_ACTION_SEND
+        // A keyboard offers its images only for the types declared here (#160).
+        declareKeyboardContent(outAttrs)
         // Android starts the input anew and has dropped a request it had not answered (#299). Asked
         // again once this start is made: a request from inside it would be dropped with the first.
         if (keyboardRequest.open) post {
@@ -892,7 +895,34 @@ class TerminalInputView(context: Context) : View(context) {
             plainInput = { stickyMeta == 0 },
             paste = { text -> boundPane { host, block -> pasteTextIntoPane(host, block, text) } },
             latinFinal = { keyboardLatinIsFinal(keyboardLanguage()) },
+            content = ::pasteKeyboardContent,
         )
+    }
+
+    /**
+     * An image the keyboard inserts (#160), from its clipboard strip for example, goes to the bound
+     * pane as a file from the clipboard does (#109): the server types its path, without Enter.
+     * True when the paste started. False, and nothing sent, for content without a `content:` URI,
+     * with no pane bound, while a paste waits for its question, when the read grant is refused, and
+     * when the paste is refused at once (another send). The grant lasts until the file is read.
+     */
+    private fun pasteKeyboardContent(info: InputContentInfo, flags: Int): Boolean {
+        val host = editorConnection
+        val block = editorBlock
+        val bound = host != null && block != null
+        if (!keyboardContentAccepted(info.contentUri.scheme, bound) || host == null || block == null) return false
+        // What the keyboard composes goes first, as before the other pastes.
+        if (finishCompositionBeforePaste()) return false
+        val granted = flags and InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION != 0
+        if (granted) {
+            try {
+                info.requestPermission()
+            } catch (_: Exception) {
+                return false
+            }
+        }
+        val file = keyboardContentFile(info.contentUri, info.description)
+        return pasteClipboardFile(context, host, block, file, onReadDone = { if (granted) info.releasePermission() })
     }
 
     /**

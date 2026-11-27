@@ -1,12 +1,14 @@
 package io.github.yhzion.velo.ui
 
 import android.os.Build
+import android.os.Bundle
 import android.text.Selection
 import android.text.SpannableStringBuilder
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputContentInfo
 import android.view.inputmethod.SurroundingText
 import android.view.inputmethod.TextAttribute
 import androidx.annotation.RequiresApi
@@ -202,6 +204,7 @@ internal class TerminalEditorState(
  * A composition of Latin letters goes to the remote as it is typed, through [finish] as the
  * composition's own text ([TerminalEditorState.sent], #18); [latinFinal] is false while the
  * keyboard turns Latin letters into other characters ([keyboardLatinIsFinal]).
+ * An image the keyboard inserts goes to [content] with its flags (#160): true when it was taken.
  */
 internal class TerminalEditor(
     view: View,
@@ -216,6 +219,7 @@ internal class TerminalEditor(
     private val plainInput: () -> Boolean = { true },
     private val paste: (String) -> Unit = commit,
     private val latinFinal: () -> Boolean = { true },
+    private val content: (InputContentInfo, Int) -> Boolean = { _, _ -> false },
 ) : BaseInputConnection(view, true) {
     private var closed = false
     init { state.attach(this) }
@@ -401,6 +405,9 @@ internal class TerminalEditor(
         }
         return true
     }
+
+    override fun commitContent(inputContentInfo: InputContentInfo, flags: Int, opts: Bundle?): Boolean =
+        active() && content(inputContentInfo, flags)
 
     override fun closeConnection() {
         if (closed) return
