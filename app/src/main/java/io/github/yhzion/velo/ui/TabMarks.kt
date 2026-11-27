@@ -18,33 +18,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.Dp
 import io.github.yhzion.velo.ui.theme.VeloTheme
-import kotlin.math.round
 
+/** The offline mark drawn at the end of a disconnected tab's row or caption. */
 @Composable
-internal fun TabStatusMark(mark: TabIndicator, markHeight: Dp = VeloTheme.sizes.statusIcon) {
-    val colors = VeloTheme.surface
-    if (mark.animates) {
-        // Read time only during drawing. The three dots share one stable accessible label.
-        val phase by rememberInfiniteTransition(label = "Working dots").animateFloat(
-            initialValue = 0f, targetValue = 3f,
-            animationSpec = infiniteRepeatable(tween(3 * DotIntervalMs, easing = LinearEasing)), label = "Dot phase",
-        )
-        Canvas(Modifier.size(markHeight * 1.5f, markHeight).clearAndSetSemantics { contentDescription = mark.description }) {
-            val spacing = round(size.width / 3f)
-            val radius = size.height / 8f
-            repeat(3) { index ->
-                drawCircle(
-                    color = colors.accent.copy(alpha = workingDotAlpha(phase, index)),
-                    radius = radius,
-                    center = Offset(center.x + (index - 1) * spacing, center.y),
-                )
-            }
-        }
-        return
-    }
-    if (mark == TabIndicator.Offline) {
-        Icon(Icons.Default.CloudOff, mark.description, Modifier.size(markHeight), tint = colors.secondary)
-    }
+internal fun OfflineMark(markHeight: Dp = VeloTheme.sizes.statusIcon) {
+    Icon(Icons.Default.CloudOff, TabIndicator.Offline.description, Modifier.size(markHeight), tint = VeloTheme.surface.secondary)
 }
 
 /**

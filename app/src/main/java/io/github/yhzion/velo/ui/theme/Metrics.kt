@@ -187,7 +187,7 @@ class VeloSizes(
     val sheetWidth: Dp = medium(820f),
     /** The list of categories beside the details in the settings sheet (the redesign's settings, 236 at Medium). */
     val sheetList: Dp = medium(236f),
-    /** A tab's state icon, and the height of its working dots. derived: the app's size today. */
+    /** A tab's offline icon in the sidebar's tab rows and a tab's caption (the pane caption and overview card names, scaled with the caption's text). derived: the app's size today. */
     val statusIcon: Dp = 16.dp,
     /** The rail's battery gauge across its ring's line (Rail board: 46, a little inside the rail's round buttons). */
     val gauge: Dp = medium(46f),

@@ -97,7 +97,7 @@ internal fun TabCaption(
                 Modifier.testTag("$tag-attention").size(unit * 8).background(VeloTheme.surface.warning, CircleShape)
                     .semantics { contentDescription = activity?.indicator?.description.orEmpty() },
             )
-            RowMark.Offline -> TabStatusMark(TabIndicator.Offline, VeloTheme.sizes.statusIcon * scale)
+            RowMark.Offline -> OfflineMark(VeloTheme.sizes.statusIcon * scale)
             null -> Unit
         }
     }

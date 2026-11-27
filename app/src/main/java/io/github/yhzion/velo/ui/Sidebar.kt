@@ -433,7 +433,7 @@ private fun TabRowView(
                     // The second line says it waits: the dot is drawn only.
                     RowMark.Waiting -> Box(Modifier.padding(end = 10.bd).testTag("tab-attention-$id").size(9.bd)
                         .background(VeloTheme.surface.warning, CircleShape))
-                    RowMark.Offline -> TabStatusMark(TabIndicator.Offline)
+                    RowMark.Offline -> OfflineMark()
                     null -> Unit
                 }
                 when (row.closeControl) {

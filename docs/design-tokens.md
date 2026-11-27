@@ -332,7 +332,7 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `sliderKnob` | 28 at Medium | A slider's knob (Controls board). |
 | `sheetWidth` | 820 at Medium | Maximum width of the settings sheet on wide windows. Derived from its proportion within a 1088dp reference window; the canvas fills the unfolded Fold8 (805). |
 | `sheetList` | 236 at Medium | The list of categories beside the details in the settings sheet (the redesign's settings boards). |
-| `statusIcon` | 16 | A tab's state icon, and the height of its working dots (1.5 times as wide). derived: the app's size today. |
+| `statusIcon` | 16 | A tab's offline icon in the sidebar's tab rows and a tab's caption (the pane caption and overview card names, scaled with the caption's text). derived: the app's size today. |
 | `gauge`, `gaugeStroke` | 46 at Medium, 4.3 | The rail's battery gauge (Rail board) and ring stroke; the stroke is based on the proportions of M01's status ring. |
 
 ### Text styles (`VeloTheme.type`), the same in both appearances
