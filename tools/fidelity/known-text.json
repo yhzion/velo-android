@@ -34,11 +34,6 @@
       "screens": ["settings-ssh"],
       "board": "rsa · SHA256:Xp4L…waQ8",
       "reason": "the digest of the scene's imported key; no key has the board's made-up digest"
-    },
-    "saved-remote-address-studio-mac": {
-      "screens": ["settings-remotes", "settings-add-remote"],
-      "board": "https://studio-mac.example.ts.net",
-      "reason": "sample address: the scene's studio-mac is an ssh:// remote, because the app offers the SSH items the open board's menu draws on ssh remotes only"
     }
   }
 }

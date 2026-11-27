@@ -112,7 +112,7 @@ are listed per capture (`text_diffs` and `text_compared`) in `report.html` and `
 aggregated per screen in `report.json`, rather than failing the screen or lowering the score.
 
 **Known text.** Some differences are there by nature: the installed version, the clock time of a
-check, the digest of a sample SSH key, a sample address. `tools/fidelity/known-text.json` accepts
+check, the digest of a sample SSH key. `tools/fidelity/known-text.json` accepts
 such an element's text on the screens it names, with the board text it accepts and the reason:
 
 ```json
