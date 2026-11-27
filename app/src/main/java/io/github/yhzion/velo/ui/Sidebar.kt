@@ -36,6 +36,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,8 +82,8 @@ data class DeviceRow(val name: String, val line: String, val state: String, val 
      * the line's state word, so that the state is said once, in the dot's word (#134).
      */
     val description: String get() {
-        val address = line.removeSuffix(state).removeSuffix(" · ")
-        return listOfNotNull("This Device", name.takeUnless { it == "This Device" }, address.ifEmpty { null }).joinToString(", ")
+        val address = if (line == state) "" else line.removeSuffix(" · $state")
+        return listOfNotNull("This Device", name.takeUnless { it == "This Device" }, address.ifBlank { null }).joinToString(", ")
     }
 }
 
@@ -498,14 +499,15 @@ internal fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
     Row(Modifier.padding(horizontal = 12.bd).testTag("this-device-row").fillMaxWidth()
         .drawBehind { drawRect(c.divider, Offset(0f, size.height - line.toPx()), Size(size.width, line.toPx())) }
         .clickable(role = Role.Button, onClickLabel = "Tailscale settings", onClick = onClick)
-        // The dot's description follows this one in the merged node and says the state.
+        // The row says the name and address, and the dot after it says the state; the two texts
+        // are hidden from accessibility, or a screen reader would say them as well (#134).
         .semantics { contentDescription = device.description }.heightIn(min = 53.bd).padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
         Icon(Icons.Outlined.Smartphone, null, Modifier.size(20.bd), tint = c.secondary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.bd)) {
-            Text(device.name, Modifier.testTag("this-device-name").fillMaxWidth(), color = c.text, style = type.header.copy(fontWeight = FontWeight.SemiBold).naturalLines(),
+            Text(device.name, Modifier.testTag("this-device-name").fillMaxWidth().semantics { hideFromAccessibility() }, color = c.text, style = type.header.copy(fontWeight = FontWeight.SemiBold).naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth(), color = c.secondary, style = type.caption.naturalLines(),
+            Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth().semantics { hideFromAccessibility() }, color = c.secondary, style = type.caption.naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         StatusMark(device.chip.status, device.chip.text, Modifier.testTag("this-device-dot"))
