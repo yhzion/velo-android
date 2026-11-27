@@ -129,6 +129,45 @@ pub extern "android" fn ANativeWindow_release(window: *anyopaque) void;
 pub extern "android" fn ANativeWindow_getWidth(window: *anyopaque) i32;
 pub extern "android" fn ANativeWindow_getHeight(window: *anyopaque) i32;
 
+// The window's scaling mode is not in the NDK: `native_window_set_scaling_mode` is an inline
+// function of the platform header that calls the window's `perform` hook. Values and layout
+// from AOSP frameworks/native, android16-release:
+//   libs/nativewindow/include/system/window.h: NATIVE_WINDOW_SET_SCALING_MODE = 10,
+//     NATIVE_WINDOW_SCALING_MODE_FREEZE = 0, NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW = 1,
+//     ANDROID_NATIVE_WINDOW_MAGIC = ANDROID_NATIVE_MAKE_CONSTANT('_','w','n','d'),
+//     `struct ANativeWindow` (common.version is its sizeof);
+//   libs/nativebase/include/nativebase/nativebase.h: `struct android_native_base_t`.
+// EGL drivers call the same hooks through this layout, so it does not change between releases.
+pub const NATIVE_WINDOW_SET_SCALING_MODE: c_int = 10;
+pub const NATIVE_WINDOW_SCALING_MODE_FREEZE: c_int = 0;
+pub const NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW: c_int = 1;
+pub const ANDROID_NATIVE_WINDOW_MAGIC: c_int = ('_' << 24) | ('w' << 16) | ('n' << 8) | 'd';
+
+pub const NativeBase = extern struct {
+    magic: c_int,
+    version: c_int,
+    reserved: [4]?*anyopaque,
+    incRef: ?*const anyopaque,
+    decRef: ?*const anyopaque,
+};
+
+/// `struct ANativeWindow` up to `perform`; the hooks after it are not used here.
+pub const NativeWindow = extern struct {
+    common: NativeBase,
+    flags: u32,
+    minSwapInterval: c_int,
+    maxSwapInterval: c_int,
+    xdpi: f32,
+    ydpi: f32,
+    oem: [4]isize,
+    setSwapInterval: ?*const anyopaque,
+    dequeueBuffer_DEPRECATED: ?*const anyopaque,
+    lockBuffer_DEPRECATED: ?*const anyopaque,
+    queueBuffer_DEPRECATED: ?*const anyopaque,
+    query: ?*const anyopaque,
+    perform: ?*const fn (window: *NativeWindow, operation: c_int, ...) callconv(.c) c_int,
+};
+
 pub const ANDROID_LOG_INFO: c_int = 4;
 pub const ANDROID_LOG_WARN: c_int = 5;
 pub extern "log" fn __android_log_write(prio: c_int, tag: [*:0]const u8, text: [*:0]const u8) c_int;

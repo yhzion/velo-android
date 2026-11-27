@@ -191,6 +191,12 @@ the next thing to draw. The size is not frozen by that: every build, one that fa
 later too, first reads the buffer's size and adopts it for the pane when it differs from
 the last one read, whatever the count.
 
+A new render thread's buffers go to the window scaled (`SCALE_TO_WINDOW`, through the
+window's `perform` hook) until 150 ms after its first swap and a buffer of the window's size,
+then FREEZE as before, so that BLAST rejects none while the window returns: a buffer it
+rejects during a window sync stops the swap for good (#117; logcat `renderer freezes its
+buffers after … ms`).
+
 A renderer that cannot set up EGL for its window, or whose `eglSwapBuffers` fails, marks
 the pane (`render_failed`) and its thread ends, releasing its EGL surface, EGL context
 and GL objects as on any other exit. Nothing is drawn until the next attach, which joins

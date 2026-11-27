@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- A pane no longer stays blank, and Velo no longer stops responding, after you come back to it from another app while the keyboard was up.
+
 ## 2.14.0 - 2026-11-27
 
 ### Added

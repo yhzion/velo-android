@@ -183,6 +183,19 @@ const R = struct {
     /// What `buildRows` read for the frame, for building rows of it again (`buildWaiting`).
     colors: c.GhosttyRenderStateColors = std.mem.zeroes(c.GhosttyRenderStateColors),
     top: i64 = 0,
+    /// The scaling mode this thread's buffers go to the window with (`swapScaling`); null
+    /// before its first swap.
+    scaling: ?Scaling = null,
+    /// When this thread swapped its first frame (`PaneMod.monoNow`).
+    first_swap_ns: i128 = 0,
+    /// The frame this thread asked for itself (`askFrame`), as `Pane.frame_due_ns` has it; 0
+    /// for none.
+    due_ns: i128 = 0,
+    /// `retry` and `give_up` answers of `scalingFrameDue` so far.
+    due_retries: u8 = 0,
+    /// Frames that went out scaled with another size than the window's: BLAST would have
+    /// rejected them as FREEZE.
+    scaled_off_size: u16 = 0,
 
     /// `run`'s drawing. `build` is called with the pane lock held.
     pub fn build(r: *R) bool {
@@ -200,8 +213,13 @@ const R = struct {
             return true;
         }
         drawFrame(r);
+        const first = r.scaling == null;
+        const now = PaneMod.monoNow();
+        if (r.scaling != .freeze) setSwapScaling(r, now);
         // Blocks until vsync (swap interval 1).
         if (gl.eglSwapBuffers(r.dpy, r.surf) != 0) {
+            if (first) r.first_swap_ns = now;
+            planFrameDue(r, first, now);
             remember(r);
             _ = r.pane.swaps.fetchAdd(1, .monotonic);
             return true;
@@ -400,6 +418,84 @@ fn logLife(what: []const u8, pane: *Pane, window: ?*anyopaque) void {
     _ = gl.__android_log_write(gl.ANDROID_LOG_INFO, "VeloTerm", msg);
 }
 
+/// Before a swap of a thread whose buffers may still go out scaled: the scaling mode this
+/// one goes with (`swapScaling`), from the size of its buffer and the window's now. A window
+/// that cannot be asked keeps FREEZE, and the swap goes as it did before #117.
+fn setSwapScaling(r: *R, now_ns: i128) void {
+    const win = r.pane.window orelse return;
+    var bw: gl.EGLint = 0;
+    var bh: gl.EGLint = 0;
+    _ = gl.eglQuerySurface(r.dpy, r.surf, gl.EGL_WIDTH, &bw);
+    _ = gl.eglQuerySurface(r.dpy, r.surf, gl.EGL_HEIGHT, &bh);
+    // The size BLAST asks buffers for now: the BufferQueue's default size, read where it is
+    // kept (`Surface::query` hands NATIVE_WINDOW_WIDTH/HEIGHT on), not a copy.
+    const ww = gl.ANativeWindow_getWidth(win);
+    const wh = gl.ANativeWindow_getHeight(win);
+    const since = if (r.scaling == null) 0 else now_ns - r.first_swap_ns;
+    const mode = swapScaling(r.scaling, since, bw, bh, ww, wh);
+    if (mode == .scale_to_window and (bw != ww or bh != wh)) r.scaled_off_size +|= 1;
+    if (r.scaling == mode) return;
+    if (!setWindowScaling(win, mode)) {
+        logWarn(switch (mode) {
+            .scale_to_window => "renderer could not scale its first buffers: they go out as before",
+            .freeze => "renderer could not freeze its buffers again: they stay scaled",
+        });
+        // Nothing more is asked of this window.
+        r.scaling = .freeze;
+        return;
+    }
+    if (mode == .freeze) logScaling("freezes its buffers", r, now_ns);
+    r.scaling = mode;
+}
+
+/// After a swap: the frame the thread asks for itself while its buffers go out scaled
+/// (`scalingFrameDue`).
+fn planFrameDue(r: *R, first: bool, now_ns: i128) void {
+    const mode = r.scaling orelse return;
+    switch (scalingFrameDue(mode, first, r.due_ns != 0, r.due_retries)) {
+        .none => {},
+        .after_hold => askFrame(r, r.first_swap_ns + scale_hold_ns),
+        .retry => {
+            r.due_retries += 1;
+            askFrame(r, now_ns + scale_retry_ns);
+        },
+        .give_up => {
+            r.due_retries += 1;
+            logScaling("keeps its buffers scaled", r, now_ns);
+        },
+    }
+}
+
+/// The render thread draws a frame at `at_ns` (`PaneMod.monoNow`), with nothing else to draw.
+fn askFrame(r: *R, at_ns: i128) void {
+    r.due_ns = at_ns;
+    r.pane.lock.lock();
+    defer r.pane.lock.unlock();
+    r.pane.frame_due_ns = at_ns;
+}
+
+/// `native_window_set_scaling_mode` (see gl.zig): the buffers the window is given from now on
+/// go to it with `mode`. False when the window could not be asked.
+fn setWindowScaling(window: *anyopaque, mode: Scaling) bool {
+    const w: *gl.NativeWindow = @ptrCast(@alignCast(window));
+    if (w.common.magic != gl.ANDROID_NATIVE_WINDOW_MAGIC) return false;
+    if (w.common.version < @offsetOf(gl.NativeWindow, "perform") + @sizeOf(usize)) return false;
+    const perform = w.perform orelse return false;
+    const value: c_int = switch (mode) {
+        .freeze => gl.NATIVE_WINDOW_SCALING_MODE_FREEZE,
+        .scale_to_window => gl.NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW,
+    };
+    return perform(w, gl.NATIVE_WINDOW_SET_SCALING_MODE, value) == 0;
+}
+
+/// One line when a thread's buffers stop going out scaled, or stay so for good.
+fn logScaling(what: []const u8, r: *R, now_ns: i128) void {
+    var buf: [128]u8 = undefined;
+    const after_ms = @divTrunc(now_ns - r.first_swap_ns, std.time.ns_per_ms);
+    const msg = std.mem.printSentinel(&buf, "renderer {s} after {d} ms, {d} scaled off size pane={x}", .{ what, after_ms, r.scaled_off_size, @intFromPtr(r.pane) }, 0) catch return;
+    _ = gl.__android_log_write(gl.ANDROID_LOG_INFO, "VeloTerm", msg);
+}
+
 pub fn threadMain(pane: *Pane) void {
     Trace.nameThread("velo-draw-", pane.threadTag());
     var r: R = .{ .pane = pane, .gpa = pane.gpa, .atlas = .init(pane.gpa), .glyphs_later = true };
@@ -429,9 +525,11 @@ pub fn run(pane: *Pane, draw: anytype) void {
     while (true) {
         pane.lock.lock();
         while (!pane.wake and !pane.quit) {
-            // While the pane's scroll offset waits to rest, sleep only until that is due:
-            // past due, or a wait that ran out, is a wake.
-            const wait = pane.scrollWaitLocked(PaneMod.monoNow()) orelse {
+            // While the pane's scroll offset waits to rest, or a frame the thread asked for
+            // itself waits to be due, sleep only until the first of them is due: past due, or
+            // a wait that ran out, is a wake.
+            const now = PaneMod.monoNow();
+            const wait = soonest(pane.scrollWaitLocked(now), pane.frameWaitLocked(now)) orelse {
                 pane.lock.wait();
                 continue;
             };
@@ -468,6 +566,12 @@ pub fn run(pane: *Pane, draw: anytype) void {
             return;
         }
     }
+}
+
+fn soonest(a: ?u64, b: ?u64) ?u64 {
+    const x = a orelse return b;
+    const y = b orelse return x;
+    return @min(x, y);
 }
 
 /// Drawing to the pane's window does not work and this thread ends: the next attach, of
@@ -640,6 +744,88 @@ pub fn retakeSize(view_w: u32, view_h: u32, w: u32, h: u32, expired: bool) SizeT
     return .keep;
 }
 
+/// The scaling mode a frame's buffer goes to the window with (#117).
+pub const Scaling = enum {
+    /// `NATIVE_WINDOW_SCALING_MODE_FREEZE`, the window's own: a buffer is shown at its size,
+    /// and BLAST rejects one whose size is neither the window's nor that of the last buffer
+    /// the window took.
+    freeze,
+    /// `NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW`: a buffer is scaled to the window's size,
+    /// and BLAST rejects none.
+    scale_to_window,
+};
+
+/// How long after its first swap a new render thread's buffers go out scaled at least. A
+/// return to the app brings the window's size changes and the transition's window sync in its
+/// first tens of ms; measured on the Velvet (#117): the stuck swaps came 12 ms after the thread
+/// started and 47–52 ms after the transition's sync finished on the server, and the window took
+/// its new size 3–27 ms after the first swap. The hold ends before the keyboard that comes up
+/// again resizes the window (193–478 ms after the start, median 277 ms): a buffer that is
+/// scaled when the window changes size shows scaled, squashed there, until the next one, where
+/// a FREEZE buffer shows at its size.
+pub const scale_hold_ns: i128 = 150 * std.time.ns_per_ms;
+
+/// Decide the scaling mode of the buffer a swap queues (#117). `mode`: what the thread's last
+/// swap queued with, null before its first; `since_first_ns`: the time since its first swap;
+/// `buffer_w`/`buffer_h`: the size of the buffer the frame is drawn to (the EGL surface's);
+/// `window_w`/`window_h`: the size the window gives buffers now.
+///
+/// While a window sync is set, a buffer BLAST rejects makes the swap wait for good: it was the
+/// only frame, and the thread that would queue the next one is the one waiting. A FREEZE buffer
+/// is rejected when its size is neither the window's nor that of the last FREEZE buffer the
+/// window took; with none taken yet, or a scaled one last, only the window's size will do, and
+/// that changes while the window returns. So a new thread's buffers go out scaled until the
+/// hold is over and a buffer has the window's size. From then on an old-size buffer has the
+/// size of the last one taken, as on every running thread, and FREEZE stays.
+pub fn swapScaling(mode: ?Scaling, since_first_ns: i128, buffer_w: i32, buffer_h: i32, window_w: i32, window_h: i32) Scaling {
+    const m = mode orelse return .scale_to_window;
+    if (m == .freeze) return .freeze;
+    if (since_first_ns < scale_hold_ns) return .scale_to_window;
+    // A size that could not be read proves nothing: the buffers stay scaled.
+    if (buffer_w <= 0 or buffer_h <= 0 or window_w <= 0 or window_h <= 0) return .scale_to_window;
+    if (buffer_w != window_w or buffer_h != window_h) return .scale_to_window;
+    return .freeze;
+}
+
+/// A frame that still went out scaled after the hold asks for the next one this much later, at
+/// most `scale_retries` times: about 550 ms from the first swap in all.
+pub const scale_retry_ns: i128 = 50 * std.time.ns_per_ms;
+pub const scale_retries: u8 = 8;
+
+/// The frame a render thread asks for itself after a swap while its buffers go out scaled.
+pub const FrameDue = enum {
+    /// Nothing to ask for.
+    none,
+    /// A frame when the hold is over: a pane that prints nothing draws none of its own.
+    after_hold,
+    /// A frame `scale_retry_ns` later.
+    retry,
+    /// The buffers stay scaled: the last retry did not find the window's size.
+    give_up,
+};
+
+/// Decide the frame a render thread asks for itself after a swap (#117). `mode`: what that
+/// swap queued with (`swapScaling`); `first`: it was the thread's first; `pending`: a frame the
+/// thread asked for is not due yet; `retries`: the `retry` and `give_up` answers so far.
+pub fn scalingFrameDue(mode: Scaling, first: bool, pending: bool, retries: u8) FrameDue {
+    if (mode == .freeze) return .none;
+    if (first) return .after_hold;
+    if (pending) return .none;
+    if (retries < scale_retries) return .retry;
+    if (retries == scale_retries) return .give_up;
+    return .none;
+}
+
+/// Called with the pane lock held, as a frame begins to build: the frame the thread asked for
+/// itself (`askFrame`) is due, and goes to the window even when it draws what the window
+/// shows, while the thread's buffers go out scaled.
+fn takeFrameDue(r: *R, now_ns: i128) void {
+    if (r.due_ns == 0 or now_ns < r.due_ns) return;
+    r.due_ns = 0;
+    r.pane.frame_due_ns = 0;
+    if (r.scaling == .scale_to_window) r.pane.present_due = true;
+}
+
 /// A frame's size, without GL (the host tests drive it): `w`/`h` is what the window's
 /// buffer answers. The renderer's notion of the buffer follows every answer; the pane takes
 /// the size — and its scroll offset rests with it — per `retakeSize`.
@@ -663,6 +849,8 @@ fn takeSurfaceSize(r: *R, w: u32, h: u32) void {
 /// Called with the pane lock held: snapshot terminal → instance lists.
 fn buildFrame(r: *R) !bool {
     const p = r.pane;
+    // First, so that a frame that fails cannot leave it due and the loop waking at once.
+    takeFrameDue(r, r.build_ns);
     // Before the take below spends the settle's last frame: that frame is drawn too.
     const settling = p.settle_frames > 0;
     // The EGL surface has the size of the buffer it draws to. That follows the window's
@@ -2302,6 +2490,81 @@ test "renderer: a thousand ordinary frames of an unchanged size keep the pane's 
     try std.testing.expectEqual(@as(f32, 4), p.scrollOffsetPx());
 }
 
+const ms = std.time.ns_per_ms;
+
+test "swapScaling: a new thread's first buffer goes out scaled, whatever its size" {
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(null, 0, 863, 610, 863, 1026));
+}
+
+test "swapScaling: right after the start a buffer of the window's size still goes out scaled" {
+    // #117: the window's size and its sync come within the first tens of ms of a return.
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 10 * ms, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, scale_hold_ns - 1, 863, 1026, 863, 1026));
+}
+
+test "swapScaling: the hold covers a return's first tens of ms and ends before the keyboard's resize" {
+    // Measured on the Velvet (#117): the stuck swaps 12 ms after the thread started, the window's
+    // size changes and the transition's sync within 52 ms; the keyboard's resize at 193 ms at the
+    // earliest. A buffer that is scaled when the window changes size shows scaled until the next.
+    try std.testing.expect(scale_hold_ns > 52 * ms);
+    try std.testing.expect(scale_hold_ns < 193 * ms);
+    // The retries end within about half a second of the first swap.
+    try std.testing.expect(scale_hold_ns + scale_retries * scale_retry_ns <= 600 * ms);
+}
+
+test "swapScaling: after the hold a buffer of the window's size goes back to FREEZE" {
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, scale_hold_ns, 863, 1026, 863, 1026));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.scale_to_window, 2000 * ms, 863, 610, 863, 610));
+}
+
+test "swapScaling: after the hold a buffer of another size still goes out scaled" {
+    // The buffer was taken before the window's last size change: as FREEZE it would be rejected.
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 610, 863, 1026));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 1080, 1026, 863, 1026));
+}
+
+test "swapScaling: once FREEZE, a thread stays FREEZE whatever the sizes" {
+    // An old-size buffer is then the size of the last one the window took, and is not rejected.
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 0, 863, 610, 863, 1026));
+    try std.testing.expectEqual(Scaling.freeze, swapScaling(.freeze, 600 * ms, 863, 1026, 863, 1026));
+}
+
+test "scalingFrameDue: a first swap that went out scaled asks for a frame when the hold is over" {
+    // A pane that prints nothing draws no frame of its own: without one it would stay scaled.
+    try std.testing.expectEqual(FrameDue.after_hold, scalingFrameDue(.scale_to_window, true, false, 0));
+}
+
+test "scalingFrameDue: a frame asked for already is not asked for again" {
+    // The frames of a printing pane during the hold, or before the retry is due.
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.scale_to_window, false, true, 0));
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.scale_to_window, false, true, 3));
+}
+
+test "scalingFrameDue: a frame after the hold that still went out scaled asks again, a bounded number of times" {
+    // The keyboard was still moving: the buffer did not have the window's size.
+    var retries: u8 = 0;
+    while (retries < scale_retries) : (retries += 1) {
+        try std.testing.expectEqual(FrameDue.retry, scalingFrameDue(.scale_to_window, false, false, retries));
+    }
+    try std.testing.expectEqual(FrameDue.give_up, scalingFrameDue(.scale_to_window, false, false, scale_retries));
+    // Given up: the buffers stay scaled and nothing more is asked or logged.
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.scale_to_window, false, false, scale_retries + 1));
+}
+
+test "scalingFrameDue: a thread that went back to FREEZE asks for nothing" {
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.freeze, false, false, 0));
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.freeze, false, true, 2));
+    // The window could not be asked to scale the first buffer: it went out as FREEZE.
+    try std.testing.expectEqual(FrameDue.none, scalingFrameDue(.freeze, true, false, 0));
+}
+
+test "swapScaling: a size that could not be read keeps the buffers scaled" {
+    // ANativeWindow_getWidth/Height answer a negative error code; eglQuerySurface leaves 0.
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 863, 1026, -19, -19));
+    try std.testing.expectEqual(Scaling.scale_to_window, swapScaling(.scale_to_window, 600 * ms, 0, 0, 863, 1026));
+}
+
 test "renderer: a size is taken once, and a pending attach-settle takes it once when it expires" {
     var source: CountingSource = .{};
     const p = try paneWithHistory(&source);
@@ -2390,4 +2653,84 @@ test "renderer: a failed frame that took the settle's last size does not take ag
     try std.testing.expectEqual(@as(usize, 2), draw.built);
     try std.testing.expectEqual(@as(u8, 0), p.settle_frames); // the settle was spent, once
     try std.testing.expectEqual(@as(f32, 4), p.scrollOffsetPx()); // and the pan's offset survived the next frame
+}
+
+test "renderer: a frame the thread asked for itself wakes it when it is due, with nothing else to draw" {
+    // #117: a pane that prints nothing still draws the frame that ends its scaled buffers.
+    var source: CountingSource = .{};
+    const p = try paneWithHistory(&source);
+    defer p.destroy();
+    p.wake = false;
+    const asked = PaneMod.monoNow() + 30 * ms;
+    p.frame_due_ns = asked;
+
+    const Draw = struct {
+        pane: *Pane,
+        at: i128 = 0,
+
+        fn build(d: *@This()) bool {
+            d.at = PaneMod.monoNow();
+            d.pane.frame_due_ns = 0;
+            d.pane.quit = true;
+            return false;
+        }
+
+        fn present(_: *@This()) bool {
+            return true;
+        }
+    };
+    // Ends the loop if the frame never comes, so that the test fails instead of hanging.
+    const Watchdog = struct {
+        fn run(pane: *Pane, done: *const std.atomic.Value(bool)) void {
+            var waited: usize = 0;
+            while (!done.load(.acquire) and waited < 200) : (waited += 1) {
+                var ts: std.c.timespec = .{ .sec = 0, .nsec = 10 * std.time.ns_per_ms };
+                _ = std.c.nanosleep(&ts, null);
+            }
+            pane.lock.lock();
+            defer pane.lock.unlock();
+            pane.quit = true;
+            pane.lock.signal();
+        }
+    };
+    var done: std.atomic.Value(bool) = .init(false);
+    var draw: Draw = .{ .pane = p };
+    const watchdog = try std.Thread.spawn(.{}, Watchdog.run, .{ p, &done });
+    run(p, &draw);
+    done.store(true, .release);
+    watchdog.join();
+
+    try std.testing.expect(draw.at != 0); // the loop woke for the frame
+    try std.testing.expect(draw.at >= asked); // and not before it was due
+}
+
+test "renderer: a frame the thread asked for itself goes to the window when due, also when it draws the same" {
+    var source: CountingSource = .{};
+    const p = try paneWithHistory(&source);
+    defer p.destroy();
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+
+    // Scaled buffers: the frame is due at 1000 ns.
+    t.r.scaling = .scale_to_window;
+    t.r.due_ns = 1000;
+    p.frame_due_ns = 1000;
+    p.present_due = false;
+    takeFrameDue(&t.r, 999); // not yet
+    try std.testing.expect(!p.present_due);
+    try std.testing.expectEqual(@as(i128, 1000), p.frame_due_ns);
+    takeFrameDue(&t.r, 1000);
+    try std.testing.expect(p.present_due); // drawn even when it draws what the window shows
+    try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
+    try std.testing.expectEqual(@as(i128, 0), t.r.due_ns);
+
+    // Back to FREEZE before it was due: nothing is drawn for it.
+    t.r.scaling = .freeze;
+    t.r.due_ns = 2000;
+    p.frame_due_ns = 2000;
+    p.present_due = false;
+    takeFrameDue(&t.r, 2500);
+    try std.testing.expect(!p.present_due);
+    try std.testing.expectEqual(@as(i128, 0), p.frame_due_ns);
+    try std.testing.expectEqual(@as(i128, 0), t.r.due_ns);
 }

@@ -438,6 +438,9 @@ pub const Pane = struct {
     render_failed: bool = false,
     /// Frames the render thread still draws on its own (see `frames_after_resize`).
     settle_frames: u8 = 0,
+    /// When the render thread draws a frame it asked for itself (`monoNow`), with
+    /// nothing else to draw; 0 for none. It asks while its buffers go out scaled (#117).
+    frame_due_ns: i128 = 0,
     thread: ?std.Thread = null,
     /// What the soft keyboard is still composing for this pane (UTF-8). It is drawn at the
     /// cursor and never sent: the keyboard commits it, and the remote echoes that.
@@ -738,6 +741,7 @@ pub const Pane = struct {
         self.window = null;
         self.render_failed = false;
         self.settle_frames = 0;
+        self.frame_due_ns = 0;
         self.lock.unlock();
     }
 
@@ -989,6 +993,14 @@ pub const Pane = struct {
         const due = self.scroll_last_pan_ns + scroll_wait_ns;
         if (self.scroll_settle_start_ns != 0 or now_ns >= due) return 0;
         return @intCast(due - now_ns);
+    }
+
+    /// How long the render thread waits for the frame it asked for itself (`frame_due_ns`):
+    /// null for none, 0 when it is due. Caller holds the pane mutex.
+    pub fn frameWaitLocked(self: *const Pane, now_ns: i128) ?u64 {
+        if (self.frame_due_ns == 0) return null;
+        if (now_ns >= self.frame_due_ns) return 0;
+        return @intCast(self.frame_due_ns - now_ns);
     }
 
     /// (locks) `scrollWaitLocked`, for callers without the mutex held.
