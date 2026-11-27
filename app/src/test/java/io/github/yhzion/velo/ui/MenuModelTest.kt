@@ -424,10 +424,14 @@ class MenuModelTest {
 
         val names = tabBlocks(window).associateWith { zoomPaneName(state, window, it) }
         assertEquals(mapOf("a" to "Terminal", "b" to "zsh", "c" to "build log"), names)
-        for (command in fullScreenPaneCommands(window, state)) {
+        val fullScreen = fullScreenPaneCommands(window, state)
+        assertEquals(listOf("b", "c"), fullScreen.map { it.block })
+        for (command in fullScreen) {
             assertEquals("Full Screen Pane: ${paneLabel(tabBlocks(window), command.block)} · ${names[command.block]}", command.label)
         }
-        for (command in focusPaneCommands(window.copy(zoomed = null), state, focused = "a")) {
+        val focus = focusPaneCommands(window.copy(zoomed = null), state, focused = "a")
+        assertEquals(listOf("b", "c"), focus.map { it.block })
+        for (command in focus) {
             assertEquals("Focus Pane: ${paneLabel(tabBlocks(window), command.block)} · ${names[command.block]}", command.label)
         }
     }
@@ -438,9 +442,11 @@ class MenuModelTest {
         val blocks = mapOf("b" to BlockInfo(title = "vim"))
 
         // The menu's heading is the pane's label; the picker and the palette add the pane's name to it.
-        for (command in focusPaneCommands(window, UiState(blocks = blocks), focused = "a")) {
+        val commands = focusPaneCommands(window, UiState(blocks = blocks), focused = "a")
+        assertEquals(listOf("b", "c"), commands.map { it.block })
+        for (command in commands) {
             val label = paneLabel(tabBlocks(window), command.block)!!
-            assertTrue(command.label, command.label == "Focus Pane: $label" || command.label.startsWith("Focus Pane: $label · "))
+            assertTrue(command.label, command.label.startsWith("Focus Pane: $label · "))
         }
     }
 

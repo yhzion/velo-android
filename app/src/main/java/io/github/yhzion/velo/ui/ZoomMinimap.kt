@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -40,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -383,7 +384,8 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
  * ([zoomPickerBox]); the floating ones come last, so they are drawn and touched over the tiled ones. A map larger than
  * the popover scrolls, as the minimized panes' row does, and shows the zoomed cell, at once. A cell the floating ones
  * leave no finger's target ([zoomCoveredCells]) is a capsule in a row under the map instead, as a minimized pane is
- * (#171): a finger picks it there and a screen reader says it there alone, and its strip left on the map only takes a tap.
+ * (#171): a finger picks it there and a screen reader says it there alone. Its strip left on the map still takes a tap,
+ * but a screen reader does not say it again.
  */
 @Composable
 private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least: Float, name: (String) -> String, onPick: (String) -> Unit) {
@@ -413,8 +415,8 @@ private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least
             down.scrollTo(((box.top + box.height / 2).dp.toPx() - down.viewportSize / 2f).roundToInt())
         }
     }
-    val covered = zoomCoveredCells(map, mapW, mapH, least)
-    val pick by rememberUpdatedState(onPick)
+    // Not again for a report that changes a cell's dot: only the places of the cells change which are covered.
+    val covered = remember(map.cells.map { it.rect to it.floating }, mapW, mapH, least) { zoomCoveredCells(map, mapW, mapH, least) }
     // One scroll a node: a node keeps one scroll action, and a screen reader needs both. The map gives up its height
     // to the row under it, which has no scroll of its own up and down.
     Box(Modifier.weight(1f, fill = false).testTag("minimap-picker-map").horizontalScroll(across)) {
@@ -431,9 +433,9 @@ private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least
                             .background(if (on) c.accent else c.glass, rounded(unit * 7))
                             .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
                             .then(
-                                // Said and picked in the row under the map: what is left of it here takes a tap alone.
-                                if (cell.block in covered) Modifier.clearAndSetSemantics { }
-                                    .pointerInput(cell.block) { detectTapGestures { pick(cell.block) } }
+                                // Said in the row under the map: what is left of it here takes a tap, which a screen
+                                // reader does not hear of. The clearing outside the click clears the click's semantics too.
+                                if (cell.block in covered) Modifier.clearAndSetSemantics { }.clickable { onPick(cell.block) }
                                 else Modifier.clickable(role = Role.Button) { onPick(cell.block) }
                                     .semantics {
                                         contentDescription = zoomCellDescription(map, index, cell, named)
@@ -466,7 +468,8 @@ private fun ColumnScope.ZoomPicker(map: ZoomMap, mapW: Float, mapH: Float, least
 /**
  * The row under the picker's map: a capsule for each cell of [map] in [covered], in the panes' order, as tall as a
  * minimized pane's ([MinimizedCapsuleHeight]) and named with [name]. It is no wider than the map, [width], and scrolls
- * sideways past it: a wider row would widen the popover, whose end would then leave the minimap's.
+ * sideways past it: a wider row would widen the popover, whose end would then leave the minimap's. It opens on the
+ * zoomed pane's capsule when that pane is one of them, as the map opens on its cell.
  */
 @Composable
 private fun CoveredCells(map: ZoomMap, covered: Set<String>, width: Dp, name: (String) -> String, onPick: (String) -> Unit) {
@@ -474,8 +477,20 @@ private fun CoveredCells(map: ZoomMap, covered: Set<String>, width: Dp, name: (S
     val sheet = VeloTheme.colors.sheet
     val sizes = VeloTheme.sizes
     val unit = VeloTheme.medium(1.dp)
+    val along = rememberScrollState()
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // The zoomed pane's capsule in the row, its left from the row's left and its width in px, with its block.
+    var zoomedAt by remember { mutableStateOf<Triple<String, Int, Int>?>(null) }
+    val zoomed by rememberUpdatedState(map.zoomed)
+    LaunchedEffect(map.zoomed) {
+        val (_, left, wide) = snapshotFlow { zoomedAt?.takeIf { it.first == zoomed && along.viewportSize > 0 } }.first { it != null }!!
+        val middle = left + wide / 2
+        // In RTL the scroll starts at the row's right edge.
+        val x = if (rtl) along.maxValue + along.viewportSize - middle else middle
+        along.scrollTo(x - along.viewportSize / 2)
+    }
     Text("Under floating panes", Modifier.padding(top = unit * 8, bottom = unit * 6), color = c.secondary, style = VeloTheme.type.caption)
-    Row(Modifier.testTag("minimap-picker-covered").widthIn(max = width).horizontalScroll(rememberScrollState()),
+    Row(Modifier.testTag("minimap-picker-covered").widthIn(max = width).horizontalScroll(along),
         horizontalArrangement = Arrangement.spacedBy(sizes.gapCompact)) {
         for ((index, cell) in map.cells.withIndex()) {
             if (cell.block !in covered) continue
@@ -483,6 +498,7 @@ private fun CoveredCells(map: ZoomMap, covered: Set<String>, width: Dp, name: (S
             val named = name(cell.block)
             Row(
                 Modifier.testTag("minimap-picker-covered-${cell.block}").height(MinimizedCapsuleHeight)
+                    .then(if (on) Modifier.onPlaced { zoomedAt = Triple(cell.block, it.positionInParent().x.roundToInt(), it.size.width) } else Modifier)
                     .widthIn(min = TargetDp.dp, max = sizes.menuMinWidth)
                     .background(if (on) c.accent else c.glass, rounded(unit * 7))
                     .then(if (on) Modifier else Modifier.border(sizes.edge, c.glassEdge, rounded(unit * 7)))

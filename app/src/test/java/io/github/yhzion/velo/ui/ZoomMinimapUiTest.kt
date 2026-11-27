@@ -159,10 +159,6 @@ class ZoomMinimapUiTest {
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("minimap-picker-covered-b").assertDoesNotExist()
         compose.onNodeWithTag("minimap-picker-covered-c").assertDoesNotExist()
-        // The row is no wider than the map: the popover keeps its end at the minimap's (#144).
-        val row = compose.onNodeWithTag("minimap-picker-covered").getBoundsInRoot()
-        val map = compose.onNodeWithTag("minimap-picker-map").getBoundsInRoot()
-        assertTrue("row ${row.left}..${row.right} in map ${map.left}..${map.right}", row.right <= map.right + 0.5.dp)
         compose.onNodeWithTag("minimap-picker-covered-a").performClick()
         assertEquals(listOf("a"), zoomedTo)
         compose.onNodeWithTag("minimap-picker").assertDoesNotExist()
@@ -172,9 +168,49 @@ class ZoomMinimapUiTest {
         floating = listOf(FloatingLayer("f", x = 0.2f, y = 0f, w = 0.4f, h = 1f))
         show()
         compose.onNodeWithTag("caption-minimap").performClick()
+        // claude is left a strip narrower than a finger: it is in the row, and its cell on the map is no button to a screen reader.
+        compose.onNodeWithTag("minimap-picker-covered-a").assertExists()
+        compose.onNodeWithTag("minimap-picker-cell-a").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
         // The strip on the floating cell's left is claude's: a tap there picks it, as it would on the map without the row.
         compose.onNodeWithTag("minimap-picker-cell-a").performTouchInput { click(Offset(8.dp.toPx(), height / 2f)) }
         assertEquals(listOf("a"), zoomedTo)
+    }
+
+    @Test fun theRowIsNoWiderThanTheMap() {
+        // Six panes, three by two, under a floating pane as large as the pane area: six capsules are wider than the map.
+        val column = { a: String, b: String -> LayoutNode(dir = "column", first = LayoutNode(block = a), second = LayoutNode(block = b)) }
+        val six = LayoutNode(dir = "row", ratio = 1f / 3, first = column("p0", "p1"),
+            second = LayoutNode(dir = "row", first = column("p2", "p3"), second = column("p4", "p5")))
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 1f))
+        zoomed = "f"
+        show(six)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        for (i in 0..5) compose.onNodeWithTag("minimap-picker-covered-p$i").assertExists()
+        // The popover keeps its end at the minimap's (#144): the row scrolls inside the map's width.
+        val row = compose.onNodeWithTag("minimap-picker-covered").getBoundsInRoot()
+        val map = compose.onNodeWithTag("minimap-picker-map").getBoundsInRoot()
+        assertTrue("row ${row.left}..${row.right} in map ${map.left}..${map.right}", row.right <= map.right + 0.5.dp)
+        compose.onNodeWithTag("minimap-picker-covered-p5").assertIsNotDisplayed()
+    }
+
+    @Test fun theRowOpensOnACoveredZoomedPane() {
+        // Nine side by side under a floating pane as large as the pane area, the last full screen: its capsule shows.
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 1f))
+        zoomed = "p8"
+        show(line(9))
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-covered-p8").assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        compose.onNodeWithTag("minimap-picker-covered-p0").assertIsNotDisplayed()
+    }
+
+    @Test fun theRowOpensOnACoveredZoomedPaneInRtl() {
+        floating = listOf(FloatingLayer("f", x = 0f, y = 0f, w = 1f, h = 1f))
+        zoomed = "p8"
+        show(line(9), rtl = true)
+        compose.onNodeWithTag("caption-minimap").performClick()
+        compose.onNodeWithTag("minimap-picker-covered-p8").assertIsDisplayed()
+        compose.onNodeWithTag("minimap-picker-covered-p0").assertIsNotDisplayed()
     }
 
     @Test fun aCoveredZoomedPaneIsSelectedInTheRow() {

@@ -369,7 +369,7 @@ fun fullScreenPaneCommands(window: WindowInfo, state: UiState): List<FullScreenP
 
 /**
  * "[verb]: Pane n · name", the name the picker and the sidebar give [block] of [window] ([zoomPaneName]): one line,
- * never the tab's label. Null for a pane not in [tabPanes].
+ * and the pane's label from the server only when nothing else names it. Null for a pane not in [tabPanes].
  */
 private fun paneCommandLabel(verb: String, tabPanes: List<String>, block: String, state: UiState, window: WindowInfo): String? {
     val label = paneLabel(tabPanes, block) ?: return null
