@@ -103,6 +103,9 @@ pub const Ref = enum {
     released,
     /// The pane's: the reference to the window it draws to.
     held,
+    /// Left to the render thread the pane gave up (#159, `RenderLink`): that thread's EGL
+    /// surface is still on the window, and the thread gives the reference up if it ever ends.
+    thread,
 };
 
 /// The two references an attach meets: the pane's own to the window it draws to
@@ -111,15 +114,18 @@ pub const Ref = enum {
 pub const AttachRefs = struct { current: Ref, incoming: Ref };
 
 /// Decide the references of an attach. `started` is whether the renderer a `.replace`
-/// starts runs. Whatever the step, the pane ends with one reference to the window it
-/// draws to and no other.
-pub fn attachRefs(action: AttachAction, started: bool) AttachRefs {
+/// starts runs, and `given_up` whether the pane gave up the renderer it ended (it did not end
+/// in time, `stop_wait_ns`). Whatever the step, the pane ends with one reference to the
+/// window it draws to and no other.
+pub fn attachRefs(action: AttachAction, started: bool, given_up: bool) AttachRefs {
+    // The thread the pane gave up still has its EGL surface on that window.
+    const ended: Ref = if (given_up) .thread else .released;
     return switch (action) {
         // The pane has its own reference to this window: the caller's is one too many.
         .keep => .{ .current = .held, .incoming = .released },
         // The new renderer draws to the window asked for; without one the pane draws to none.
-        .replace => .{ .current = .released, .incoming = if (started) .held else .released },
-        .detach => .{ .current = .released, .incoming = .released },
+        .replace => .{ .current = ended, .incoming = if (started) .held else .released },
+        .detach => .{ .current = ended, .incoming = .released },
     };
 }
 
@@ -131,6 +137,108 @@ fn releaseWindow(window: *anyopaque) void {
 
 /// Host tests only: called for every window reference a pane gives up.
 pub var host_release: ?*const fn (window: *anyopaque) void = null;
+
+/// One line when a pane gives up its render thread (`stopRenderer`).
+fn logGivenUp(pane: *Pane, window: *anyopaque, waited_ns: i128) void {
+    if (is_android) Renderer.logGivenUp(pane, window, waited_ns);
+}
+
+/// How long a pane waits for its render thread to end before it gives the thread up (#159).
+/// Main waits here with `Core.lock` held (`surfaceDestroyed` → `paneSuspend`/`paneSurface`),
+/// and `velo-control` does when the server closes a pane, while main waits for `Core.lock`.
+/// Android reports an ANR when main has not answered an input event for 5 s: 2 s leaves the
+/// rest of that to what main does besides. A thread that is not stuck ends within a frame and
+/// its EGL teardown, tens of milliseconds.
+pub const stop_wait_ns: u64 = 2 * std.time.ns_per_s;
+
+/// What a render thread shares with its pane, kept apart from the pane (#159). A pane waits for
+/// its thread to end at most `stop_wait_ns` and then gives it up: a thread stuck in the platform
+/// (#117) would otherwise stop main or `velo-control` for good. The pane may then be freed, or
+/// draw with a new thread, while the one it gave up is still stuck. So the thread touches the
+/// pane only between `enter` and `leave`, and once given up never again; the reference to the
+/// window it draws to is then its own. The pane frees the link after joining its thread; a
+/// thread given up frees it itself when it ends (`end`). One that never ends leaks the link,
+/// its EGL objects and the window's reference.
+pub const RenderLink = struct {
+    gpa: std.mem.Allocator,
+    /// The window the thread draws to. Its reference is the pane's until the pane gives the
+    /// thread up.
+    window: *anyopaque,
+    lock: Lock = .{},
+    /// The thread is between `enter` and `leave`.
+    in_pane: bool = false,
+    /// The thread is done with the pane and the link (`end`).
+    done: bool = false,
+    /// The pane gave the thread up (`waitEnd`): the thread enters no more.
+    given_up: bool = false,
+
+    pub fn create(gpa: std.mem.Allocator, window: *anyopaque) !*RenderLink {
+        const l = try gpa.create(RenderLink);
+        l.* = .{ .gpa = gpa, .window = window };
+        return l;
+    }
+
+    pub fn destroy(l: *RenderLink) void {
+        l.gpa.destroy(l);
+    }
+
+    /// The thread's side: whether it may touch the pane, until `leave`. False once the pane
+    /// gave it up: the pane may be gone, or draw with another thread. Between the two the
+    /// thread waits on nothing but the pane's lock: what waits on the platform (`present`,
+    /// the EGL setup and teardown) happens outside.
+    pub fn enter(l: *RenderLink) bool {
+        l.lock.lock();
+        defer l.lock.unlock();
+        std.debug.assert(!l.in_pane);
+        if (l.given_up) return false;
+        l.in_pane = true;
+        return true;
+    }
+
+    pub fn leave(l: *RenderLink) void {
+        l.lock.lock();
+        defer l.lock.unlock();
+        l.in_pane = false;
+        // A pane past its wait gives the thread up only once it is out.
+        l.lock.signal();
+    }
+
+    /// The thread's last act, after it gave up its EGL surface. A thread the pane waits for says
+    /// it is done, and the pane joins it and frees the link. One the pane gave up gives up the
+    /// window's reference and frees the link itself.
+    pub fn end(l: *RenderLink) void {
+        l.lock.lock();
+        const given_up = l.given_up;
+        l.done = true;
+        l.lock.signal();
+        l.lock.unlock();
+        if (!given_up) return;
+        releaseWindow(l.window);
+        l.gpa.destroy(l);
+    }
+
+    /// The pane's side, once it asked the thread to quit: wait for the thread to end, at most
+    /// `bound_ns`, then give it up. A thread inside the pane then is waited for until it
+    /// leaves, which it does soon (`enter`). True: the thread has ended; join it, then
+    /// `destroy` the link. False: it is given up; detach it, and touch the link no more.
+    pub fn waitEnd(l: *RenderLink, bound_ns: u64) bool {
+        const deadline = monoNow() + bound_ns;
+        l.lock.lock();
+        defer l.lock.unlock();
+        while (!l.done) {
+            const left = deadline - monoNow();
+            if (left > 0) {
+                _ = l.lock.timedWait(@intCast(left));
+            } else if (l.in_pane) {
+                l.lock.wait();
+            } else {
+                l.given_up = true;
+                return false;
+            }
+        }
+        return true;
+    }
+};
 
 /// Frames the render thread draws on its own after an attach in place gave another
 /// size: the window hands out buffers of the new size only from its next dequeue on.
@@ -442,6 +550,8 @@ pub const Pane = struct {
     /// nothing else to draw; 0 for none. It asks while its buffers go out scaled (#117).
     frame_due_ns: i128 = 0,
     thread: ?std.Thread = null,
+    /// What `thread` shares with the pane; set with it.
+    render_link: ?*RenderLink = null,
     /// What the soft keyboard is still composing for this pane (UTF-8). It is drawn at the
     /// cursor and never sent: the keyboard commits it, and the remote echoes that.
     preedit_buf: [preedit_cap]u8 = undefined,
@@ -689,17 +799,19 @@ pub const Pane = struct {
         }
         self.lock.unlock();
         var start: StartError!void = {};
+        var given_up = false;
         switch (action) {
             .keep => {},
             .replace => {
-                self.stopRenderer();
+                given_up = !self.stopRenderer();
                 start = self.startRenderer(window.?, width_px, height_px);
             },
-            .detach => self.stopRenderer(),
+            .detach => given_up = !self.stopRenderer(),
         }
-        // The only place a reference is given up, and only after the old render thread has
-        // ended: its EGL surface is on the window `current` refers to.
-        const refs = attachRefs(action, if (start) |_| true else |_| false);
+        // The only place the pane gives a reference up, and only after the old render thread
+        // has ended: its EGL surface is on the window `current` refers to. A thread the pane
+        // gave up keeps that reference (`Ref.thread`).
+        const refs = attachRefs(action, if (start) |_| true else |_| false, given_up);
         if (refs.current == .released) if (current) |w| releaseWindow(w);
         if (refs.incoming == .released) if (window) |w| releaseWindow(w);
         return start;
@@ -710,6 +822,14 @@ pub const Pane = struct {
     /// Start a render thread on `window`. The window's reference is not touched here.
     fn startRenderer(self: *Pane, window: *anyopaque, width_px: u32, height_px: u32) StartError!void {
         if (!is_android) return error.Unsupported;
+        return self.startThread(window, width_px, height_px, Renderer.threadMain, .{});
+    }
+
+    /// Start `body` as the pane's render thread on `window`: it runs `body(pane, link, extra...)`,
+    /// where `link` is the thread's `RenderLink`. `startRenderer` starts `Renderer.threadMain`; the
+    /// host tests start a drawing of their own. The window's reference is not touched here.
+    pub fn startThread(self: *Pane, window: *anyopaque, width_px: u32, height_px: u32, comptime body: anytype, extra: anytype) StartError!void {
+        const link = try RenderLink.create(self.gpa, window);
         self.lock.lock();
         self.window = window;
         self.surface_w = width_px;
@@ -717,25 +837,42 @@ pub const Pane = struct {
         self.quit = false;
         self.wake = true;
         self.lock.unlock();
-        self.thread = std.Thread.spawn(.{}, Renderer.threadMain, .{self}) catch |e| {
+        self.thread = std.Thread.spawn(.{}, body, .{ self, link } ++ extra) catch |e| {
+            link.destroy();
             self.lock.lock();
             self.window = null;
             self.lock.unlock();
             return e;
         };
+        self.render_link = link;
     }
 
     /// End the render thread, if there is one: one that ended by itself (`render_failed`)
-    /// is joined all the same. The pane draws to no window afterwards; the reference to
-    /// the one it drew to is not touched here.
-    fn stopRenderer(self: *Pane) void {
+    /// is joined all the same. One that does not end within `stop_wait_ns` is given up
+    /// (#159): it is left to end by itself, if it ever does, and the pane forgets it. The pane
+    /// draws to no window afterwards; the reference to the one it drew to is not touched here.
+    /// False when the thread was given up.
+    fn stopRenderer(self: *Pane) bool {
+        var ended = true;
         if (self.thread) |t| {
+            const link = self.render_link.?;
+            // Read now: a thread given up may free its link at any time.
+            const window = link.window;
             self.lock.lock();
             self.quit = true;
             self.lock.signal();
             self.lock.unlock();
-            t.join();
+            const start = monoNow();
+            if (link.waitEnd(stop_wait_ns)) {
+                t.join();
+                link.destroy();
+            } else {
+                t.detach();
+                logGivenUp(self, window, monoNow() - start);
+                ended = false;
+            }
             self.thread = null;
+            self.render_link = null;
         }
         self.lock.lock();
         self.window = null;
@@ -743,6 +880,7 @@ pub const Pane = struct {
         self.settle_frames = 0;
         self.frame_due_ns = 0;
         self.lock.unlock();
+        return ended;
     }
 
     /// Local text scale (pinch). The size the terminal should have follows from it

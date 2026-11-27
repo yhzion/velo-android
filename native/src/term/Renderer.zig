@@ -95,7 +95,13 @@ const fs_src =
 ;
 
 const R = struct {
+    /// Touched only between `link.enter` and `link.leave` (#159): the pane may give this thread
+    /// up while it draws, and then be freed.
     pane: *Pane,
+    /// What this thread shares with its pane, which outlives the pane.
+    link: *PaneMod.RenderLink,
+    /// The pane's glyph source, read once at the start: it is drawn with without the pane.
+    glyphs: PaneMod.GlyphSource,
     gpa: std.mem.Allocator,
     dpy: gl.EGLDisplay = gl.EGL_NO_DISPLAY,
     surf: gl.EGLSurface = gl.EGL_NO_SURFACE,
@@ -206,9 +212,14 @@ const R = struct {
         return buildFrame(r) catch false;
     }
 
+    /// Touches the pane only through `link`: what waits on the platform waits here. False also
+    /// when the pane gave this thread up meanwhile, which `run` sees then.
     pub fn present(r: *R) bool {
         // A frame that lacks glyphs cannot be drawn as built: an error leaves those cells empty.
-        completeFrame(r) catch logWarn("renderer could not draw missing glyphs");
+        completeFrame(r) catch |e| switch (e) {
+            error.GivenUp => return false,
+            else => logWarn("renderer could not draw missing glyphs"),
+        };
         if (r.same) {
             Trace.begin("Renderer.unchanged");
             defer Trace.end();
@@ -222,8 +233,11 @@ const R = struct {
         // Blocks until vsync (swap interval 1).
         if (gl.eglSwapBuffers(r.dpy, r.surf) != 0) {
             if (first) r.first_swap_ns = now;
-            planFrameDue(r, first, now);
             remember(r);
+            // The swap is where a thread gets stuck (#117), and the pane may have given it up.
+            if (!r.link.enter()) return false;
+            defer r.link.leave();
+            planFrameDue(r, first, now);
             _ = r.pane.swaps.fetchAdd(1, .monotonic);
             return true;
         }
@@ -297,6 +311,8 @@ fn completeFrame(r: *R) !void {
     if (r.missing.items.len == 0) return;
     drawMissing(r);
     r.same = false;
+    if (!r.link.enter()) return error.GivenUp;
+    defer r.link.leave();
     const p = r.pane;
     p.lock.lock();
     defer p.lock.unlock();
@@ -308,7 +324,7 @@ fn completeFrame(r: *R) !void {
 fn drawMissing(r: *R) void {
     Trace.begin("Renderer.drawMissing");
     defer Trace.end();
-    const g = r.pane.glyphs;
+    const g = r.glyphs;
     for (r.missing.items) |m| {
         const key = r.missing_keys.items[m.start..][0..m.len];
         const utf8 = key[0 .. key.len - 1];
@@ -414,6 +430,16 @@ fn logWarn(msg: [*:0]const u8) void {
     _ = gl.__android_log_write(gl.ANDROID_LOG_WARN, "VeloTerm", msg);
 }
 
+/// One line when a pane gives up its render thread (#159): it did not end within
+/// `Pane.stop_wait_ns`, and the thread, its EGL objects and the window's reference are left
+/// to end by themselves.
+pub fn logGivenUp(pane: *Pane, window: *anyopaque, waited_ns: i128) void {
+    var buf: [128]u8 = undefined;
+    const waited_ms = @divTrunc(waited_ns, std.time.ns_per_ms);
+    const msg = std.mem.printSentinel(&buf, "renderer given up after {d} ms pane={x} window={x}", .{ waited_ms, @intFromPtr(pane), @intFromPtr(window) }, 0) catch return;
+    _ = gl.__android_log_write(gl.ANDROID_LOG_WARN, "VeloTerm", msg);
+}
+
 /// One line per renderer start and end: an attach in place writes none.
 fn logLife(what: []const u8, pane: *Pane, window: ?*anyopaque) void {
     var buf: [96]u8 = undefined;
@@ -425,7 +451,7 @@ fn logLife(what: []const u8, pane: *Pane, window: ?*anyopaque) void {
 /// one goes with (`swapScaling`), from the size of its buffer and the window's now. A window
 /// that cannot be asked keeps FREEZE, and the swap goes as it did before #117.
 fn setSwapScaling(r: *R, now_ns: i128) void {
-    const win = r.pane.window orelse return;
+    const win = r.link.window;
     var bw: gl.EGLint = 0;
     var bh: gl.EGLint = 0;
     _ = gl.eglQuerySurface(r.dpy, r.surf, gl.EGL_WIDTH, &bw);
@@ -503,22 +529,31 @@ fn logScaling(what: []const u8, r: *R, now_ns: i128) void {
     _ = gl.__android_log_write(gl.ANDROID_LOG_INFO, "VeloTerm", msg);
 }
 
-pub fn threadMain(pane: *Pane) void {
+pub fn threadMain(pane: *Pane, link: *PaneMod.RenderLink) void {
+    // Last of all, on every way out: a thread its pane gave up gives up the window's reference
+    // here and frees the link (#159).
+    defer link.end();
+    // The pane may give this thread up before it ever ran.
+    if (!link.enter()) return;
     Trace.nameThread("velo-draw-", pane.threadTag());
-    var r: R = .{ .pane = pane, .gpa = pane.gpa, .atlas = .init(pane.gpa), .glyphs_later = true };
+    var r: R = .{ .pane = pane, .link = link, .glyphs = pane.glyphs, .gpa = link.gpa, .atlas = .init(link.gpa), .glyphs_later = true };
+    link.leave();
     // Every way out of this thread gives up what the thread owns, here and once: the EGL
-    // surface and context and the GL objects. The window's reference is the pane's.
+    // surface and context and the GL objects. The window's reference is the pane's, unless
+    // the pane gave this thread up.
     defer teardown(&r);
-    // Only an attach changes the window, and it joins this thread first.
-    const window = pane.window;
     setup(&r) catch {
         logWarn("renderer setup failed");
-        markFailed(pane);
+        if (link.enter()) {
+            markFailed(pane);
+            link.leave();
+        }
         return;
     };
-    logLife("start", pane, window);
-    defer logLife("end", pane, window);
-    run(pane, &r);
+    // The addresses only: the pane may be gone at the end.
+    logLife("start", pane, link.window);
+    defer logLife("end", pane, link.window);
+    run(pane, link, &r);
 }
 
 /// The render thread's loop, apart from what it draws with (the host tests run it with
@@ -527,8 +562,12 @@ pub fn threadMain(pane: *Pane) void {
 /// hands it to the window, without the lock, and says whether the window took it.
 /// Returns when the pane asks (`quit`), or by itself, with the pane marked
 /// (`render_failed`), when the window does not take a frame: a dead surface returns from
-/// the swap at once, so going on would draw every frame unseen and unthrottled.
-pub fn run(pane: *Pane, draw: anytype) void {
+/// the swap at once, so going on would draw every frame unseen and unthrottled. The loop is
+/// in the pane (`link.enter`) but while `draw.present()` runs, which touches the pane only
+/// through `link` too: a present can wait on the platform for good (#117), and the pane gives
+/// up a thread that does not end in time (#159). Once given up the loop returns at once.
+pub fn run(pane: *Pane, link: *PaneMod.RenderLink, draw: anytype) void {
+    if (!link.enter()) return;
     while (true) {
         pane.lock.lock();
         while (!pane.wake and !pane.quit) {
@@ -544,7 +583,7 @@ pub fn run(pane: *Pane, draw: anytype) void {
         }
         if (pane.quit) {
             pane.lock.unlock();
-            return;
+            break;
         }
         pane.wake = false;
         Trace.begin("Renderer.buildFrame");
@@ -565,14 +604,18 @@ pub fn run(pane: *Pane, draw: anytype) void {
         if (!built) pane.scrollRestLocked();
         pane.lock.unlock();
         if (!built) continue;
+        link.leave();
         Trace.begin("Renderer.present");
         const presented = draw.present();
         Trace.end();
+        // The pane may be gone now, or draw with another thread.
+        if (!link.enter()) return;
         if (!presented) {
             markFailed(pane);
-            return;
+            break;
         }
     }
+    link.leave();
 }
 
 fn soonest(a: ?u64, b: ?u64) ?u64 {
@@ -597,7 +640,7 @@ fn requestOverscan(state: c.GhosttyRenderState) void {
 }
 
 fn setup(r: *R) !void {
-    const win = r.pane.window orelse return error.NoWindow;
+    const win = r.link.window;
     r.dpy = gl.eglGetDisplay(gl.EGL_DEFAULT_DISPLAY);
     if (r.dpy == gl.EGL_NO_DISPLAY or gl.eglInitialize(r.dpy, null, null) == 0) return error.Egl;
     const attrs = [_]gl.EGLint{
@@ -1681,7 +1724,8 @@ test "operator bitmap slices preserve cursor, style and selection cell boundarie
     defer p.destroy();
     p.setFontSizePx(10); // cell 6x12
     p.write("=== -\x1b[31m>\x1b[0m !=\x1b[1;2H");
-    var r: R = .{ .gpa = allocator, .pane = p, .atlas = .init(allocator), .cell_w = 6, .cell_h = 12, .glyph_w = 6, .glyph_h = 12 };
+    var link: PaneMod.RenderLink = .{ .gpa = allocator, .window = &test_window };
+    var r: R = .{ .gpa = allocator, .pane = p, .link = &link, .glyphs = p.glyphs, .atlas = .init(allocator), .cell_w = 6, .cell_h = 12, .glyph_w = 6, .glyph_h = 12 };
     defer r.atlas.deinit();
     try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_new(null, &r.state));
     defer c.ghostty_render_state_free(r.state);
@@ -1741,7 +1785,8 @@ test "a cursor on a wide character covers both of its cells" {
     p.setFontSizePx(10); // cell 6x12
     // "설" on columns 0-1, "a" on column 2, an ideographic space (wide, no ink) on 3-4.
     p.write("설a\u{3000}b");
-    var r: R = .{ .gpa = allocator, .pane = p, .atlas = .init(allocator), .cell_w = 6, .cell_h = 12, .glyph_w = 6, .glyph_h = 12 };
+    var link: PaneMod.RenderLink = .{ .gpa = allocator, .window = &test_window };
+    var r: R = .{ .gpa = allocator, .pane = p, .link = &link, .glyphs = p.glyphs, .atlas = .init(allocator), .cell_w = 6, .cell_h = 12, .glyph_w = 6, .glyph_h = 12 };
     defer r.atlas.deinit();
     try std.testing.expectEqual(c.GHOSTTY_SUCCESS, c.ghostty_render_state_new(null, &r.state));
     defer c.ghostty_render_state_free(r.state);
@@ -1833,6 +1878,15 @@ const CountingSource = struct {
     }
 };
 
+/// The window of a test's render thread: one never drawn to.
+var test_window: u8 = 0;
+
+/// `run` on the test's own thread, with a link that no pane gives up.
+fn runHere(p: *Pane, draw: anytype) void {
+    var link: PaneMod.RenderLink = .{ .gpa = std.testing.allocator, .window = &test_window };
+    run(p, &link, draw);
+}
+
 /// The GL-free part of a render thread: what `buildFrame` makes of the pane's cell size and
 /// its rows, without a surface to draw to.
 const TestRenderer = struct {
@@ -1840,7 +1894,8 @@ const TestRenderer = struct {
 
     fn init(p: *Pane) !TestRenderer {
         const gpa = std.testing.allocator;
-        var t: TestRenderer = .{ .r = .{ .gpa = gpa, .pane = p, .atlas = .init(gpa), .glyphs_later = true } };
+        const link = try PaneMod.RenderLink.create(gpa, &test_window);
+        var t: TestRenderer = .{ .r = .{ .gpa = gpa, .pane = p, .link = link, .glyphs = p.glyphs, .atlas = .init(gpa), .glyphs_later = true } };
         errdefer t.deinit();
         if (c.ghostty_render_state_new(null, &t.r.state) != c.GHOSTTY_SUCCESS) return error.OutOfMemory;
         requestOverscan(t.r.state);
@@ -1873,6 +1928,7 @@ const TestRenderer = struct {
         t.r.missing_keys.deinit(gpa);
         t.r.waiting.deinit(gpa);
         t.r.shared_px.deinit(gpa);
+        t.r.link.destroy();
     }
 
     /// One frame without a window, as `buildFrame` makes it when the buffer does not answer:
@@ -2033,6 +2089,26 @@ test "missing glyphs are drawn after the build, once each, without the pane lock
     p.write("\xea\xb0\x80");
     try t.build();
     try std.testing.expectEqual(@as(usize, 4), source.calls);
+}
+
+test "a thread its pane gave up while it drew glyphs builds nothing more with the pane" {
+    // #159: the glyphs are drawn without the pane, which may give the thread up meanwhile and be
+    // freed. The rows that waited for them are built again with the pane: not by this thread.
+    var source: LockWatchingSource = .{};
+    const p = try Pane.create(std.testing.allocator, .{ .ctx = &source, .rasterize = LockWatchingSource.raster });
+    defer p.destroy();
+    p.setFontSizePx(10);
+    p.write("\xea\xb0\x80\r\nab");
+    var t = try TestRenderer.init(p);
+    defer t.deinit();
+    p.lock.lock();
+    try t.buildOnly();
+    p.lock.unlock();
+    try std.testing.expectEqual(@as(usize, 0), rowAt(&t.r, 0).?.fg.items.len);
+
+    try std.testing.expect(!t.r.link.waitEnd(0)); // the pane gives the thread up
+    try std.testing.expectError(error.GivenUp, completeFrame(&t.r));
+    try std.testing.expectEqual(@as(usize, 0), rowAt(&t.r, 0).?.fg.items.len); // the row still waits
 }
 
 test "a glyph drawn for one window is not drawn again for another: the panes share it" {
@@ -2685,7 +2761,7 @@ test "renderer: a failed frame that took the settle's last size does not take ag
     };
     var draw: Draw = .{ .r = &t.r, .pane = p, .builds = &.{ false, true } };
     const finger = try std.Thread.spawn(.{}, Finger.run, .{ p, &draw.failed });
-    run(p, &draw);
+    runHere(p, &draw);
     finger.join();
 
     try std.testing.expectEqual(@as(usize, 2), draw.built);
@@ -2734,7 +2810,7 @@ test "renderer: a frame the thread asked for itself wakes it when it is due, wit
     var done: std.atomic.Value(bool) = .init(false);
     var draw: Draw = .{ .pane = p };
     const watchdog = try std.Thread.spawn(.{}, Watchdog.run, .{ p, &done });
-    run(p, &draw);
+    runHere(p, &draw);
     done.store(true, .release);
     watchdog.join();
 

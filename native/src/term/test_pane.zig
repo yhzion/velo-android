@@ -887,14 +887,24 @@ test "attachStep: the same window keeps the renderer, another one replaces it, n
 test "attachRefs: the pane ends with one reference to the window it draws to and no other" {
     const Refs = P.AttachRefs;
     // In place: the pane has its reference already, so the one passed in is given up.
-    try std.testing.expectEqual(Refs{ .current = .held, .incoming = .released }, P.attachRefs(.keep, true));
+    try std.testing.expectEqual(Refs{ .current = .held, .incoming = .released }, P.attachRefs(.keep, true, false));
     // A new renderer runs: it draws to the window passed in, whose reference is the pane's now.
-    try std.testing.expectEqual(Refs{ .current = .released, .incoming = .held }, P.attachRefs(.replace, true));
+    try std.testing.expectEqual(Refs{ .current = .released, .incoming = .held }, P.attachRefs(.replace, true, false));
     // A new renderer that does not start draws to nothing: both are given up.
-    try std.testing.expectEqual(Refs{ .current = .released, .incoming = .released }, P.attachRefs(.replace, false));
+    try std.testing.expectEqual(Refs{ .current = .released, .incoming = .released }, P.attachRefs(.replace, false, false));
     // No window: there is none passed in, and the pane's own is given up.
-    try std.testing.expectEqual(P.Ref.released, P.attachRefs(.detach, true).current);
-    try std.testing.expectEqual(P.Ref.released, P.attachRefs(.detach, true).incoming);
+    try std.testing.expectEqual(P.Ref.released, P.attachRefs(.detach, true, false).current);
+    try std.testing.expectEqual(P.Ref.released, P.attachRefs(.detach, true, false).incoming);
+}
+
+test "attachRefs: the window of a render thread the pane gave up stays with that thread" {
+    const Refs = P.AttachRefs;
+    // #159: the thread's EGL surface is still on the window it drew to, so the pane keeps out
+    // of that reference; the thread gives it up if it ever ends. The one passed in is as before.
+    try std.testing.expectEqual(Refs{ .current = .thread, .incoming = .held }, P.attachRefs(.replace, true, true));
+    try std.testing.expectEqual(Refs{ .current = .thread, .incoming = .released }, P.attachRefs(.replace, false, true));
+    try std.testing.expectEqual(P.Ref.thread, P.attachRefs(.detach, true, true).current);
+    try std.testing.expectEqual(P.Ref.released, P.attachRefs(.detach, true, true).incoming);
 }
 
 /// References the panes of a test gave up, by window.
@@ -1031,6 +1041,8 @@ const FakeDraw = struct {
     presented: usize = 0,
     /// `settle_frames` as each build found it.
     settle: [8]u8 = @splat(0),
+    /// Its thread has ended (`drawMain`).
+    ended: std.atomic.Value(bool) = .init(false),
 
     /// With the pane lock held, as the renderer's own.
     pub fn build(f: *FakeDraw) bool {
@@ -1049,11 +1061,17 @@ const FakeDraw = struct {
     }
 };
 
+/// `Renderer.run` on the test's own thread, with a link that no pane gives up.
+fn runHere(p: *Pane, draw: anytype) void {
+    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    Renderer.run(p, &link, draw);
+}
+
 test "render loop: a window that does not take a frame ends the loop" {
     const p = try newPane();
     defer p.destroy();
     var draw: FakeDraw = .{ .pane = p, .builds = &.{ true, true, true, true }, .present_fails_at = 1 };
-    Renderer.run(p, &draw);
+    runHere(p, &draw);
     // The frame that failed was the last one built: nothing is drawn to a dead surface.
     try std.testing.expectEqual(@as(usize, 2), draw.built);
     try std.testing.expectEqual(@as(usize, 2), draw.presented);
@@ -1068,7 +1086,7 @@ test "render loop: frames after a resize count only when drawn" {
     // A build that fails inside the frames after a resize does not spend one of them.
     p.settle_frames = P.frames_after_resize;
     var draw: FakeDraw = .{ .pane = p, .builds = &.{ true, false, false, true, true, true } };
-    Renderer.run(p, &draw);
+    runHere(p, &draw);
     try std.testing.expectEqualSlices(u8, &.{ 3, 2, 2, 2, 1, 0 }, draw.settle[0..draw.built]);
     try std.testing.expectEqual(@as(usize, 4), draw.presented);
     try std.testing.expectEqual(@as(u8, 0), p.settle_frames);
@@ -1080,7 +1098,7 @@ test "render loop: frames after a resize count only when drawn" {
     p.wake = true;
     p.settle_frames = P.frames_after_resize;
     var idle: FakeDraw = .{ .pane = p, .builds = &.{false}, .output = false };
-    Renderer.run(p, &idle);
+    runHere(p, &idle);
     try std.testing.expect(!p.wake);
     try std.testing.expectEqual(P.frames_after_resize, p.settle_frames);
 
@@ -1088,7 +1106,7 @@ test "render loop: frames after a resize count only when drawn" {
     p.quit = false;
     p.wake = true;
     var one: FakeDraw = .{ .pane = p, .builds = &.{true}, .output = false };
-    Renderer.run(p, &one);
+    runHere(p, &one);
     try std.testing.expect(p.wake);
     try std.testing.expectEqual(P.frames_after_resize - 1, p.settle_frames);
 }
@@ -1138,7 +1156,7 @@ test "render loop: while the scroll offset waits to rest, the thread sleeps unti
     const thread = try std.Thread.spawn(.{}, Watchdog.watch, .{&watchdog});
     // No output, so nothing else wakes the thread: the offset's settle is due 150 ms after the pan.
     var draw: FakeDraw = .{ .pane = p, .builds = &.{ true, true, true }, .output = false };
-    Renderer.run(p, &draw);
+    runHere(p, &draw);
     watchdog.finished.store(true, .release);
     thread.join();
     try std.testing.expect(!watchdog.fired.load(.acquire)); // woken by the clock, not by the watchdog
@@ -1150,23 +1168,38 @@ test "render loop: a frame that could not be built does not make the thread try 
     const p = try paneWaitingToRest();
     defer p.destroy();
     var draw: FakeDraw = .{ .pane = p, .builds = &.{false} };
-    Renderer.run(p, &draw);
+    runHere(p, &draw);
     try std.testing.expectEqual(@as(usize, 1), draw.built);
     try std.testing.expectEqual(@as(f32, 0), p.scrollOffsetPx()); // the offset rests with the frame
 }
 
-fn runFake(p: *Pane, draw: *FakeDraw) void {
-    Renderer.run(p, draw);
+/// The body of a render thread with a drawing of the test's, for `Pane.startThread`: the loop,
+/// then the link's last act, as `Renderer.threadMain` has them without EGL. `D` says when the
+/// thread has ended (`ended`), after that last act.
+fn drawMain(comptime D: type) fn (*Pane, *P.RenderLink, *D) void {
+    return struct {
+        fn main(p: *Pane, link: *P.RenderLink, d: *D) void {
+            Renderer.run(p, link, d);
+            link.end();
+            d.ended.store(true, .release);
+        }
+    }.main;
+}
+
+/// Wait up to `ms` for a thread to say it has ended.
+fn waitEnded(ended: *const std.atomic.Value(bool), ms: u32) bool {
+    for (0..ms) |_| {
+        if (ended.load(.acquire)) return true;
+        std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
+    }
+    return ended.load(.acquire);
 }
 
 /// Start a render thread on `window_a` whose first frame the window does not take, and
 /// wait until it has said so.
 fn startFailingRenderer(p: *Pane, draw: *FakeDraw) !void {
     draw.* = .{ .pane = p, .builds = &.{ true, true, true, true }, .present_fails_at = 0 };
-    p.window = &window_a;
-    p.quit = false;
-    p.wake = true;
-    p.thread = try std.Thread.spawn(.{}, runFake, .{ p, draw });
+    try p.startThread(&window_a, 300, 200, drawMain(FakeDraw), .{draw});
     // About 5 s: a loop that ends without saying so must fail the test, not hang it.
     for (0..5000) |_| {
         p.lock.lock();
@@ -1208,6 +1241,283 @@ test "a render thread that ended by itself is joined by the next attach or detac
     try std.testing.expect(!p.render_failed);
     try Released.expect(3, 0);
     try std.testing.expectEqual(@as(usize, 0), Released.under_thread);
+}
+
+/// A drawing whose `present` does not return until the test lets it go, as a swap stuck in
+/// the platform (#117).
+const StuckDraw = struct {
+    lock: P.Lock = .{},
+    /// `present` was called and waits.
+    stuck: bool = false,
+    let_go: bool = false,
+    /// Its thread has ended (`drawMain`).
+    ended: std.atomic.Value(bool) = .init(false),
+
+    pub fn build(_: *StuckDraw) bool {
+        return true;
+    }
+
+    pub fn present(d: *StuckDraw) bool {
+        d.lock.lock();
+        defer d.lock.unlock();
+        d.stuck = true;
+        d.lock.signal();
+        while (!d.let_go) d.lock.wait();
+        return true;
+    }
+
+    /// Wait until `present` is stuck, 5 s at most.
+    fn waitStuck(d: *StuckDraw) !void {
+        d.lock.lock();
+        defer d.lock.unlock();
+        for (0..500) |_| {
+            if (d.stuck) return;
+            _ = d.lock.timedWait(10 * std.time.ns_per_ms);
+        }
+        if (!d.stuck) return error.TestUnexpectedResult;
+    }
+
+    fn letGo(d: *StuckDraw) void {
+        d.lock.lock();
+        defer d.lock.unlock();
+        d.let_go = true;
+        d.lock.signal();
+    }
+
+    /// Whatever the test found: let `present` go and give the thread time to end, so that the
+    /// thread does not outlive the test's stack.
+    fn finish(d: *StuckDraw) void {
+        d.letGo();
+        _ = waitEnded(&d.ended, 5000);
+    }
+};
+
+/// A drawing that draws the frame it is woken for and then waits for the next, as a renderer
+/// with nothing more to draw.
+const IdleDraw = struct {
+    presented: std.atomic.Value(usize) = .init(0),
+    /// Its thread has ended (`drawMain`).
+    ended: std.atomic.Value(bool) = .init(false),
+
+    pub fn build(_: *IdleDraw) bool {
+        return true;
+    }
+
+    pub fn present(d: *IdleDraw) bool {
+        _ = d.presented.fetchAdd(1, .release);
+        return true;
+    }
+
+    /// Wait until a frame went to the window, 5 s at most.
+    fn waitPresented(d: *IdleDraw) !void {
+        for (0..5000) |_| {
+            if (d.presented.load(.acquire) > 0) return;
+            std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
+        }
+        return error.TestUnexpectedResult;
+    }
+};
+
+/// Detach a pane whose render thread is stuck (`StuckDraw`) and say how long the detach took.
+/// A detach that waits for the thread for good would hang the test: past the bound and 3 s
+/// more, the stuck drawing is let go, and the test fails.
+fn detachStuck(p: *Pane, stuck: *StuckDraw) !i128 {
+    const Guard = struct {
+        stuck: *StuckDraw,
+        done: std.atomic.Value(bool) = .init(false),
+        fired: std.atomic.Value(bool) = .init(false),
+
+        fn run(g: *@This()) void {
+            const deadline = P.monoNow() + P.stop_wait_ns + 3 * std.time.ns_per_s;
+            while (!g.done.load(.acquire)) {
+                if (P.monoNow() >= deadline) {
+                    g.fired.store(true, .release);
+                    g.stuck.letGo();
+                    return;
+                }
+                var ts: std.c.timespec = .{ .sec = 0, .nsec = 5 * std.time.ns_per_ms };
+                _ = std.c.nanosleep(&ts, null);
+            }
+        }
+    };
+    var guard: Guard = .{ .stuck = stuck };
+    const thread = try std.Thread.spawn(.{}, Guard.run, .{&guard});
+    const start = P.monoNow();
+    p.detachSurface();
+    const waited = P.monoNow() - start;
+    guard.done.store(true, .release);
+    thread.join();
+    // The detach waited until the thread was let go: it would have waited for good.
+    if (guard.fired.load(.acquire)) return error.TestUnexpectedResult;
+    return waited;
+}
+
+const ms_ns = std.time.ns_per_ms;
+
+/// A test's allocator whose every allocation has pages of its own, unmapped when freed: a use
+/// after free faults at once (the test allocator unmaps only large ones). It counts what is
+/// still allocated, so a leak shows too.
+const Unmapping = struct {
+    live: std.atomic.Value(usize) = .init(0),
+
+    fn allocator(u: *Unmapping) std.mem.Allocator {
+        return .{ .ptr = u, .vtable = &vtable };
+    }
+
+    const vtable: std.mem.Allocator.VTable = .{ .alloc = alloc, .resize = resize, .remap = remap, .free = free };
+    const pages = std.heap.page_allocator;
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const u: *Unmapping = @ptrCast(@alignCast(ctx));
+        const ptr = pages.rawAlloc(len, alignment, ra) orelse return null;
+        _ = u.live.fetchAdd(1, .monotonic);
+        return ptr;
+    }
+
+    fn resize(_: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) bool {
+        return pages.rawResize(memory, alignment, new_len, ra);
+    }
+
+    fn remap(_: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        return pages.rawRemap(memory, alignment, new_len, ra);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ra: usize) void {
+        const u: *Unmapping = @ptrCast(@alignCast(ctx));
+        pages.rawFree(memory, alignment, ra);
+        _ = u.live.fetchSub(1, .monotonic);
+    }
+};
+
+test "render link: a thread inside the pane when the wait runs out is given up only once it leaves" {
+    // #159: a pane freed under a thread that reads it would be a use after free. A thread in the
+    // pane waits for nothing but the pane's lock there, so the wait for it to leave is short.
+    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    try std.testing.expect(link.enter());
+    const Leaver = struct {
+        fn run(l: *P.RenderLink) void {
+            var ts: std.c.timespec = .{ .sec = 0, .nsec = 150 * ms_ns };
+            _ = std.c.nanosleep(&ts, null);
+            l.leave();
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Leaver.run, .{&link});
+    const start = P.monoNow();
+    const ended = link.waitEnd(20 * ms_ns);
+    const waited = P.monoNow() - start;
+    thread.join();
+    try std.testing.expect(!ended);
+    try std.testing.expect(waited >= 100 * ms_ns); // not at 20 ms, while it was inside
+    // Given up, it never enters again.
+    try std.testing.expect(!link.enter());
+}
+
+test "render link: a thread that ends within the wait is not given up" {
+    var link: P.RenderLink = .{ .gpa = std.testing.allocator, .window = &window_a };
+    const Ender = struct {
+        fn run(l: *P.RenderLink) void {
+            var ts: std.c.timespec = .{ .sec = 0, .nsec = 20 * ms_ns };
+            _ = std.c.nanosleep(&ts, null);
+            l.end();
+        }
+    };
+    const thread = try std.Thread.spawn(.{}, Ender.run, .{&link});
+    const start = P.monoNow();
+    const ended = link.waitEnd(2000 * ms_ns);
+    const waited = P.monoNow() - start;
+    thread.join();
+    try std.testing.expect(ended);
+    try std.testing.expect(waited < 1000 * ms_ns); // at its end, not at the bound
+}
+
+test "a render thread that ends in time is joined, and its window given up after it ended" {
+    // #159 changes nothing here: the detach waits for the thread and joins it, as before.
+    Released.watch();
+    defer P.host_release = null;
+    const p = try newPane();
+    defer p.destroy();
+    Released.joined = p;
+    defer Released.joined = null;
+    var draw: IdleDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(IdleDraw), .{&draw});
+    try draw.waitPresented();
+
+    const start = P.monoNow();
+    p.detachSurface();
+    try std.testing.expect(P.monoNow() - start < P.stop_wait_ns / 2);
+    try std.testing.expect(draw.ended.load(.acquire)); // joined: it had ended when the detach returned
+    try std.testing.expectEqual(@as(?std.Thread, null), p.thread);
+    try Released.expect(1, 0);
+    try std.testing.expectEqual(@as(usize, 0), Released.under_thread);
+}
+
+test "a render thread stuck in the platform is given up after the bound, and its pane can be freed" {
+    // #159: main waits in a detach with Core.lock held (`surfaceDestroyed`), and velo-control does
+    // when the server closes a pane. A thread stuck in a swap (#117) must stop neither for good.
+    Released.watch();
+    defer P.host_release = null;
+    var unmapping: Unmapping = .{};
+    const p = try Pane.create(unmapping.allocator(), .{ .ctx = &dummy, .rasterize = noGlyph });
+    var freed = false;
+    defer if (!freed) p.destroy();
+    var stuck: StuckDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(StuckDraw), .{&stuck});
+    defer stuck.finish();
+    try stuck.waitStuck();
+
+    const waited = try detachStuck(p, &stuck);
+    try std.testing.expect(waited >= P.stop_wait_ns);
+    try std.testing.expect(waited < P.stop_wait_ns + 500 * ms_ns);
+    try std.testing.expectEqual(@as(?std.Thread, null), p.thread);
+    try std.testing.expectEqual(@as(?*anyopaque, null), p.window);
+    // The thread's EGL surface is still on its window: the pane keeps out of that reference.
+    try Released.expect(0, 0);
+
+    // The pane goes while the thread is still stuck, as when the server closes it.
+    p.destroy();
+    freed = true;
+    // The swap returns at last. The thread ends without the freed pane, whose pages are gone (a
+    // touch would fault), and gives up its window's reference itself, once. The link it shared
+    // with the pane is its to free: nothing is left allocated.
+    stuck.letGo();
+    try std.testing.expect(waitEnded(&stuck.ended, 5000));
+    try Released.expect(1, 0);
+    try std.testing.expectEqual(@as(usize, 0), unmapping.live.load(.monotonic));
+}
+
+test "after giving a render thread up, a pane starts and stops the next one as usual, untouched by it" {
+    Released.watch();
+    defer P.host_release = null;
+    const p = try newPane();
+    defer p.destroy();
+    var stuck: StuckDraw = .{};
+    try p.startThread(&window_a, 300, 200, drawMain(StuckDraw), .{&stuck});
+    defer stuck.finish();
+    try stuck.waitStuck();
+    _ = try detachStuck(p, &stuck);
+
+    // The next attach starts a new thread, on another window.
+    var next: IdleDraw = .{};
+    try p.startThread(&window_b, 300, 200, drawMain(IdleDraw), .{&next});
+    try next.waitPresented();
+
+    // The thread given up ends now, while the test holds the pane's lock: one that took the
+    // lock again would not end.
+    p.lock.lock();
+    stuck.letGo();
+    const ended = waitEnded(&stuck.ended, 1000);
+    p.lock.unlock();
+    try std.testing.expect(ended);
+    try Released.expect(1, 0); // its own window's reference, from the thread
+
+    // The new thread runs on as it did, and stops at once when asked.
+    try std.testing.expect(!p.render_failed);
+    try std.testing.expect(!next.ended.load(.acquire));
+    const start = P.monoNow();
+    p.detachSurface();
+    try std.testing.expect(P.monoNow() - start < P.stop_wait_ns / 2);
+    try std.testing.expect(next.ended.load(.acquire));
+    try Released.expect(1, 1);
 }
 
 test "box drawing classification and geometry" {
