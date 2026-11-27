@@ -1143,19 +1143,21 @@ private fun ShownCaption(conn: HostConnection, connected: Boolean, host: String,
         derivedStateOf { conn.state.let { shownWindow(it)?.row(it, it.session.orEmpty(), true) } }
     }
     // The zoomed tab's minimap (#141). One `zoom` switches: the server focuses the pane, which ends the old zoom,
-    // and zooms it in the same call, so the split tab is never shown between them.
+    // and zooms it in the same call, so the split tab is never shown between them. It holds no pane's name, so a
+    // hidden pane's new title composes nothing; the open picker reads the names.
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val zoom by remember(conn, connected, rtl) {
         derivedStateOf {
             conn.state.let { s ->
                 shownWindow(s)?.let { w ->
-                    zoomMap(s, w, rtl) { block -> conn.activityReadState.activity(w.paneRow(s, s.session.orEmpty(), block), connected).badge }
+                    zoomMap(w, rtl) { block -> conn.activityReadState.activity(w.paneRow(s, s.session.orEmpty(), block), connected).badge }
                 }
             }
         }
     }
     PaneCaption(row, connected, conn.activityReadState, host = host, modifier = modifier, compact = compact,
-        zoom = zoom, onZoom = { conn.op("zoom", "block" to it) })
+        zoom = zoom, paneName = { block -> conn.state.let { s -> shownWindow(s)?.let { zoomPaneName(s, it, block) }.orEmpty() } },
+        onZoom = { conn.op("zoom", "block" to it) })
 }
 
 @Composable

@@ -52,28 +52,28 @@ class ZoomMinimapTest {
 
     @Test
     fun `a tab without a zoom on a tiled pane has no minimap`() {
-        assertNull(zoomMap(state, tab.copy(zoomed = null), false) { null })
+        assertNull(zoomMap(tab.copy(zoomed = null), false) { null })
         val floating = tab.copy(zoomed = "f", floating = listOf(FloatingLayer("f")))
-        assertNull(zoomMap(state, floating, false) { null })
+        assertNull(zoomMap(floating, false) { null })
     }
 
     @Test
     fun `the zoomed pane is numbered in layout order, as the pane menu numbers it`() {
-        val map = zoomMap(state, tab, false) { null }!!
+        val map = zoomMap(tab, false) { null }!!
         assertEquals("b", map.zoomed)
         assertEquals(2, map.number)
         assertEquals(3, map.count)
         assertEquals("Full Screen 2/3", zoomLabel(map))
         assertEquals("Full screen, pane 2 of 3. Show panes", zoomMinimapDescription(map))
         // A floating pane is no cell, but the tiled ones keep their numbers: they come first in the tab.
-        val withFloating = zoomMap(state, tab.copy(floating = listOf(FloatingLayer("f"))), false) { null }!!
+        val withFloating = zoomMap(tab.copy(floating = listOf(FloatingLayer("f"))), false) { null }!!
         assertEquals(listOf("a", "b", "c"), withFloating.cells.map { it.block })
         assertEquals(paneLabel(tabBlocks(tab), "b"), "Pane ${withFloating.number}")
     }
 
     @Test
     fun `next and previous go round the layout order`() {
-        val map = zoomMap(state, tab, false) { null }!!
+        val map = zoomMap(tab, false) { null }!!
         assertEquals("c", map.step(1))
         assertEquals("a", map.step(-1))
         val last = map.copy(zoomed = "c")
@@ -84,7 +84,7 @@ class ZoomMinimapTest {
 
     @Test
     fun `a swipe toward the line's start brings the next pane, mirrored in RTL`() {
-        val map = zoomMap(state, tab, false) { null }!!
+        val map = zoomMap(tab, false) { null }!!
         assertEquals("c", map.swiped(-30f, rtl = false))
         assertEquals("a", map.swiped(30f, rtl = false))
         assertEquals("a", map.swiped(-30f, rtl = true))
@@ -93,13 +93,14 @@ class ZoomMinimapTest {
 
     @Test
     fun `cells are named after their own pane and marked with its unseen report, the zoomed one never`() {
-        val map = zoomMap(state, tab, false) { block -> TabIndicator.Done.takeIf { block != "a" } }!!
-        assertEquals(listOf("claude", "build", "logcat"), map.cells.map { it.name })
+        val map = zoomMap(tab, false) { block -> TabIndicator.Done.takeIf { block != "a" } }!!
+        assertEquals("w", map.tab)
+        assertEquals(listOf("claude", "build", "logcat"), map.cells.map { zoomPaneName(state, tab, it.block) })
         assertEquals(listOf(null, null, TabIndicator.Done), map.cells.map { it.alert })
-        assertEquals("Pane 3 of 3, logcat, Completed", zoomCellDescription(map, 2, map.cells[2]))
-        assertEquals("Pane 1 of 3, claude", zoomCellDescription(map, 0, map.cells[0]))
+        assertEquals("Pane 3 of 3, logcat, Completed", zoomCellDescription(map, 2, map.cells[2], "logcat"))
+        assertEquals("Pane 1 of 3, claude", zoomCellDescription(map, 0, map.cells[0], "claude"))
         assertEquals("Pane 3, Completed", zoomMinimapState(map))
-        assertNull(zoomMinimapState(zoomMap(state, tab, false) { null }!!))
+        assertNull(zoomMinimapState(zoomMap(tab, false) { null }!!))
     }
 
     @Test
@@ -111,7 +112,7 @@ class ZoomMinimapTest {
         // The zoomed pane is on screen: its report is read.
         reads.show(Any(), mapOf(PaneAddress("s", "w", "b") to state.blocks["b"]))
         reads.update(PaneAddress("s", "w", "b"), mapOf("turn" to SeenReport("done", time)))
-        val map = zoomMap(state, tab, false) { block -> reads.activity(tab.paneRow(state, "s", block), true).badge }!!
+        val map = zoomMap(tab, false) { block -> reads.activity(tab.paneRow(state, "s", block), true).badge }!!
         assertEquals(listOf(TabIndicator.Question, null, TabIndicator.Done), map.cells.map { it.alert })
     }
 

@@ -9,17 +9,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -38,6 +40,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -68,11 +71,15 @@ import kotlin.math.max
  * zooms the next or previous pane. Only the composables at the end touch Compose; the rules above them are tested.
  */
 
-/** A pane of a zoomed tab: its [rect] in a unit square, its [name] ([paneRow]) and the [alert] of a report not yet seen. */
-internal data class ZoomCell(val block: String, val rect: PaneRect, val name: String, val alert: TabIndicator?)
+/**
+ * A pane of a zoomed tab: its [rect] in a unit square and the [alert] of a report not yet seen. Its name is not
+ * here: the caption holds this all the time, and a hidden pane's title can change many times a second, so only
+ * the open picker reads it ([zoomPaneName]).
+ */
+internal data class ZoomCell(val block: String, val rect: PaneRect, val alert: TabIndicator?)
 
-/** A zoomed tab as its minimap draws it: the [zoomed] pane among [cells], in layout order. */
-internal data class ZoomMap(val zoomed: String, val cells: List<ZoomCell>) {
+/** The zoomed [tab] as its minimap draws it: the [zoomed] pane among [cells], in layout order. */
+internal data class ZoomMap(val tab: String, val zoomed: String, val cells: List<ZoomCell>) {
     /** The zoomed pane's number, from 1, as the pane menu numbers it ([paneLabel]): the tiled panes come first. */
     val number: Int get() = cells.indexOfFirst { it.block == zoomed } + 1
     val count: Int get() = cells.size
@@ -95,19 +102,19 @@ internal fun zoomCells(window: WindowInfo, rtl: Boolean): List<PaneRect> =
     paneRects(window.copy(zoomed = null), 1f, 1f, 0f, rtl)
 
 /**
- * The minimap of [window], or null while it is not zoomed on one of its tiled panes. A cell is named and marked as
- * its pane alone ([paneRow]); [alert] gives the report of a pane not yet seen ([TabActivity.badge]). The zoomed pane
- * is on screen, so its cell shows none.
+ * The minimap of [window], or null while it is not zoomed on one of its tiled panes. [alert] gives the report of a
+ * pane not yet seen ([TabActivity.badge] of its [paneRow]). The zoomed pane is on screen, so its cell shows none.
  */
-internal fun zoomMap(state: UiState, window: WindowInfo, rtl: Boolean, alert: (String) -> TabIndicator?): ZoomMap? {
+internal fun zoomMap(window: WindowInfo, rtl: Boolean, alert: (String) -> TabIndicator?): ZoomMap? {
     val zoomed = window.zoomed ?: return null
     val rects = zoomCells(window, rtl)
     if (rects.none { it.block == zoomed }) return null
-    val session = state.session.orEmpty()
-    return ZoomMap(zoomed, rects.map { r ->
-        ZoomCell(r.block, r, window.paneRow(state, session, r.block).name, if (r.block == zoomed) null else alert(r.block))
-    })
+    return ZoomMap(window.id, zoomed, rects.map { r -> ZoomCell(r.block, r, if (r.block == zoomed) null else alert(r.block)) })
 }
+
+/** The name of [block] of [window] in the picker: its pane's alone ([paneRow]), without the tab's label. */
+internal fun zoomPaneName(state: UiState, window: WindowInfo, block: String): String =
+    window.paneRow(state, state.session.orEmpty(), block).name
 
 /** The caption's short line beside the minimap. */
 internal fun zoomLabel(map: ZoomMap): String = "Full Screen ${map.number}/${map.count}"
@@ -119,9 +126,9 @@ internal fun zoomMinimapDescription(map: ZoomMap): String = "Full screen, pane $
 internal fun zoomMinimapState(map: ZoomMap): String? = map.cells.withIndex().filter { it.value.alert != null }
     .takeIf { it.isNotEmpty() }?.joinToString("; ") { (i, cell) -> "Pane ${i + 1}, ${cell.alert!!.description}" }
 
-/** What a screen reader says for [cell], the [index]th of the picker's cells. */
-internal fun zoomCellDescription(map: ZoomMap, index: Int, cell: ZoomCell): String =
-    "Pane ${index + 1} of ${map.count}, ${cell.name}" + cell.alert?.let { ", ${it.description}" }.orEmpty()
+/** What a screen reader says for [cell], the [index]th of the picker's cells, its pane [name]d so. */
+internal fun zoomCellDescription(map: ZoomMap, index: Int, cell: ZoomCell, name: String): String =
+    "Pane ${index + 1} of ${map.count}, $name" + cell.alert?.let { ", ${it.description}" }.orEmpty()
 
 /**
  * The picker's map ([cells] scaled to it) in dp: at least [width] by [height], and grown so that the narrowest and the
@@ -148,16 +155,20 @@ private const val TargetDp = 48f
 
 /**
  * The minimap of a zoomed tab ([ZoomMap]) at the caption's end, [height] board units high in board [unit]s, and
- * its picker. A tap opens the picker above the caption, a horizontal swipe zooms the next or previous pane; both
- * call [onZoom] with the pane to zoom.
+ * its picker, which names the panes with [name]. A tap opens the picker above the caption, a horizontal swipe zooms
+ * the next or previous pane; both call [onZoom] with the pane to zoom. While it is not [enabled] (no server to send
+ * the zoom to) it only shows the panes: it takes no tap or swipe, and an open picker closes. Another tab closes it too.
  */
 @Composable
-internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, onZoom: (String) -> Unit) {
+internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, enabled: Boolean, name: (String) -> String, onZoom: (String) -> Unit) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val feel = rememberFeel()
     val current by rememberUpdatedState(map)
     val zoom by rememberUpdatedState(onZoom)
-    var open by remember { mutableStateOf(false) }
+    val live by rememberUpdatedState(enabled)
+    // The tab the picker was opened for: another tab, or the connection going, closes it.
+    var openFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(enabled) { if (!enabled) openFor = null }
     var at by remember { mutableStateOf<IntRect?>(null) }
     val shape = rounded(unit * 6 * height / MiniHeight)
     val sheet = VeloTheme.colors.sheet
@@ -172,15 +183,19 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, onZoom: (String)
                 contentDescription = zoomMinimapDescription(map)
                 zoomMinimapState(map)?.let { stateDescription = it }
                 role = Role.Button
-                onClick { open = true; true }
-                customActions = listOf(
-                    CustomAccessibilityAction("Next pane") { zoom(current.step(1)); true },
-                    CustomAccessibilityAction("Previous pane") { zoom(current.step(-1)); true },
-                )
+                if (!enabled) disabled()
+                else {
+                    onClick { openFor = current.tab; true }
+                    customActions = listOf(
+                        CustomAccessibilityAction("Next pane") { zoom(current.step(1)); true },
+                        CustomAccessibilityAction("Previous pane") { zoom(current.step(-1)); true },
+                    )
+                }
             }
             .pointerInput(rtl) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
+                    if (!live) return@awaitEachGesture
                     var swiping = false
                     while (true) {
                         val event = awaitPointerEvent()
@@ -192,7 +207,7 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, onZoom: (String)
                             if (swiping) {
                                 feel(Feel.Step)
                                 zoom(current.swiped(dx, rtl))
-                            } else if (!change.isConsumed) open = true
+                            } else if (!change.isConsumed) openFor = current.tab
                             break
                         }
                     }
@@ -220,8 +235,9 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, onZoom: (String)
             },
     )
     val density = LocalDensity.current
+    // A cell's target is inside the room around it.
     val (mapW, mapH) = zoomPickerSize(map.cells.map { it.rect }, VeloTheme.medium(PickerWidth.dp).value,
-        VeloTheme.medium(PickerHeight.dp).value, TargetDp)
+        VeloTheme.medium(PickerHeight.dp).value, TargetDp + 2 * VeloTheme.medium(PickerCellInset.dp).value)
     val padding = VeloTheme.sizes.overlayPadding
     // Above the caption, its end at the minimap's end: an anchor that reaches the screen's bottom leaves no room under it.
     val anchor = {
@@ -231,9 +247,9 @@ internal fun ZoomMinimap(map: ZoomMap, unit: Dp, height: Float, onZoom: (String)
             IntRect(left, mini.top, left + width, Int.MAX_VALUE / 2)
         }
     }
-    VeloPopover(open, onDismissRequest = { open = false }, modifier = Modifier.testTag("minimap-picker"), anchor = anchor) {
-        ZoomPicker(map, mapW.dp, mapH.dp) { block ->
-            open = false
+    VeloPopover(enabled && openFor == map.tab, onDismissRequest = { openFor = null }, modifier = Modifier.testTag("minimap-picker"), anchor = anchor) {
+        ZoomPicker(map, mapW.dp, mapH.dp, name) { block ->
+            openFor = null
             if (block != map.zoomed) zoom(block)
         }
     }
@@ -246,9 +262,12 @@ private fun dotTint(dot: TileDot, unread: Color, waiting: Color, failed: Color):
     TileDot.Failed -> failed
 }
 
-/** The picker (`.pop`): its title, then a button per pane where the layout puts it, [width] by [height]. */
+/**
+ * The picker (`.pop`): its title, then a button per pane where the layout puts it, [width] by [height], named with
+ * [name]. The cells are placed as [ZoomMap] has them, already mirrored in RTL.
+ */
 @Composable
-private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, onPick: (String) -> Unit) {
+private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, name: (String) -> String, onPick: (String) -> Unit) {
     val c = VeloTheme.surface
     val sheet = VeloTheme.colors.sheet
     val unit = VeloTheme.medium(1.dp)
@@ -257,21 +276,23 @@ private fun ZoomPicker(map: ZoomMap, width: Dp, height: Dp, onPick: (String) -> 
         for ((index, cell) in map.cells.withIndex()) {
             val r = cell.rect
             val on = cell.block == map.zoomed
+            val named = name(cell.block)
             Box(
-                Modifier.offset(width * r.left, height * r.top).size(width * r.width, height * r.height)
+                // From the left edge, not the line's start: the rectangles are mirrored already.
+                Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset(width * r.left, height * r.top).size(width * r.width, height * r.height)
                     .padding(unit * PickerCellInset).testTag("minimap-picker-cell-${cell.block}")
                     .background(if (on) c.accent else c.glass, rounded(unit * 7))
                     .then(if (on) Modifier else Modifier.border(VeloTheme.sizes.edge, c.glassEdge, rounded(unit * 7)))
                     .clickable(role = Role.Button) { onPick(cell.block) }
                     .semantics {
-                        contentDescription = zoomCellDescription(map, index, cell)
+                        contentDescription = zoomCellDescription(map, index, cell, named)
                         selected = on
                     }
                     .padding(unit * 7),
             ) {
                 Column(Modifier.align(Alignment.BottomStart).clearAndSetSemantics { },
                     verticalArrangement = Arrangement.spacedBy(unit * 2)) {
-                    Text(cell.name, color = if (on) c.onAccent else c.text, style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium),
+                    Text(named, color = if (on) c.onAccent else c.text, style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("Pane ${index + 1}", color = if (on) c.onAccent.copy(alpha = 0.7f) else c.secondary, style = VeloTheme.type.caption,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)

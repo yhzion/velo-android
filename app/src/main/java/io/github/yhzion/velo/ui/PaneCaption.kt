@@ -39,12 +39,13 @@ internal const val CaptionTile = 18f
  * tile's box when it draws a tile.
  *
  * While the tab is zoomed ([zoom]) its end shows "Full Screen n/m" and the tab's minimap ([ZoomMinimap]), which
- * calls [onZoom] with the pane to zoom instead; the minimap stands for the panes, so the tile draws one (#141).
+ * names a pane with [paneName] and calls [onZoom] with the pane to zoom instead, while [connected]; the minimap
+ * stands for the panes, so the tile draws one (#141).
  */
 @Composable
 internal fun PaneCaption(
     row: TabRow?, connected: Boolean, readState: ActivityReadState, host: String, modifier: Modifier = Modifier,
-    compact: Boolean = false, zoom: ZoomMap? = null, onZoom: (String) -> Unit = {},
+    compact: Boolean = false, zoom: ZoomMap? = null, paneName: (String) -> String = { "" }, onZoom: (String) -> Unit = {},
 ) = VeloSurface(VeloTheme.colors.backdrop) {
     val activity = row?.let { readState.activity(it, connected) }
     val tile = if (row != null && activity != null) tabTile(row, activity).let { if (zoom != null) it.copy(panes = 1) else it } else null
@@ -69,7 +70,8 @@ internal fun PaneCaption(
                 Text(zoomLabel(map), Modifier.testTag("caption-zoom-label").clearAndSetSemantics { },
                     color = VeloTheme.surface.accent, style = VeloTheme.type.caption.naturalLines(), maxLines = 1)
                 // As high as the board's 30 in the caption's 40; in the compact row, as high as the tile's box it keeps.
-                ZoomMinimap(map, unit, height = if (compact) tileBox(CaptionTile) else MinimapHeight, onZoom = onZoom)
+                ZoomMinimap(map, unit, height = if (compact) tileBox(CaptionTile) else MinimapHeight, enabled = connected,
+                    name = paneName, onZoom = onZoom)
             }
         },
     )
