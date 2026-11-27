@@ -5,7 +5,8 @@
 set -euo pipefail
 source "$(dirname "$0")/perf.env"
 rex window focus -s "$VELO_PERF_SESSION" 1
-"$ADB" shell "am force-stop $VELO_PKG; monkey -p $VELO_PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1"
+# Not `monkey`: it unlocks the screen rotation as it ends, and the scenes need landscape.
+"$ADB" shell "am force-stop $VELO_PKG; am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n $VELO_PKG/.MainActivity >/dev/null"
 for _ in $(seq 1 30); do
   sleep 1
   if "$PERF_DIR/ui.sh" 2>/dev/null | grep -q "Connection: Connected"; then break; fi

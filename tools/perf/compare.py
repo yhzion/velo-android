@@ -19,8 +19,8 @@ for path in sys.argv[1:]:
     tp = TraceProcessor(trace=path)
     q = lambda s: list(tp.query(s))
     one = lambda s: q(s)[0].v or 0
-    up = ",".join(str(r.upid) for r in q(f"select upid from process where (name = '{PKG}' or name like '{PKG}:%')"))
-    pid = q(f"select pid from process where (name = '{PKG}' or name like '{PKG}:%') order by upid")[0].pid
+    up = ",".join(str(r.upid) for r in q(f"select upid from process where (name = '{PKG}' or substr(name, 1, length('{PKG}') + 1) = '{PKG}:')"))
+    pid = q(f"select pid from process where (name = '{PKG}' or substr(name, 1, length('{PKG}') + 1) = '{PKG}:') order by upid")[0].pid
     on = f"from slice s join thread_track tt on s.track_id = tt.id join thread t using(utid) where t.upid in ({up})"
     presents = one(f"select count(*) v {on} and s.name = 'Renderer.present'")
     same = one(f"select count(*) v {on} and s.name = 'Renderer.unchanged'")

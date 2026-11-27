@@ -17,6 +17,7 @@
 # the LG Velvet in landscape (2460 x 1080 px, 95 columns); set the PERF_* variables below for
 # another screen. The rail's Overview button moves with the buttons above it: unless
 # PERF_TAP_OVERVIEW is set, the scenes that open the overview find it on the screen first.
+# A device that is not in landscape stops the scenes (PERF_ANY_ROTATION=1 lets it through).
 set -euo pipefail
 source "$(dirname "$0")/perf.env"
 : "${PERF_COLS:=95}"
@@ -32,7 +33,7 @@ export PERF_COLS PERF_TAP_PANE_MENU PERF_SWIPE_MENU PERF_TAP_LARGER PERF_TAP_RES
   PERF_TAP_OVERVIEW PERF_TAP_CARD PERF_SWIPE_NEXT PERF_SWIPE_BACK PERF_DIR ADB
 export -f perf_send
 
-[ $# -ge 1 ] || { sed -n '2,19p' "$0"; exit 2; }
+[ $# -ge 1 ] || { sed -n '2,20p' "$0"; exit 2; }
 PREFIX=$1
 shift
 SCENES=("$@")
@@ -118,8 +119,23 @@ tabs_steps() {
 }
 export -f menu textsize_steps overview_steps overview_out_steps tabs_steps
 
+# The default taps are for landscape: in portrait the swipes start off the screen and the
+# scenes record something else, without an error. Checked with the app in front (the home
+# screen may hold the device in portrait). PERF_ANY_ROTATION=1, with taps of your own, skips it.
+require_landscape() {
+  [ -n "${PERF_ANY_ROTATION:-}" ] && return
+  local size w h
+  size=$("$ADB" shell dumpsys window displays | grep -m1 -oE 'cur=[0-9]+x[0-9]+' || true)
+  w=${size#cur=}; w=${w%x*}; h=${size#*x}
+  if [ -z "$size" ] || [ "$w" -le "$h" ]; then
+    echo "the device is not in landscape (${size:-no size}); turn it, or set PERF_ANY_ROTATION=1" >&2
+    exit 1
+  fi
+}
+
 for scene in "${SCENES[@]}"; do
   "$PERF_DIR/cold.sh"
+  require_landscape
   case $scene in
     ko2350) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 11 send1 "$LOAD ko 8 30 $PERF_COLS" ;;
     prose) "$PERF_DIR/trace.sh" "$PREFIX-$scene" 11 send1 "$(prose 8 30)" ;;
