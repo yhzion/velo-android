@@ -71,6 +71,8 @@ internal object Speech {
     /**
      * The virtual view id of [info]'s child at [index]; null for a view of its own, such as a pane's surface in an
      * AndroidView (#174): its high half is the host's id, and read as a node of this provider it would be the root again.
+     * So the scans skip a real View's subtree inside an AndroidView (a TextView of TerminalReader, a pane's surface),
+     * which an accessibility service reads when its views matter for accessibility; only the Compose nodes around it are heard.
      */
     private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int? {
         // AccessibilityNodeInfo keeps each child, and its own source, as a long whose high half is the

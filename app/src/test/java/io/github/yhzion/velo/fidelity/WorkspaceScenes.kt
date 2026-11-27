@@ -230,13 +230,14 @@ private fun WorkspaceBoard(sidebar: SidebarPlace?, paneMenu: Boolean, down: Bool
     val conn = rememberFakeConnection(if (down) panes.copy(status = "error") else panes)
     val overview = rememberOverviewState(conn, remember { OverviewCarry() }) {}
     // Opened once the core's state is in and the stage has its tabs, as a person or a screen reader opens it in the app.
+    // A screen that does not open fails the scene, so no scan reads a shut stage as the screen.
     if (view.overview) LaunchedEffect(conn, view) {
         snapshotFlow { conn.connected }.first { it }
         while (overview.tabs.isEmpty()) withFrameNanos {}
         when (view) {
             SceneView.Overview -> overview.open()
-            SceneView.Drum -> overview.openWheel()
-            else -> overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)
+            SceneView.Drum -> checkNotNull(overview.openWheel()) { "The drum did not open" }
+            else -> check(overview.startPaneMove(conn.state.windows, conn.connected, checkNotNull(conn.state.focused), root = null)) { "The pane move did not start" }
         }
     }
     var menuOpen by remember { mutableStateOf(false) }
