@@ -270,6 +270,7 @@ A value given at Medium is the redesign's; the Large value is it divided by 0.85
 | `overlay` | 32 | A dialog, popover or the palette (Tokens board "dialog"). |
 | `card` | 16 | A card: the raised card on the sheet, a glass card inside a dialog (Tokens board "card"). |
 | `bar` | 28 | The key bar strip, a capsule 56 high (KeyBar board). |
+| `key` | 6 | A key's cap on the key bar, a touch bar's key (#142; the pinch ladder mockup's 6). |
 | `tile` | 8 | A tab tile of 30 (Tokens board "tile": the tile's size times 0.27; `TabTile` computes it from its size). |
 | `badge` | 11 | A small badge, such as a license's name (Tokens board "badge"). |
 | `group` | 12 | A group of setting rows (Tokens board "group"). |
@@ -309,8 +310,10 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `rail` | 60 at Medium | The rail: a control and 6 on each side (Rail board); never narrower than that at any size. |
 | `keyBar` | 56 at Medium | The key bar strip (KeyBar board). |
 | `keyBarMax` | 560 at Medium | The widest the key bar grows, in the middle of a wide pane column (WsOpenPanes board). |
-| `key` | 32 at Medium | The least width of a key's cap (KeyBar board). A key takes the taps in its share of the bar, up to halfway to the next key. |
-| `keyHeight` | 48 at Medium | A key's height in the strip (KeyBar board); a modifier's cap is a pill 40 high inside it. |
+| `key` | 32 at Medium | The least width of a key's cap (KeyBar board). Every cap takes the same share of the bar (#142); a key takes the taps up to halfway to the next key. |
+| `keyHeight` | 48 at Medium | A key's height in the strip, the height that takes its taps (KeyBar board). |
+| `keyCap` | 40 at Medium, never above `keyHeight` | A key's cap inside the strip (#142; the latched pill's 40). |
+| `keyGap` | 5 at Medium | Between two caps on the key bar (#142; the pinch ladder mockup's 5). |
 | `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
 | `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style. |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |
@@ -757,7 +760,7 @@ Each reads the colours of the surface it is on. Every icon-only control takes a
 | Button inside a row | `RowIconButton(icon, contentDescription: String, onClick, modifier = Modifier, enabled = true)` | the 36 dp chevron and `…` boxes of `HostHeader` (`ui/Sidebar.kt:327,333`) |
 | Section header | `SectionHeader(text: String, modifier = Modifier, onClick: (() -> Unit)? = null, onClickLabel: String? = null, trailing: (@Composable RowScope.() -> Unit)? = null)` | the session label and "FOUND ON TAILNET" texts (`ui/Sidebar.kt:190,210`), `Section` (`ui/SettingsScreen.kt:94`) |
 | Status mark | `StatusMark(status: Status, contentDescription: String, modifier = Modifier, icon: ImageVector? = null)`, `enum class Status { Ok, Warning, Danger, Active, Off }` | `ConnectionDot` (`ui/Sidebar.kt:354`), the node's dot in `DeviceHeader` (`:286-288`), the activity dot (`:366-369`), `LinkGlyph` (`ui/Rail.kt:50`, with `icon`). A dot or a glyph; it takes no tap |
-| Key cap | `KeyCap(label: String, onClick, modifier = Modifier, armed = false, icon: ImageVector? = null, contentDescription: String? = null, enabled = true)` | the key `Box` of `KeyBar` (`ui/KeyBar.kt:69-73`); `armed` is Ctrl waiting for its letter; with `icon` the arrow is drawn and `label` is spoken; `enabled` false (the connection is down) draws it in `disabled`, unfilled, and takes no tap |
+| Key cap | `KeyCap(label: String, onClick, modifier = Modifier, armed = false, contentDescription: String? = null, enabled = true, holdRepeat = false, onRepeat = onClick, capInsets = PaddingValues(), capModifier = Modifier)` | the key `Box` of `KeyBar` (`ui/KeyBar.kt:69-73`); a `glass` cap of `radii.key` (#142), `glassSelected` while pressed or focused; `armed` is Ctrl waiting for its letter, the cap in `accent`; an arrow's glyph is drawn and `label` is spoken; `enabled` false (the connection is down) keeps the glass, draws the label in `disabled` and takes no tap |
 | Key bar strip | `KeyStrip(modifier = Modifier, content: @Composable RowScope.() -> Unit)` | the `BoxWithConstraints` of `KeyBar` (`ui/KeyBar.kt:60`); the scrolling and the fades stay with `KeyBar` |
 | Button | `VeloButton(text: String, onClick, modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled = true, small = false, icon: Painter? = null, iconAtEnd = false, row = false, danger = false, tag: String? = null)`, `enum class ButtonKind { Primary, Secondary, Destructive, Text }` | Controls board: Primary is the accent's fill (one per screen), Secondary glass with a rim, Destructive a red rim at 50 % with `dangerText`, Text the accent's words (44 high, 8 at each side; 12 with `row`). Not enabled: the `selected` fill with `disabled` words. `small` is the 40 high button of a list row; `row` the 44 high one at the end of a settings row (Edit order, Copy). `danger` sets a Text button's words in `dangerText` (Remove). Words and `row` buttons lay out at their height; the others at 48. Compose's hit testing gives every button a 48 dp touch target; the caller's modifier (a test tag, semantics) applies inside it, to the button drawn. `tag` names the drawn button |
 | Update dot | `AttentionBadge(tint: Color, modifier = Modifier, ring: Color = VeloTheme.surface.surface)` | a flat dot in a 2 ring of what it sits on (Controls board, sample-update-dot); size it with `sizes.dot` |
