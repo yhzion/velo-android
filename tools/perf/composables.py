@@ -20,7 +20,7 @@ limit = int(sys.argv[2]) if len(sys.argv) > 2 else 40
 rows = list(tp.query(f"""
   with s as (select s.id, s.dur, s.name, s.depth from slice s
              join thread_track tt on s.track_id = tt.id join thread t using(utid) join process p using(upid)
-             where p.name like '{PKG}%' and t.tid = p.pid and s.name like '%.kt:%')
+             where (p.name = '{PKG}' or p.name like '{PKG}:%') and t.tid = p.pid and s.name like '%.kt:%')
   select s.name, count(*) n, sum(s.dur) incl,
          sum(s.dur - ifnull((select sum(c.dur) from slice c where c.parent_id = s.id), 0)) self,
          min(s.depth) d

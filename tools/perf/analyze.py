@@ -37,7 +37,7 @@ def row(label, durs, extra=""):
 def analyze(path):
     tp = TraceProcessor(trace=path)
     q = lambda sql: list(tp.query(sql))
-    procs = q(f"select upid, pid from process where name like '{PKG}%' order by upid")
+    procs = q(f"select upid, pid from process where (name = '{PKG}' or name like '{PKG}:%') order by upid")
     if not procs:
         print(f"{path}: no {PKG} process")
         return

@@ -19,7 +19,7 @@ rows = tp.query(
     f"""select s.name, count(*) as n, sum(s.dur) as total, max(s.dur) as mx, min(s.depth) as d
         from slice s join thread_track tt on s.track_id = tt.id join thread t using(utid)
         join process p using(upid)
-        where p.name like '{PKG}%' and t.name = '{tname}'
+        where (p.name = '{PKG}' or p.name like '{PKG}:%') and t.name = '{tname}'
         group by s.name order by total desc limit {limit}"""
 )
 print(f"{trace} [{tname}]")

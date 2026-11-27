@@ -29,7 +29,7 @@ def analyze(path):
                       and s.ts < d.ts + d.dur and s.name = 'Renderer.findGlyph') as looked
             from slice d join thread_track tt on d.track_id = tt.id join thread t using(utid)
             join process p using(upid)
-            where p.name like '{PKG}%' and d.name = 'Renderer.drawMissing' order by d.ts"""
+            where (p.name = '{PKG}' or p.name like '{PKG}:%') and d.name = 'Renderer.drawMissing' order by d.ts"""
     )
     print(f"=== {os.path.basename(path)}")
     big = []

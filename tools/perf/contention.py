@@ -11,7 +11,7 @@ PKG = os.environ.get("VELO_PKG", "io.github.yhzion.velo")
 tp = TraceProcessor(trace=sys.argv[1])
 q = f"""select t.name as tname, s.name, s.ts, s.dur from slice s join thread_track tt on s.track_id = tt.id
        join thread t using(utid) join process p using(upid)
-       where p.name like '{PKG}%' and t.name like 'velo-draw%'
+       where (p.name = '{PKG}' or p.name like '{PKG}:%') and t.name like 'velo-draw%'
          and (s.name like '%ontention%' or s.name = 'Renderer.buildFrame') order by s.ts"""
 rows = list(tp.query(q))
 t0 = rows[0].ts if rows else 0
