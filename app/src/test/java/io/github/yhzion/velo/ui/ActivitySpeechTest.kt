@@ -96,4 +96,28 @@ class ActivitySpeechTest {
         assertEquals(1, compose.onAllNodesWithTag("activity-well-remote:a/session:s/w2", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(1, compose.onAllNodesWithTag("activity-capsule-$working", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
+
+    @Test fun aWorkingRowWithProgressShowsThePieInPlaceOfTheDots() {
+        val ui = UiState(status = "connected", session = "session:s", sessions = listOf(SessionInfo("session:s", "Build", listOf(
+            TabInfo("w1", "make", block = "b1", program = "make", activity = "working", since = 1_000, progress = 30),
+            TabInfo("w2", "lint", block = "b2", program = "make", activity = "working", since = 2_000),
+        ))))
+        val read = ActivityReadState()
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            VeloTheme(UiSize.Medium) {
+                Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false),
+                    listOf(SidebarHost(Remote("remote:a", "a", "https://a.example.ts.net"), ui, read, active = true, removed = false)),
+                    Modifier, actions, state = remember { SidebarState().apply { activityOnly = true } })
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        fun count(tag: String) = compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().size
+        val pie = "remote:a/session:s/w1"
+        val plain = "remote:a/session:s/w2"
+        assertEquals(1, count("tab-tile-$pie-pie"))
+        assertEquals(0, count("tab-working-$pie"))
+        assertEquals(0, count("tab-tile-$plain-pie"))
+        assertEquals(1, count("tab-working-$plain"))
+    }
 }

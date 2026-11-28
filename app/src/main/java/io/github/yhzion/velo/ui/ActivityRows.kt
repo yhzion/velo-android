@@ -112,7 +112,7 @@ internal fun ActivityRow(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
                 BouncingMark(bouncesIcon(activity.badge), motion) {
                     TabTile(tile.brand, panes = tile.panes, behind = tile.behind, dot = tile.dot, ring = tabRowFill(row.shown),
-                        tag = "tab-tile-$id", contentDescription = said.description, stateDescription = said.state)
+                        tag = "tab-tile-$id", contentDescription = said.description, stateDescription = said.state, progress = tile.progress)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.bd)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,7 +120,8 @@ internal fun ActivityRow(
                         Text(row.name, Modifier.weight(1f).testTag("activity-title-$id")
                             .then(if (said.nameSaid) Modifier else Modifier.semantics { hideFromAccessibility() }), style = type.body.naturalLines(), color = c.text,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (rowMark(activity.indicator) == RowMark.Working) {
+                        // A tile with a progress pie already shows the work (#250): no dots then.
+                        if (rowMark(activity.indicator, tile) == RowMark.Working) {
                             WorkingDots(5.bd, 4.bd, Modifier.padding(start = 8.bd).testTag("tab-working-$id"), description = null)
                         }
                     }
