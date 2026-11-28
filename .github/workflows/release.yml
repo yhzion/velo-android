@@ -164,6 +164,7 @@ jobs:
           sparse-checkout: |
             CHANGELOG.md
             .github/scripts/changelog.sh
+            .github/scripts/update-manifest.sh
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -191,12 +192,9 @@ jobs:
           notes=$(bash "$GITHUB_WORKSPACE/.github/scripts/changelog.sh" body "${base%%-*}" \
             "${APK_VERSION_CODE:?Missing APK versionCode}")
           # The update manifest: what the app reads from releases/latest/download/ outside the API's
-          # 60-an-hour limit. Its digest must match the .sha256 asset, which the app checks too.
+          # 60-an-hour limit. Its digest is the .sha256 asset's, which the app checks too.
           manifest=velo-update.json
-          jq -n --arg tag "$GITHUB_REF_NAME" --argjson code "$APK_VERSION_CODE" --arg apk "$name" \
-            --arg sha256 "$(cut -d' ' -f1 "$name.sha256")" --arg notes "$notes" \
-            '{tag: $tag, versionCode: $code, apk: $apk, sha256: $sha256, notes: $notes}' > "$manifest"
-          [[ $(jq -r .sha256 "$manifest") =~ ^[0-9a-f]{64}$ ]]
+          bash "$GITHUB_WORKSPACE/.github/scripts/update-manifest.sh" "$GITHUB_REF_NAME" "$APK_VERSION_CODE" "$name" "$notes" > "$manifest"
           flags=(--latest)
           if [[ $GITHUB_REF_NAME == *-* ]]; then flags=(--prerelease --latest=false); fi
           gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" "$manifest" \

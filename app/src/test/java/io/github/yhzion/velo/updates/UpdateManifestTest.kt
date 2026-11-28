@@ -58,6 +58,18 @@ class UpdateManifestTest {
             listOf(ChangeSection(ChangeKind.Fixed, listOf("Updates are found.")))), found)
     }
 
+    /**
+     * #265: the manifest .github/scripts/update-manifest.sh writes, as test-update-manifest.sh keeps
+     * it, is one this parser takes. A key renamed on either side fails one of the two tests.
+     */
+    @Test fun theManifestTheReleaseScriptWritesIsTheOneThisReads() {
+        val written = requireNotNull(javaClass.getResource("/velo-update.json")).readText()
+        val found = check(Fake(text = written)).single()
+        assertEquals(AppRelease("v2.16.1", 3000053, UpdateChannel.Stable,
+            "$repo/releases/download/v2.16.1/velo-v2.16.1-arm64-v8a.apk", sha.lowercase(), "$repo/releases/tag/v2.16.1",
+            listOf(ChangeSection(ChangeKind.Fixed, listOf("Updates are found.")))), found)
+    }
+
     @Test fun aManifestThatIsNotNewerMeansNoUpdateWithoutTheApi() {
         assertEquals(emptyList<AppRelease>(), check(Fake(), installed = 3000053))
     }

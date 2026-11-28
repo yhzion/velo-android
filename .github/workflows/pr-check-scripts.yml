@@ -1,7 +1,7 @@
 name: Pull request check (scripts)
 
 # Self-tests for the release and pull-request scripts under .github/scripts/.
-# Only when .github/scripts/, CHANGELOG.md or this workflow changes; no Android tools, zig, Go or secrets.
+# Only when .github/scripts/, CHANGELOG.md, the update manifest fixture or this workflow changes; no Android tools, zig, Go or secrets.
 on:
   pull_request:
     branches: [main]
@@ -9,6 +9,8 @@ on:
     paths:
       - '.github/scripts/**'
       - '.github/workflows/pr-check-scripts.yml'
+      # update-manifest.sh's output for the test's inputs; UpdateManifestTest parses it.
+      - 'app/src/test/resources/velo-update.json'
       - 'CHANGELOG.md'
 
 permissions:
@@ -37,6 +39,9 @@ jobs:
 
       - name: Test gradle-retry.sh
         run: bash .github/scripts/test-gradle-retry.sh
+
+      - name: Test update-manifest.sh
+        run: bash .github/scripts/test-update-manifest.sh
 
       - name: Test verify-apk-notices.py
         run: python3 .github/scripts/test-verify-apk-notices.py
