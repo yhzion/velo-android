@@ -3,7 +3,11 @@
 # reached (#212). The pull request checks keep no dependency cache, as release.yml keeps none,
 # so each run downloads every plugin and library; between 2026-11-27 and 2026-11-28 the Compose
 # plugin did not resolve and Maven Central answered 429 more than six times, and a manual rerun
-# passed each time. A compile error, a failing test or any other failure ends the run at once.
+# passed each time. A compile error, a failing test, a missing library or any other failure
+# ends the run at once; the one exception is a plugin version that does not exist (see below).
+#
+# Robolectric downloads its android-all jar itself, inside the test JVM and not through Gradle;
+# a 429 there ends as a failing test and is not retried.
 #
 # Usage: gradle-retry.sh <command> [args...]
 # GRADLE_RETRY_ATTEMPTS (default 3) bounds the runs; GRADLE_RETRY_DELAY (default 60) is the
@@ -24,10 +28,11 @@ delay=${GRADLE_RETRY_DELAY:-60}
 # exist, so a wrong version also costs the bounded retries before it fails.
 network='Received status code (408|425|429|5[0-9][0-9]) from server'
 network+='|could not resolve plugin artifact'
-network+='|(Connect|Read) timed out|SocketTimeoutException'
+# A host that closes the connection without an answer, or resets it, shows as "failed to respond".
+network+='|(Connect|Read) timed out|SocketTimeoutException|failed to respond'
 network+='|Connection (reset|refused)|Remote host terminated the handshake'
 network+='|UnknownHostException|Temporary failure in name resolution|No route to host'
-network+='|Premature end of Content-Length'
+network+='|Premature end of Content-Length|Truncated chunk'
 
 # Succeeds when stderr holds at least one failure block and every block is a network failure.
 network_only() {

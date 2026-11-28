@@ -93,6 +93,34 @@ Execution failed for task '"':app:compileDebugKotlin'"'.
 
 BUILD FAILED in 2m 10s'
 
+# A host that closed the connection without an answer (measured with Gradle 9.6.0).
+no_answer='FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not resolve all files for configuration '"':app:debugUnitTestRuntimeClasspath'"'.
+> Could not download robolectric-4.18.1.jar (org.robolectric:robolectric:4.18.1)
+   > Could not get resource '"'https://repo.maven.apache.org/maven2/org/robolectric/robolectric/4.18.1/robolectric-4.18.1.jar'"'.
+      > Could not GET '"'https://repo.maven.apache.org/maven2/org/robolectric/robolectric/4.18.1/robolectric-4.18.1.jar'"'.
+         > repo.maven.apache.org:443 failed to respond
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+
+BUILD FAILED in 1m 2s'
+
+truncated='FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not resolve all files for configuration '"':app:debugCompileClasspath'"'.
+> Could not download kotlin-stdlib-2.4.21.jar (org.jetbrains.kotlin:kotlin-stdlib:2.4.21)
+   > Could not get resource '"'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar'"'.
+      > Truncated chunk (expected size: 1,000; actual size: 10)
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+
+BUILD FAILED in 40s'
+
 # A missing artifact is not a network failure, although its report names repository URLs.
 not_found='FAILURE: Build failed with an exception.
 
@@ -143,6 +171,8 @@ expect 0 1                                         # passes at once
 expect 0 2 "$maven_429"                            # Maven Central 429, then passes
 expect 0 2 "$compose_plugin"                       # plugin resolution, then passes
 expect 0 2 "$read_timeout"                         # read timeout, then passes
+expect 0 2 "$no_answer"                            # no answer from the host, then passes
+expect 0 2 "$truncated"                            # truncated download, then passes
 expect 0 3 "$maven_429" "$compose_plugin"          # two network failures, then passes
 expect 1 3 "$maven_429" "$maven_429" "$maven_429"  # bounded: three runs, then fails
 expect 1 1 "$failing_tests"                        # failing tests: no retry
@@ -151,20 +181,40 @@ expect 1 1 "$not_found"                            # missing artifact: no retry
 expect 1 1 "$mixed"                                # a network failure beside a failing test
 expect 1 1 ""                                      # no failure report (Gradle crashed)
 expect 1 2 "$maven_429" "$failing_tests"           # retried, then a real failure ends it
+# A plugin version that does not exist reads like an unreachable portal (the same report from
+# Gradle), so it costs the bounded retries: the known price of retrying plugin resolution.
+expect 1 3 "$compose_plugin" "$compose_plugin" "$compose_plugin"
 
-# The exit status of Gradle comes back unchanged.
-rm -f "$work"/out.* "$work/runs"
+fail() { echo "$*" >&2; exit 1; }
+
+# The exit status of Gradle comes back unchanged, after a real failure and after the retries.
+rm -f "$work"/out.* "$work"/status.* "$work/runs"
 echo 7 >"$work/status.1"
 status=0
 bash "$script" "$work/fake-gradle" >/dev/null 2>&1 || status=$?
-[[ $status == 7 ]] || { echo "Exit status $status, expected 7" >&2; exit 1; }
+[[ $status == 7 ]] || fail "Exit status $status, expected 7"
+rm -f "$work"/out.* "$work"/status.* "$work/runs"
+for n in 1 2 3; do printf '%s\n' "$maven_429" >"$work/out.$n"; echo 7 >"$work/status.$n"; done
+status=0
+bash "$script" "$work/fake-gradle" >"$work/stdout" 2>/dev/null || status=$?
+[[ $status == 7 ]] || fail "Exit status $status after the retries, expected 7"
+grep -q '::error::A repository could not be reached in 3 attempts' "$work/stdout" ||
+  fail "No ::error:: line after the retries"
+
+# The wait starts at GRADLE_RETRY_DELAY and doubles: a fake sleep records its arguments.
+mkdir "$work/bin"
+printf '#!/usr/bin/env bash\necho "$1" >>"%s"\n' "$work/slept" >"$work/bin/sleep"
+chmod +x "$work/bin/sleep"
+PATH="$work/bin:$PATH" GRADLE_RETRY_DELAY=60 expect 1 3 "$maven_429" "$maven_429" "$maven_429"
+[[ $(cat "$work/slept") == $'60\n120' ]] || fail "Waited $(tr '\n' ' ' <"$work/slept"), expected 60 120"
 
 # stdout and stderr stay apart, and the report still reaches stderr.
 expect 0 2 "$maven_429"
-grep -q 'run 1' "$work/stdout"
-! grep -q 'What went wrong' "$work/stdout"
-grep -q 'Received status code 429' "$work/stderr"
-grep -q '::warning::A repository could not be reached (attempt 1 of 3)' "$work/stdout"
+grep -q 'run 1' "$work/stdout" || fail "Gradle's stdout is missing"
+if grep -q 'What went wrong' "$work/stdout"; then fail "The failure report reached stdout"; fi
+grep -q 'Received status code 429' "$work/stderr" || fail "The failure report is missing on stderr"
+grep -q '::warning::A repository could not be reached (attempt 1 of 3)' "$work/stdout" ||
+  fail "No ::warning:: line before the retry"
 
 GRADLE_RETRY_ATTEMPTS=1 expect 1 1 "$maven_429"   # one attempt means no retry
 
