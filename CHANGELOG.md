@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.16.1 - 2026-11-28
+
 ### Changed
 - On a short screen, such as a phone on its side, the caption under the panes hides while the keyboard is up, so the panes keep more than a line or two. The key bar stays.
 - A pane labelled in Rex, such as "server", goes by its label before its program while it has no terminal title: closing it, in the hardware keys' pane picker, the palette, the minimap and capsules.
