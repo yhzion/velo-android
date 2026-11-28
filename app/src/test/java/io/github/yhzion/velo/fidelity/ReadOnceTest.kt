@@ -28,6 +28,7 @@ import io.github.yhzion.velo.ui.ComposerDialog
 import io.github.yhzion.velo.ui.ComposerTarget
 import io.github.yhzion.velo.ui.DetailLine
 import io.github.yhzion.velo.ui.DetailRow
+import io.github.yhzion.velo.ui.NEEDS_ANSWER_NOTE
 import io.github.yhzion.velo.ui.PASSWORD_SAVED
 import io.github.yhzion.velo.ui.SshDetail
 import io.github.yhzion.velo.ui.SshDetailRow
@@ -56,7 +57,7 @@ import org.robolectric.annotation.GraphicsMode
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
  * and the SSH key actions (#149), SSH details' Forget, the sidebar's tab rows (#150), and Compose's
- * draft (#174), the highlight swatches' places (#204) and the slider rows (#200). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * draft (#174), the highlight swatches' places (#204), the slider rows (#200) and the remote rows' connection (#201). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -368,6 +369,19 @@ class ReadOnceTest {
         assertEquals(null, stateOf("tab-tile-refactor-sync-queue"))
         assertEquals(null, stateOf("tab-row-refactor-sync-queue"))
         assertStillActs("tab-row-zsh", null)
+    }
+
+    // #201: a remote row whose note says its connection says it once; the dot says it where no note does.
+
+    @Test fun aRemoteRowSaysItsConnectionOnce() {
+        show { VeloTheme(UiSize.Medium) { RemoteStatesSidebar() } }
+        compose.waitForIdle()
+        assertEquals(listOf("Selected", "Remote", "live", "Connected"), said("remote-row-live"))
+        assertEquals(listOf("Remote", "failed", "connection failed"), said("remote-row-failed"))
+        assertEquals(listOf("Remote", "again", "reconnecting…"), said("remote-row-again"))
+        assertEquals(listOf("Remote", "away", "offline"), said("remote-row-away"))
+        // The note asks for the login's answer; the dot still says where the connection is.
+        assertEquals(listOf("Remote", "asking", NEEDS_ANSWER_NOTE, "Connecting…"), said("remote-row-asking"))
     }
 
     /** The state a service says for the node tagged [tag], read from its AccessibilityNodeInfo. */

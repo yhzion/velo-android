@@ -9,6 +9,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - At a large text size, notices no longer cover the key bar. When they do not fit, the upload and error notices wait behind newer ones, Undo stays, and a notice that comes back is not read twice.
 - A screen reader says each highlight color in Appearance settings in its place, such as Blue, 2 of 8, instead of out of order.
 - A screen reader says the value of Sound volume and Font size once, on the slider, instead of first on its own and then again with the slider.
+- A screen reader says a remote's connection in the sidebar once, such as connection failed, instead of saying it again for the dot beside the name.
 
 ## 2.15.0 - 2026-11-28
 

@@ -598,7 +598,7 @@ private fun RemoteHeader(host: SidebarHost, expanded: Boolean, actions: SidebarA
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!host.removed) {
-            ConnectionDot(status, Modifier.testTag("remote-dot-$name"))
+            ConnectionDot(status, Modifier.testTag("remote-dot-$name"), saidBy = note)
             RowIconButton(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                 remoteFoldDescription(expanded, name), onChevron, button.testTag("remote-collapse-$name"))
         }
@@ -629,10 +629,12 @@ internal fun remoteActionIcon(action: RemoteAction) = when (action) {
 
 /**
  * The connection's mark as a dot ([connectionMark]): the colour of its level and its words, the
- * same as on the rail. The removed remote's row has none.
+ * same as on the rail. The removed remote's row has none. A screen reader skips the dot's words
+ * where the row's note [saidBy] says them already, as "connection failed" does (#201); a note that
+ * says something else, such as an SSH login's question, leaves them.
  */
 @Composable
-private fun ConnectionDot(status: String, modifier: Modifier = Modifier) {
+private fun ConnectionDot(status: String, modifier: Modifier = Modifier, saidBy: String? = null) {
     val mark = connectionMark(status, removed = false)
-    StatusMark(levelStatus(mark.level), mark.word, modifier)
+    StatusMark(levelStatus(mark.level), mark.word, modifier.saidBy(mark.word.takeIf { saidBy.equals(it, ignoreCase = true) }))
 }
