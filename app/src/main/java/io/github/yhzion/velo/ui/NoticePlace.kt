@@ -3,7 +3,10 @@ package io.github.yhzion.velo.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -15,6 +18,10 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.LayoutModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.ParentDataModifierNode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -118,6 +125,10 @@ internal val NoticeRowLeast = 160.dp
  * area would stack into the [keyBar] (its box in the column, null without one) go side by side above it
  * ([noticeArrangement]), in their order from the start. [pane] and [keyBar] are read only to place them: the pane
  * area's moves with the keyboard place them again and compose nothing.
+ *
+ * Where two or more do not end [padding] above the key bar so (a larger text size wraps them to more lines, #192),
+ * the notices without a control ([waitsIn]) wait, the oldest first, until the rest fit or one is left: a waiting
+ * notice is not placed, and its [NoticeWait] says so. The move's Undo has a control and never waits.
  */
 @Composable
 internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, gap: Dp, lift: Dp, modifier: Modifier, content: @Composable () -> Unit) {
@@ -131,15 +142,38 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
             val top = box.top.roundToInt()
             val bottom = box.bottom.roundToInt()
             val keyBarTop = keyBar()?.top?.roundToInt()?.coerceAtMost(constraints.maxHeight) ?: constraints.maxHeight
-            val count = measurables.size
-            // Measured here, once the pane area is placed: how they are measured depends on where it is.
-            val stack = if (count < 2) 0 else measurables.sumOf { it.maxIntrinsicHeight(space) } + between * (count - 1)
-            val arrangement = noticeArrangement(top, bottom, keyBarTop, stack, count, side, up)
-            val widths = if (arrangement == NoticeArrangement.Row)
-                noticeRowWidths(measurables.map { it.maxIntrinsicWidth(Constraints.Infinity).coerceAtMost(space) }, space, between, NoticeRowLeast.roundToPx())
-            else null
+            val least = NoticeRowLeast.roundToPx()
+            // Measured here, once the pane area is placed: how they are measured depends on where it is. Only by
+            // their intrinsic sizes until the notices that wait are known, since each is measured once.
+            fun arrangementOf(notices: List<Measurable>): NoticeArrangement {
+                val count = notices.size
+                val stack = if (count < 2) 0 else notices.sumOf { it.maxIntrinsicHeight(space) } + between * (count - 1)
+                return noticeArrangement(top, bottom, keyBarTop, stack, count, side, up)
+            }
+            fun widthsOf(notices: List<Measurable>): List<Int>? =
+                noticeRowWidths(notices.map { it.maxIntrinsicWidth(Constraints.Infinity).coerceAtMost(space) }, space, between, least)
+            // Whether two or more notices end [padding] above the key bar, as they would be placed below.
+            fun fits(notices: List<Measurable>): Boolean {
+                val arrangement = arrangementOf(notices)
+                if (arrangement != NoticeArrangement.Row) return true
+                val widths = widthsOf(notices)
+                val height = if (widths != null) notices.indices.maxOf { notices[it].maxIntrinsicHeight(widths[it]) }
+                    else notices.sumOf { it.maxIntrinsicHeight(space) } + between * (notices.size - 1)
+                val floor = if (widths != null) keyBarTop else constraints.maxHeight
+                return noticeTop(top, bottom, floor, height, side, up) + height <= keyBarTop - side
+            }
+            // The notices without a control wait, the oldest first, while the rest do not fit (#192).
+            var shown = measurables
+            for (m in measurables.filter { it.parentData is NoticeWait }.sortedBy { (it.parentData as NoticeWait).since }) {
+                if (shown.size < 2 || fits(shown)) break
+                shown = shown.filter { it !== m }
+            }
+            measurables.forEach { m -> (m.parentData as? NoticeWait)?.onScreen(shown.any { it === m }) }
+            val count = shown.size
+            val arrangement = arrangementOf(shown)
+            val widths = if (arrangement == NoticeArrangement.Row) widthsOf(shown) else null
             if (widths != null) {
-                val row = measurables.mapIndexed { i, m -> m.measure(Constraints(maxWidth = widths[i])) }
+                val row = shown.mapIndexed { i, m -> m.measure(Constraints(maxWidth = widths[i])) }
                 val height = row.maxOf { it.height }
                 var x = side + Alignment.CenterHorizontally.align(row.sumOf { it.width } + between * (count - 1), space, LayoutDirection.Ltr)
                 val y = noticeTop(top, bottom, keyBarTop, height, side, up)
@@ -149,7 +183,7 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
                 }
                 return@layout
             }
-            val notices = measurables.map { it.measure(Constraints(maxWidth = space)) }
+            val notices = shown.map { it.measure(Constraints(maxWidth = space)) }
             if (notices.isEmpty()) return@layout
             val width = notices.maxOf { it.width }
             val height = notices.sumOf { it.height } + between * (count - 1)
@@ -163,6 +197,70 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
         }
     }
 }
+
+/**
+ * A notice without a control in the pane column, which waits behind newer ones where the notices do not fit
+ * ([PaneNotices], #192): the upload toast or the error notice, one showing of it ([key] in [heard]). Its age, by
+ * which the oldest waits first, is when [heard] first showed it, so a move to the sidebar and back keeps it.
+ * [PaneNotices] says as it places the notices whether this one is on screen.
+ */
+@Stable
+internal class NoticeWait(private val heard: HeardNotices?, private val key: Any) {
+    private val made = nextNoticeAge()
+    // What [PaneNotices] last said, read there without observing the states below.
+    private var onScreenNow = true
+    private var everOnScreen = false
+
+    /** Not on screen: newer notices hold the row. A screen reader does not find it either. */
+    var waiting by mutableStateOf(false)
+        private set
+
+    /**
+     * It was on screen before it waited: a screen reader has read it there. Once it is back it is no live region,
+     * so it is not read a second time.
+     */
+    var heardBefore by mutableStateOf(false)
+        private set
+
+    /** The order in which the notices came: the oldest has the least. */
+    val since: Long get() = heard?.since(key) ?: made
+
+    internal fun onScreen(on: Boolean) {
+        if (on == onScreenNow && (!on || everOnScreen)) return
+        onScreenNow = on
+        if (on) everOnScreen = true
+        waiting = !on
+        if (!on && everOnScreen) heardBefore = true
+    }
+}
+
+/** The [NoticeWait] of the notice [key] that [heard] knows: a new one for new words, which are a new showing. */
+@Composable
+internal fun rememberNoticeWait(heard: HeardNotices?, key: Any): NoticeWait = remember(heard, key) { NoticeWait(heard, key) }
+
+/**
+ * Lets the notice wait in [PaneNotices] as [wait] says ([NoticeWait]), and leaves it out of what a screen reader finds
+ * while it waits: Compose keeps a node it no longer places in that tree. Nothing without [wait] (the sidebar's notices).
+ */
+internal fun Modifier.waitsIn(wait: NoticeWait?): Modifier = when {
+    wait == null -> this
+    wait.waiting -> this then NoticeWaitElement(wait) then Modifier.clearAndSetSemantics { hideFromAccessibility() }
+    else -> this then NoticeWaitElement(wait)
+}
+
+private data class NoticeWaitElement(val wait: NoticeWait) : ModifierNodeElement<NoticeWaitNode>() {
+    override fun create() = NoticeWaitNode(wait)
+    override fun update(node: NoticeWaitNode) { node.wait = wait }
+}
+
+private class NoticeWaitNode(var wait: NoticeWait) : Modifier.Node(), ParentDataModifierNode {
+    override fun Density.modifyParentData(parentData: Any?): Any = wait
+}
+
+/** The ages of the notices ([NoticeWait.since]): the main thread's, as composition is. */
+private var noticeAge = 0L
+
+private fun nextNoticeAge(): Long = ++noticeAge
 
 /**
  * The height of the sidebar's body (the list, with the Filter field at its foot) when the sidebar that covers the
@@ -202,17 +300,26 @@ internal fun sidebarNoticesTop(height: Int, head: Int, notices: Int, least: Int)
 internal class HeardNotices {
     // How many nodes show each notice now: a move makes the new node before the old one goes.
     private val showing = mutableMapOf<Any, Int>()
+    // When each notice first showed ([NoticeWait.since]), kept while one node shows it.
+    private val first = mutableMapOf<Any, Long>()
 
     /** Whether a node made now for the notice [key] reads it out: no node shows it yet. */
     fun isNew(key: Any): Boolean = key !in showing
 
+    /** The age of the notice [key] ([NoticeWait.since]) while a node shows it. */
+    fun since(key: Any): Long? = first[key]
+
     fun shown(key: Any) {
+        if (key !in showing) first[key] = nextNoticeAge()
         showing[key] = (showing[key] ?: 0) + 1
     }
 
     fun gone(key: Any) {
         val left = (showing[key] ?: return) - 1
-        if (left > 0) showing[key] = left else showing -= key
+        if (left > 0) showing[key] = left else {
+            showing -= key
+            first -= key
+        }
     }
 }
 

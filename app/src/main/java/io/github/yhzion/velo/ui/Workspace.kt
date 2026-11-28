@@ -887,8 +887,9 @@ internal fun Workspace(
             PaneNotices({ paneBox.value }, { if (keyBarShown) keyBarBox.value else null }, sizes.overlayPadding, sizes.gap,
                 lift = noticeLift(minimized.isNotEmpty(), corner, MinimizedCapsuleHeight, sizes.gap), modifier = Modifier.matchParentSize()) {
                 UndoNotice(conn, moveNotice, onDone = { moveNotice = null })
-                UploadToast(conn, heard)
-                ErrorNotice(conn, text = ::noticeText, heard = heard)
+                // These two wait behind newer notices where the row has no room (#192); the Undo never does.
+                UploadToast(conn, heard, waits = true)
+                ErrorNotice(conn, text = ::noticeText, heard = heard, waits = true)
             }
         }
         Spacer(Modifier.width(gap))
@@ -1147,10 +1148,15 @@ internal fun Workspace(
 /**
  * A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109).
  * A toast that only moved there, which [heard] knows, is no live region: it was read where it first showed (#195).
+ * Where it [waits] behind newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again.
  */
 @Composable
-internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null) {
-    conn.uploading?.let { ToastSurface(it, icon = Icons.Default.Upload, live = liveNotice(heard, UploadToastKey(it))) }
+internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null, waits: Boolean = false) {
+    conn.uploading?.let {
+        val key = UploadToastKey(it)
+        val wait = if (waits) rememberNoticeWait(heard, key) else null
+        ToastSurface(it, Modifier.waitsIn(wait), icon = Icons.Default.Upload, live = liveNotice(heard, key) && wait?.heardBefore != true)
+    }
 }
 
 /** One showing of the upload toast ([HeardNotices]): its words. */

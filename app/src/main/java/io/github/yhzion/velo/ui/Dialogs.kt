@@ -109,24 +109,33 @@ internal fun ErrorNoticeTimer(conn: HostConnection) {
  * whatever its text; the notice is then made anew, so a screen reader reads it even when the
  * notice on screen already says the same (#280). The core's own retries do not renew it, so they
  * are read as before. A notice that only moved to another place, which [heard] knows, is made anew
- * there too, but it is no live region: it was read where it first showed (#195).
+ * there too, but it is no live region: it was read where it first showed (#195). Where it [waits] behind
+ * newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again either.
  */
 @Composable
-internal fun ErrorNotice(conn: HostConnection, modifier: Modifier = Modifier, text: (String) -> String = { it }, heard: HeardNotices? = null) {
+internal fun ErrorNotice(
+    conn: HostConnection, modifier: Modifier = Modifier, text: (String) -> String = { it }, heard: HeardNotices? = null, waits: Boolean = false,
+) {
     conn.error?.let { msg ->
         val reports = conn.errorReports
         key(reports) {
             VeloSurface(VeloTheme.colors.overlay) {
                 val said = text(msg)
-                val live = liveNotice(heard, ErrorNoticeKey(reports, said))
+                val shown = ErrorNoticeKey(reports, said)
+                val wait = if (waits) rememberNoticeWait(heard, shown) else null
+                val live = liveNotice(heard, shown) && wait?.heardBefore != true
                 // The Snackbar answers its widest size (600 dp and more) when asked how wide it is, whatever its text:
                 // a row of notices asks its own width (#169). Its text style is the Snackbar's own.
                 val own = rememberTextMeasurer().measure(said, MaterialTheme.typography.bodyMedium).size.width +
                     with(LocalDensity.current) { (SnackbarTextSide * 2).roundToPx() }
                 // One node says it all, as a live region whose words name the error.
-                Snackbar(modifier.ownWidth(own).clearAndSetSemantics {
-                    if (live) liveRegion = LiveRegionMode.Polite
-                    contentDescription = errorNoticeSaid(msg, said)
+                // Nothing while it waits: [waitsIn] hides it.
+                val waiting = wait?.waiting == true
+                Snackbar(modifier.waitsIn(wait).ownWidth(own).clearAndSetSemantics {
+                    if (!waiting) {
+                        if (live) liveRegion = LiveRegionMode.Polite
+                        contentDescription = errorNoticeSaid(msg, said)
+                    }
                 }, containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(said) }
             }
         }
