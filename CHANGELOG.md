@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.15.1 - 2026-11-28
+
 ### Changed
 - The layers behind a split tab's tile show its other panes' programs, such as Claude Code's orange behind bash, and stand straight above the tile as in Rex for Mac. A screen reader says the mix.
 
