@@ -308,6 +308,18 @@ class ReadOnceTest {
         assertTrue("$tag still says its state, among $said", said.any { it == "Selected" || it == "Not selected" })
     }
 
+    // #230: the Highlight color row's value is said by the chosen swatch alone.
+
+    @Test fun theHighlightColorIsSaidOnce() {
+        scene("settings-appearance")
+        compose.onNodeWithTag("appearance-highlight-swatches").performScrollTo()
+        val stops = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        assertFalse("Accent is no stop of its own, among $stops", listOf("Accent") in stops)
+        assertEquals("Accent is said once, among $stops", 1, stops.count { "Accent" in it })
+        assertTrue("the chosen swatch says it, among $stops", listOf("Selected", "Accent") in stops)
+        assertTrue("the row's name is still a stop, among $stops", listOf("Highlight color") in stops)
+    }
+
     // #200: a slider row says its name and its value on the slider alone: the words beside it are no stops.
 
     @Test fun theSoundVolumeRowSaysItsValueOnce() {

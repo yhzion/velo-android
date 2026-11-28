@@ -110,7 +110,9 @@ internal fun PaneHighlightSettings(settings: Settings) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Highlight color", Modifier.testTag("appearance-highlight-label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
-            Text(highlight.preset?.label ?: "Custom", Modifier.testTag("appearance-highlight-value"), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
+            // The chosen swatch says the choice, so a screen reader hears it there once (#230).
+            val chosen = highlight.preset?.label ?: "Custom"
+            Text(chosen, Modifier.testTag("appearance-highlight-value").saidBy(chosen), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
         }
         // The picture and the swatches keep 16 from both sides of the group, its rows 12 at the end.
         Column(Modifier.padding(end = space.s4, bottom = space.s16)) {
