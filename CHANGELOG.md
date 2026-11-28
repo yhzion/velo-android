@@ -15,6 +15,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader names each choice of Pane style, Size and Overview, and each highlight color, even when the page's header covers part of it.
 - A screen reader says the chosen highlight color once, on its swatch, instead of first beside Highlight color.
 - A screen reader says the value of Sound volume and Font size once, on the slider, instead of first on its own and then again with the slider.
+- A screen reader names Add Remote… and a server found on the tailnet in the sidebar even when the Filter field covers part of the row.
 - A screen reader says a remote's connection in the sidebar once, such as connection failed, instead of saying it again for the dot beside the name.
 - A screen reader reaches the program icon in the caption under the panes where it is on the screen, before the tab's name, instead of last after the key bar.
 - A pane is named the same way everywhere: closing it, the hardware keys' pane picker and a minimized pane's capsule say zsh or Terminal instead of Block 9ac42573, and a moved pane shows its name.

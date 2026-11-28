@@ -58,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -190,6 +191,8 @@ fun AttentionBadge(tint: Color, modifier: Modifier = Modifier, ring: Color = Vel
  * [titleFont] draws the title and subtitle in another family: a font list shows each font in itself.
  * [titleContent] draws in the title's place (a tab's report that alternates with its name); it
  * must keep to the title's one line. A screen reader still reads [title], not what it draws.
+ * The row carries [title] as its description and the drawn title is hidden: a screen reader skips the words of a
+ * child it does not see, so a row half under the sidebar's Filter field was said "unlabeled" (#202, as #203).
  * [minHeight] is the row's least height: a settings row's unless given (`sizes.tabRow` for a tab's row).
  */
 @Composable
@@ -207,7 +210,7 @@ fun ListRow(
         modifier.fillMaxWidth().heightIn(min = minHeight.coerceAtLeast(MinTouch)).clip(Capsule)
             .background(if (selected) c.selected else Color.Transparent)
             .combinedClickable(enabled = enabled, onClickLabel = onClickLabel, onLongClickLabel = onLongClickLabel, onLongClick = onLongClick, onClick = onClick)
-            .semantics { if (selected) this.selected = true }
+            .semantics { contentDescription = title; if (selected) this.selected = true }
             .padding(horizontal = s.rowPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -216,8 +219,8 @@ fun ListRow(
             Spacer(Modifier.width(s.rowGap))
         }
         Column(Modifier.weight(1f)) {
-            if (titleContent != null) Box(Modifier.clearAndSetSemantics { text = AnnotatedString(title) }) { titleContent() }
-            else Text(title, style = if (strong) type.bodyStrong else type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            if (titleContent != null) Box(Modifier.clearAndSetSemantics { text = AnnotatedString(title); hideFromAccessibility() }) { titleContent() }
+            else Text(title, Modifier.saidBy(title), style = if (strong) type.bodyStrong else type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = if (!enabled) c.disabled else if (dimmed) c.secondary else c.text, fontFamily = titleFont)
             if (subtitle != null) Text(subtitle, style = type.caption, color = if (enabled) c.secondary else c.disabled, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, fontFamily = titleFont)
