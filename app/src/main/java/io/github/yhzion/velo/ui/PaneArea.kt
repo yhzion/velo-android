@@ -284,8 +284,14 @@ private fun LayoutTree(
             // under each handle rounded up, was still covered whole.
             val onePx = with(LocalDensity.current) { 1.toDp() }
             val reach = (hit - gap).coerceAtLeast(0.dp) / 2
-            val gapOnly = handleOnGapOnly(reach + onePx, a.edgePaneExtent(column, end = true, space * r, gap, local),
-                b.edgePaneExtent(column, end = false, space * (1f - r), gap, local))
+            // The ratios of the other splits are read in a derived state (#290): while a finger drags one, the map changes
+            // each frame, and a handle whose answer stays the same is not composed again for it.
+            val gapOnly by remember(a, b, column, space, r, gap, reach, onePx, local) {
+                derivedStateOf {
+                    handleOnGapOnly(reach + onePx, a.edgePaneExtent(column, end = true, space * r, gap, local),
+                        b.edgePaneExtent(column, end = false, space * (1f - r), gap, local))
+                }
+            }
             // On the gap: a pixel in from each side of it, so that the panes' rounding puts no part of it on a pane.
             val inset = onePx.coerceAtMost(gap / 4)
             val saidAt = if (gapOnly) (space * r - start).coerceIn(0.dp, (hit - gap).coerceAtLeast(0.dp)) + inset else 0.dp
