@@ -180,11 +180,8 @@ private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) 
             .semantics { collectionInfo = CollectionInfo(rowCount = 1, columnCount = choices.size) },
         verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
     ) {
-        for ((r, row) in choices.chunked(4).withIndex()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {
-            for ((i, choice) in row.withIndex()) {
-                val place = r * 4 + i
-                SwatchCell(choice, Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(0, 1, place, 1) })
-            }
+        for (row in choices.withIndex().chunked(4)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {
+            for ((place, choice) in row) SwatchCell(choice, Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(0, 1, place, 1) })
         }
     }
 }

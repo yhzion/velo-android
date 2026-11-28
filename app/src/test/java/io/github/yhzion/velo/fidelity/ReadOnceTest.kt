@@ -450,6 +450,7 @@ class ReadOnceTest {
         assertEquals(listOf("Remote", "failed", "connection failed"), said("remote-row-failed"))
         assertEquals(listOf("Remote", "again", "reconnecting…"), said("remote-row-again"))
         assertEquals(listOf("Remote", "away", "offline"), said("remote-row-away"))
+        assertEquals(listOf("Remote", "dialing", "connecting…"), said("remote-row-dialing"))
         // The note asks for the login's answer; the dot still says where the connection is.
         assertEquals(listOf("Remote", "asking", NEEDS_ANSWER_NOTE, "Connecting…"), said("remote-row-asking"))
     }

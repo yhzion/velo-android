@@ -496,14 +496,14 @@ internal fun RowCasesSidebar() {
 
 /**
  * Remote rows in each state a note says (#201): a connection that failed, one that reconnects, one
- * that is offline, and an SSH login that waits for an answer while it connects, beside a connected one.
+ * that is offline, one that connects, and an SSH login that waits for an answer while it connects, beside a connected one.
  */
 @Composable
 internal fun RemoteStatesSidebar() {
     fun host(id: String, status: String, needsAnswer: Boolean = false) = SidebarHost(Remote("remote:$id", id, "https://$id.example.ts.net"),
         UiState(status = status, server = id), ActivityReadState(), active = status == "connected", removed = false, needsAnswer = needsAnswer)
     val hosts = listOf(host("live", "connected"), host("failed", "error"), host("again", "reconnecting"), host("away", "disconnected"),
-        host("asking", "connecting", needsAnswer = true))
+        host("dialing", "connecting"), host("asking", "connecting", needsAnswer = true))
     Row(Modifier.fillMaxSize()) {
         Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), hosts, sidebarSlot(SidebarPlace.Covers), NoActions)
     }
