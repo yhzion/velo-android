@@ -4,11 +4,14 @@ name: Pull request check (Android)
 # Only when app/ or the Gradle build files change; pr-check-native.yml covers native/. The
 # repository is on GitHub Free, so draft pull requests and other paths start no job: the release
 # workflow runs the same tests on the tag. No secrets, no signing, no artifacts.
+#
+# A push to main runs the same tests to fill the dependency cache that pull requests start from
+# (#257); GitHub lets a pull request read the caches of its base branch, never main those of a
+# pull request.
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
+    paths: &paths
       - 'app/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -18,13 +21,17 @@ on:
       - '.github/scripts/changelog.sh'
       - '.github/scripts/gradle-retry.sh'
       - '.github/workflows/pr-check-android.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: *paths
 
 permissions:
   contents: read
 # The draft state is part of the group: a late draft run (its job skipped) must not cancel the
-# run of the pull request that is ready.
+# run of the pull request that is ready. A push to main has no pull request and groups by its ref.
 concurrency:
-  group: pr-check-android-${{ github.event.pull_request.number }}-${{ github.event.pull_request.draft }}
+  group: pr-check-android-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.draft }}
   cancel-in-progress: true
 defaults:
   run:
@@ -55,13 +62,40 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME_25_X64" >> "$GITHUB_ENV"
           printf '%s\n' "$PWD/gradle-9.6.0/bin" "$JAVA_HOME_25_X64/bin" >> "$GITHUB_PATH"
 
+      # Gradle's downloaded plugins and libraries, and the android-all jars Robolectric fetches
+      # itself into the local Maven repository (#257). release.yml keeps no cache on purpose:
+      # what ships is built from downloads checked at that moment.
+      - name: Restore the dependency cache
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.m2/repository
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('*.gradle.kts', 'app/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-
+
       # The JVM unit tests do not load the native libraries. zigCore and tailscale cross-compile
       # libvelocore.so and libtailscale.so for the APK (with zig, Go and the NDK), which is most of
-      # the build time; the release workflow still builds both. No dependency cache, as in
-      # release.yml: gradle-retry.sh runs the tests again only when a repository could not be
-      # reached (a plugin that did not resolve, HTTP 429, a timeout), never after a compile error
-      # or a failing test (#212).
+      # the build time; the release workflow still builds both. gradle-retry.sh runs the tests
+      # again only when a repository could not be reached (a plugin that did not resolve, HTTP
+      # 429, a timeout), never after a compile error or a failing test (#212).
       - name: Run Android unit tests
         run: >-
           bash .github/scripts/gradle-retry.sh
           gradle --no-daemon --no-scan :app:testDebugUnitTest -x zigCore -x tailscale
+
+      # Saved only after the tests pass, so a run cut short by a 429 leaves no half-filled cache
+      # under the key. A pull request from a fork saves nothing; GitHub would keep its cache to
+      # that pull request anyway. A cache is written once per key: an exact hit skips the save.
+      - name: Save the dependency cache
+        if: >-
+          steps.restore.outputs.cache-hit != 'true' && (github.event_name == 'push'
+          || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.m2/repository
+          key: ${{ steps.restore.outputs.cache-primary-key }}
