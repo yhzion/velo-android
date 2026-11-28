@@ -202,12 +202,16 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
             val width = notices.maxOf { it.width }
             val height = notices.sumOf { it.height } + between * (count - 1)
             // Where notices wait, those left keep off the key bar: alone, one goes there from the column's top. So does
-            // one notice whose place by the column's bottom would cover the key bar (#227).
-            val covers = noticeTop(top, bottom, constraints.maxHeight, height, side, up) + height > keyBarTop
-            val floor = if (arrangement == NoticeArrangement.AboveKeyBar || shown.size < measurables.size || covers) keyBarTop
-                else constraints.maxHeight
+            // one notice whose place by the column's bottom would cover the key bar (#227), though not above the pane
+            // area's top: over a search bar, whose search turns the key bar off, it would cover the field instead.
+            val waits = arrangement == NoticeArrangement.AboveKeyBar || shown.size < measurables.size
+            val covers = !waits && noticeTop(top, bottom, constraints.maxHeight, height, side, up) + height > keyBarTop
             val x = side + Alignment.CenterHorizontally.align(width, space, layoutDirection)
-            var y = noticeTop(top, bottom, floor, height, side, up)
+            var y = when {
+                waits -> noticeTop(top, bottom, keyBarTop, height, side, up)
+                covers -> maxOf(noticeTop(top, bottom, keyBarTop, height, side, up), top)
+                else -> noticeTop(top, bottom, constraints.maxHeight, height, side, up)
+            }
             notices.forEach {
                 it.place(IntOffset(x + Alignment.CenterHorizontally.align(it.width, width, layoutDirection), y))
                 y += it.height + between

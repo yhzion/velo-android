@@ -179,6 +179,25 @@ class NoticeSlotTest {
         assertTrue("side by side: $first then $last", last.left >= first.right)
     }
 
+    @Test fun oneNoticeThatWouldCoverTheKeyBarStaysUnderTheSearchBar() {
+        // #165's place, 16 dp under the pane's top, ends at 84 dp over a key bar from 83 (#227 review): it goes up, but
+        // not over the search field (from 0 to 20 dp), which a search with the key bar off types in.
+        compose.setContent {
+            VeloTheme {
+                val px = LocalDensity.current.density
+                Box(Modifier.width(380.dp).height(200.dp)) {
+                    PaneNotices({ Rect(0f, 20 * px, 380 * px, 52 * px) }, keyBar = { Rect(0f, 83 * px, 380 * px, 123 * px) },
+                        padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                        ToastSurface("Uploading x…")
+                    }
+                }
+            }
+        }
+        val toast = compose.onNodeWithTag("toast").getBoundsInRoot()
+        assertEquals("under the search bar", 20f, toast.top.value, 0.5f)
+        assertTrue("toast $toast ends above the key bar", toast.bottom <= 83.dp + 0.5.dp)
+    }
+
     // The real notices of the pane column (#169), in their order in the Workspace: the move's Undo, the upload
     // toast and the error notice, drawn by one fake connection. The Undo is for pane b, moved to a tab of its own.
     private val before = listOf(WindowInfo("w1", layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"), second = LayoutNode(block = "b"))))
@@ -449,7 +468,7 @@ class NoticeSlotTest {
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun theUndoAndAThreeLineErrorAtFontScale1_3StayOffTheKeyBar() {
+    @Test fun theUndoAndALongErrorAtFontScale1_3StayOffTheKeyBar() {
         realNotices(velvetColumn, upload = false, fontScale = 1.3f, errorWords = longerError)
         assertClearOfTheKeyBar("undo", "error")
         assertTheUndoButtonShows()
@@ -463,7 +482,9 @@ class NoticeSlotTest {
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun theUndoAndAnErrorTallerThanTheColumnLeaveTheErrorWaiting() {
+    @Test fun theUndoAndALongErrorAtFontScale2LeaveTheErrorWaiting() {
+        // Cut to two lines (#227) the error is 82 dp, shorter than the column, but beside the Undo it would not end
+        // 16 dp above the key bar.
         realNotices(velvetColumn, upload = false, fontScale = 2f, errorWords = longerError)
         assertShownAndWaiting(listOf("undo"), waiting = listOf("error"))
         assertTheUndoButtonShows()

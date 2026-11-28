@@ -33,6 +33,9 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.Insets
@@ -531,6 +534,11 @@ class NoticeSpeechTest {
         settle()
         assertEquals(listOf(listOf("Error: $longer")), compose.runOnIdle { Speech.focusableNodes(view).map { it.second } })
         assertEquals(listOf(listOf("Error: $longer")), readOut(from))
+        val results = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(longer, useUnmergedTree = true).fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        assertEquals("two lines on screen", 2, results.single().lineCount)
+        assertTrue("cut with an ellipsis", results.single().isLineEllipsized(1))
     }
 
     @Test fun theNoteThatReplacesALoginsCancelIsNoError() {
