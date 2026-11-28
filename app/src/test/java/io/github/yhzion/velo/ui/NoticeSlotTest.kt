@@ -10,11 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -205,8 +208,9 @@ class NoticeSlotTest {
                         PaneNotices({ Rect(0f, 0f, width * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, width * px, 120 * px) },
                             padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                             if (undo) UndoNotice(c, notice, onDone = {}, Modifier.testTag("undo"))
-                            UploadToast(c)
-                            ErrorNotice(c, Modifier.testTag("error"))
+                            val heard = remember { HeardNotices() }
+                            UploadToast(c, heard, waits = true)
+                            ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
                         }
                     }
                 }
@@ -305,31 +309,117 @@ class NoticeSlotTest {
         assertEquals(velvetColumn.toFloat(), (toast.left + toast.right).value, 1f)
     }
 
-    // A larger text size (#169 review, S2), a known limit: nothing checks the row's height yet, so a row taller than
-    // the room above the key bar covers it, and one taller than the column runs under the keyboard. These pin today's
-    // outcome in the scaled column, where the key bar starts at 83 dp and the column ends at 137 dp.
+    // A larger text size (#169 review, S2; #192): the notices wrap to more lines, and a row of them would cover the key
+    // bar (83 dp) or run past the column (137 dp). Where two or more do not end 16 dp above the key bar, the notices
+    // without a control wait, the oldest first, until the rest fit or one is left; the Undo never waits. Before #192,
+    // three at 1.3 ended at 96.8 dp, two at 2.0 at 126.5 and three at 2.0 at 162.3.
 
-    /** The row of the real notices at [fontScale] ends at [end] dp and wraps the toast's text to [lines] lines. */
-    private fun assertTheRowAt(fontScale: Float, three: Boolean, end: Float, lines: Int) {
-        realNotices(velvetColumn, undo = three, fontScale = fontScale)
-        val tags = if (three) listOf("undo", "toast", "error") else listOf("toast", "error")
-        val row = tags.map { bounds(it) }
-        row.zipWithNext { a, b -> assertTrue("$a then $b, side by side", b.left >= a.right) }
-        assertEquals("the row $row ends", end, row.maxOf { it.bottom }.value, 1f)
-        assertEquals(lines, toastText().lineCount)
+    /** Whether the notice [tag] is on screen: a waiting one is not placed, and a screen reader does not find it. */
+    private fun placed(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().any { it.layoutInfo.isPlaced }
+
+    /**
+     * The notices [shown] are on screen side by side in that order, inside the column's padding and clear of the key bar;
+     * two or more keep 16 dp above it. The notices [waiting] are not on screen.
+     */
+    private fun assertShownAndWaiting(shown: List<String>, waiting: List<String>) {
+        val nodes = shown.map { bounds(it) }
+        val floor = if (shown.size > 1) 83.dp - 16.dp else 83.dp
+        nodes.forEach { n ->
+            assertTrue("notice $n ends above $floor", n.bottom <= floor + 0.5.dp)
+            assertTrue("notice $n starts in the column", n.top >= (-0.5).dp)
+            assertTrue("notice $n inside the column's padding", n.left >= 16.dp - 0.5.dp && n.right <= velvetColumn.dp - 16.dp + 0.5.dp)
+        }
+        nodes.zipWithNext { a, b -> assertTrue("$a then $b, side by side", b.left >= a.right) }
+        waiting.forEach { assertTrue("$it waits", !placed(it)) }
+    }
+
+    /** The Undo shows its button, which a tap reaches. */
+    private fun assertTheUndoButtonShows() = compose.onNodeWithText("Undo").assertIsDisplayed().assertHasClickAction()
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun twoNoticesAtFontScale1_3StayAboveTheKeyBar() {
+        realNotices(velvetColumn, undo = false, fontScale = 1.3f)
+        assertShownAndWaiting(listOf("toast", "error"), waiting = emptyList())
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun twoNoticesAtFontScale1_3StayAboveTheKeyBar() = assertTheRowAt(1.3f, three = false, end = 64f, lines = 1)
+    @Test fun threeNoticesAtFontScale1_3FoldTheOlderToastBehindTheError() {
+        realNotices(velvetColumn, fontScale = 1.3f)
+        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("toast"))
+        assertTheUndoButtonShows()
+    }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun threeNoticesAtFontScale1_3CoverTheKeyBar() = assertTheRowAt(1.3f, three = true, end = 96.8f, lines = 3)
+    @Test fun twoNoticesAtFontScale2ShowOnlyTheNewer() {
+        realNotices(velvetColumn, undo = false, fontScale = 2f)
+        assertShownAndWaiting(listOf("error"), waiting = listOf("toast"))
+    }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun twoNoticesAtFontScale2CoverTheKeyBar() = assertTheRowAt(2f, three = false, end = 126.5f, lines = 3)
+    @Test fun threeNoticesAtFontScale2KeepTheUndoAndTheNewer() {
+        realNotices(velvetColumn, fontScale = 2f)
+        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("toast"))
+        assertTheUndoButtonShows()
+    }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun threeNoticesAtFontScale2RunPastTheColumn() = assertTheRowAt(2f, three = true, end = 162.3f, lines = 4)
+    @Test fun theUndoAndTheToastAtFontScale2LeaveTheToastWaitingBehindTheUndo() {
+        // Side by side they ended at 90.7 dp, 7.7 over the key bar: the toast waits until the Undo goes.
+        realNotices(velvetColumn, error = false, fontScale = 2f)
+        assertShownAndWaiting(listOf("undo"), waiting = listOf("toast"))
+        assertTheUndoButtonShows()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aToastNewerThanTheErrorShowsAndTheErrorWaits() {
+        val c = realNotices(velvetColumn, undo = false, upload = false, fontScale = 2f)
+        c.uploading = "Uploading $uploadName…"
+        compose.waitForIdle()
+        assertShownAndWaiting(listOf("toast"), waiting = listOf("error"))
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theWaitingToastComesBackWhenTheErrorGoes() {
+        val c = realNotices(velvetColumn, undo = false, fontScale = 2f)
+        assertShownAndWaiting(listOf("error"), waiting = listOf("toast"))
+        c.error = null
+        compose.waitForIdle()
+        // Alone, it has #165's place: from the pane's top down, 16 dp below the column's top.
+        assertShownAndWaiting(listOf("toast"), waiting = emptyList())
+        assertEquals(16f, bounds("toast").top.value, 0.5f)
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theWaitingNoticesComeBackWhenTheKeyBarHasRoomAgain() {
+        // The keyboard goes down: the pane area is tall again, and the notices stack in it as at #165.
+        var paneBottom by mutableStateOf(32)
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                VeloTheme {
+                    val px = LocalDensity.current.density
+                    Box(Modifier.width(velvetColumn.dp).height(360.dp)) {
+                        PaneNotices({ Rect(0f, 0f, velvetColumn * px, paneBottom * px) }, keyBar = { Rect(0f, 83 * px, velvetColumn * px, 120 * px) },
+                            padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                            val heard = remember { HeardNotices() }
+                            UploadToast(c, heard, waits = true)
+                            ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        c.uploading = "Uploading $uploadName…"
+        c.error = errorText
+        compose.waitForIdle()
+        assertTrue("the toast waits", !placed("toast"))
+        paneBottom = 300
+        compose.waitForIdle()
+        assertTrue("the toast is back", placed("toast") && placed("error"))
+        assertTrue("stacked in the pane area", bounds("error").top >= bounds("toast").bottom && bounds("error").bottom <= 300.dp - 16.dp + 0.5.dp)
+    }
 
     private fun actions() = SidebarActions(
         toggleSidebar = {}, openSettings = {}, openPalette = {}, openDevice = {},

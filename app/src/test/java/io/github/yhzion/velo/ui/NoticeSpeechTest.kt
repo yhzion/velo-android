@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +25,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -30,6 +33,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
@@ -222,6 +226,99 @@ class NoticeSpeechTest {
         c.error = missing
         settle()
         assertEquals(listOf(listOf("Error: $missing")), readOut(from))
+    }
+
+    // Notices that wait (#192): over a one-line pane with the keyboard up, at twice the text size, the upload toast
+    // and the error notice do not fit side by side above the key bar, so the older waits behind the newer.
+
+    private val uploading = "Uploading 17957915015754169069198214825020.png…"
+
+    /** The toast and the error notice of [c] over the Velvet's column in landscape with the keyboard up, at font scale 2. */
+    private fun foldingNotices(c: HostConnection) {
+        compose.setContent {
+            view = LocalView.current
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                VeloTheme {
+                    val px = LocalDensity.current.density
+                    Box(Modifier.width(1088.dp).height(137.dp)) {
+                        PaneNotices({ Rect(0f, 0f, 1088 * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, 1088 * px, 120 * px) },
+                            padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                            val heard = remember { HeardNotices() }
+                            UploadToast(c, heard, waits = true)
+                            ErrorNotice(c, heard = heard, waits = true)
+                        }
+                    }
+                }
+            }
+        }
+        settle()
+    }
+
+    /** What a screen reader finds on screen now, node by node. */
+    private fun found() = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aNoticeThatWaitsIsHiddenAndNotReadAgainWhenItComesBack() {
+        val c = connection()
+        foldingNotices(c)
+        val first = mark()
+        c.uploading = uploading
+        settle()
+        assertEquals(listOf(listOf(uploading)), readOut(first))
+        val from = mark()
+        c.error = missing
+        settle()
+        assertEquals("only the newer is read", listOf(listOf("Error: $missing")), readOut(from))
+        assertEquals("the waiting toast is not found", listOf(listOf("Error: $missing")), found())
+        val back = mark()
+        c.error = null
+        settle()
+        assertEquals("the toast is back and not read again", emptyList<List<String>>(), readOut(back))
+        assertEquals(listOf(listOf(uploading)), found())
+        assertNoLiveRegion(compose.onNodeWithTag("toast").fetchSemanticsNode().config)
+    }
+
+    /**
+     * A notice that is back from waiting is no live region: Compose here sends only a change of the whole tree as it
+     * comes back, which TalkBack does not read out, but a change of its own would be.
+     */
+    private fun assertNoLiveRegion(config: androidx.compose.ui.semantics.SemanticsConfiguration) =
+        assertTrue("no live region once it is back: $config", SemanticsProperties.LiveRegion !in config)
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun anErrorThatWaitsBehindANewerToastIsNotReadAgainWhenItComesBack() {
+        val c = connection()
+        foldingNotices(c)
+        c.error = missing
+        settle()
+        val from = mark()
+        c.uploading = uploading
+        settle()
+        assertEquals("only the newer is read", listOf(listOf(uploading)), readOut(from))
+        assertEquals("the waiting error is not found", listOf(listOf(uploading)), found())
+        val back = mark()
+        c.uploading = null
+        settle()
+        assertEquals("the error is back and not read again", emptyList<List<String>>(), readOut(back))
+        assertEquals(listOf(listOf("Error: $missing")), found())
+        assertNoLiveRegion(compose.onNodeWithContentDescription("Error: $missing").fetchSemanticsNode().config)
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aNoticeThatCameWaitingIsReadOnceWhenItFirstShows() {
+        val c = connection()
+        foldingNotices(c)
+        val first = mark()
+        // Both at once: the toast, composed first, is the older and waits before it ever shows.
+        c.uploading = uploading
+        c.error = missing
+        settle()
+        assertEquals(listOf(listOf("Error: $missing")), readOut(first))
+        val from = mark()
+        c.error = null
+        settle()
+        assertEquals("read where it first shows", listOf(listOf(uploading)), readOut(from))
     }
 
     // The keyboard: it opens from the Filter field and leaves the sidebar shorter, with a notice in it.
