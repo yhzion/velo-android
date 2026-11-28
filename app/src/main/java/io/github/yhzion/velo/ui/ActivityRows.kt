@@ -129,7 +129,7 @@ internal fun ActivityRow(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // The group's title says it works; the percent of a pie is said with the session (#251).
-                        val sessionSaid = progressSaid(tile, entry.sessionLabel, afterFirst = false)
+                        val sessionSaid = progressSaid(tile, entry.sessionLabel, PercentAt.First)
                         Text(entry.sessionLabel, Modifier.weight(1f).testTag("activity-session-$id")
                             .then(if (sessionSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(sessionSaid) } else Modifier), style = type.caption.naturalLines(),
                             color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)

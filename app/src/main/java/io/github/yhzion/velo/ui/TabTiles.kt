@@ -64,16 +64,30 @@ internal fun rowMark(indicator: TabIndicator?): RowMark? = when (indicator) {
     else -> null
 }
 
+/** Where the percent of a progress pie goes among a line's parts ([progressSaid]). */
+enum class PercentAt {
+    /** After the state that opens the line: a sidebar row's "Working · 30% · 2m since report · ~". */
+    AfterState,
+    /** Before words that have no state: an Activity row's session, "30% · T250". */
+    First,
+    /** After the words: the caption's "studio · Index files · 30%". */
+    Last,
+}
+
 /**
- * What a screen reader hears for a row's line of [words] when its [tile] draws a progress pie (#251): the percent after
- * the line's first part, "Working · 30% · 2m since report · ~", or before [words] that have no state, as an Activity
- * row's session ("30% · T250"). Null without a pie, when the line says only what it draws. The screen shows no percent,
- * as Rex for Mac's does not, and the words are no state, so a new percent is heard when the row is reached, not as it comes.
+ * What a screen reader hears for a line of [words] when its [tile] draws a progress pie (#251): the percent put [at]
+ * its place among the parts. Null without a pie, when the line says only what it draws. The screen shows no percent,
+ * as Rex for Mac's does not, and the words are no state, so a new percent is heard when the line is reached, not as
+ * it comes.
  */
-internal fun progressSaid(tile: TabTileLook, words: String?, afterFirst: Boolean): String? {
+internal fun progressSaid(tile: TabTileLook, words: String?, at: PercentAt): String? {
     val percent = tile.progress?.let { "$it%" } ?: return null
     val parts = words?.split(" · ").orEmpty().filter(String::isNotEmpty)
-    return (if (afterFirst && parts.isNotEmpty()) listOf(parts.first(), percent) + parts.drop(1) else listOf(percent) + parts).joinToString(" · ")
+    return when {
+        at == PercentAt.AfterState && parts.isNotEmpty() -> listOf(parts.first(), percent) + parts.drop(1)
+        at == PercentAt.Last -> parts + percent
+        else -> listOf(percent) + parts
+    }.joinToString(" · ")
 }
 
 /** The mark at the end of a row whose [tile] is drawn: a tile with a progress pie already shows the work, so no dots (#250). */

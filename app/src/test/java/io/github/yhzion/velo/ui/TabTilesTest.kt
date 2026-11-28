@@ -188,11 +188,12 @@ class TabTilesTest {
     @Test fun aPiesPercentIsSaidWithTheRowsWordsNotDrawn() {
         val pie = TabTileLook(TileBrand.Claude, 1, null, progress = 30)
         val logo = TabTileLook(TileBrand.Claude, 1, null)
-        assertEquals("Working · 30% · 4s since report · ~/src", progressSaid(pie, "Working · 4s since report · ~/src", afterFirst = true))
-        assertEquals("Working · 30%", progressSaid(pie, "Working", afterFirst = true))
-        assertEquals("30% · T250", progressSaid(pie, "T250", afterFirst = false))
-        assertEquals("30%", progressSaid(pie, null, afterFirst = true))
+        assertEquals("Working · 30% · 4s since report · ~/src", progressSaid(pie, "Working · 4s since report · ~/src", PercentAt.AfterState))
+        assertEquals("Working · 30%", progressSaid(pie, "Working", PercentAt.AfterState))
+        assertEquals("30% · T250", progressSaid(pie, "T250", PercentAt.First))
+        assertEquals("studio · build · 30%", progressSaid(pie, "studio · build", PercentAt.Last))
+        assertEquals("30%", progressSaid(pie, null, PercentAt.AfterState))
         // Without a pie the line says what it draws.
-        assertNull(progressSaid(logo, "Working · 4s since report", afterFirst = true))
+        assertNull(progressSaid(logo, "Working · 4s since report", PercentAt.AfterState))
     }
 }

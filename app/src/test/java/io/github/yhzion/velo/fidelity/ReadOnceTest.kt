@@ -34,7 +34,6 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.github.yhzion.velo.core.LayoutNode
@@ -498,8 +497,7 @@ class ReadOnceTest {
         // say again at each new percent.
         assertEquals(listOf("Selected", "Claude Code", "Index the files", "Working · 30% · 4s since report · ~/src/api"), said("tab-row-index"))
         assertEquals(null, stateOf("tab-tile-index"))
-        // The screen draws the line without the percent.
-        compose.onNodeWithText("Working · 4s since report · ~/src/api", useUnmergedTree = true).assertExists()
+        // That the screen draws the line without the percent: TabListRowWordsTest.
         compose.onNodeWithTag("tab-tile-index-pie", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("tab-tile-index-logo", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("tab-working-index", useUnmergedTree = true).assertDoesNotExist()

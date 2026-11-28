@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,7 +114,10 @@ internal fun TabCaption(
                     ?: activity?.indicator?.description?.takeIf { tile.progress != null },
                 progress = tile.progress)
         }
-        Text(title, Modifier.weight(1f, fill).testTag("$tag-title"), color = color, style = style, maxLines = 1,
+        // The pie's percent is said with the title and drawn nowhere, so a new percent is quiet (#251).
+        val titleSaid = tile?.let { progressSaid(it, title, PercentAt.Last) }
+        Text(title, Modifier.weight(1f, fill).testTag("$tag-title")
+            .then(if (titleSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(titleSaid) } else Modifier), color = color, style = style, maxLines = 1,
             overflow = TextOverflow.Ellipsis)
         when (if (tile != null) rowMark(activity?.indicator, tile) else rowMark(activity?.indicator)) {
             RowMark.Working -> WorkingDots(unit * 4, unit * 3, Modifier.testTag("$tag-working"),

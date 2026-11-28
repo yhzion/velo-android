@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -101,5 +102,21 @@ class PaneCaptionTest {
             val title = bounds("pane-caption-title")
             assertEquals("$s", ((title.top + title.bottom) / 2).value, ((face.top + face.bottom) / 2).value, 0.5f)
         }
+    }
+
+    @Test fun aWorkingTabsProgressIsAPieAndItsPercentIsSaidWithTheTitle() {
+        // The caption under the panes draws the pie as the sidebar row does, without the dots (#251).
+        val tab = TabInfo("w", label = "build", program = "claude", activity = "working", block = "b1", progress = 30)
+        val row = sessionGroups(UiState(status = "connected", sessions = listOf(SessionInfo("s", tabs = listOf(tab)))), false, emptySet(), false, "")
+            .single().rows.single()
+        compose.setContent { VeloTheme { PaneCaption(row, connected = true, ActivityReadState(), host = "studio") } }
+        compose.waitForIdle()
+        compose.onNodeWithTag("caption-tab-tile-pie", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("caption-tab-tile-logo", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("pane-caption-working", useUnmergedTree = true).assertDoesNotExist()
+        fun said(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config
+        // The dots' word moves to the tile; the percent is said with the title, which draws without it.
+        assertEquals(TabIndicator.Working.description, said("caption-tab-tile")[SemanticsProperties.StateDescription])
+        assertEquals("studio · build · 30%", said("pane-caption-title")[SemanticsProperties.Text].joinToString(" "))
     }
 }
