@@ -68,7 +68,9 @@ jobs:
       # from downloads checked at that moment. The Gradle distribution is not cached:
       # services.gradle.org has not failed a run, and the step above checks its hash. The key
       # names the Gradle version above, which no hashed file holds; change it here with that step.
-      # A new key starts from the newest older cache and saves the result under itself.
+      # A new key starts from the newest older cache and saves the result under itself, but only
+      # a cache saved with the same path list restores: the first runs after #214, which dropped
+      # ~/.m2/repository, start empty.
       - name: Restore the dependency cache
         id: restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

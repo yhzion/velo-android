@@ -122,7 +122,7 @@ dependencies {
 // resolves it instead, and Robolectric reads it offline from robolectricSdkDir. The "-i7" is the
 // instrumentation version of Robolectric 4.18.1: a Robolectric upgrade or another sdk in @Config
 // fails the tests with "Unable to locate dependency" until this line names the jar it asks for.
-val robolectricSdk by configurations.creating {
+val robolectricSdk = configurations.create("robolectricSdk") {
     isCanBeConsumed = false
     isTransitive = false
 }
@@ -130,9 +130,10 @@ dependencies {
     robolectricSdk("org.robolectric:android-all-instrumented:14-robolectric-10818077-i7")
 }
 // Robolectric's offline resolver looks for <artifact>-<version>.jar in one directory.
+val robolectricSdkPath = layout.buildDirectory.dir("robolectric")
 val robolectricSdkDir = tasks.register<Sync>("robolectricSdkDir") {
     from(robolectricSdk)
-    into(layout.buildDirectory.dir("robolectric"))
+    into(robolectricSdkPath)
 }
 
 // The fidelity capture (FidelityCaptureTest) draws every app scene at each redesign board's size,
@@ -144,7 +145,7 @@ tasks.withType<Test>().configureEach {
         .withPropertyName("robolectricSdk")
         .withPathSensitivity(PathSensitivity.NAME_ONLY)
     systemProperty("robolectric.offline", "true")
-    systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric").get().asFile.path)
+    systemProperty("robolectric.dependency.dir", robolectricSdkPath.get().asFile.path)
     // ChangeNotesTest reads max_item_length from changelog.sh, so editing the script alone must rerun tests.
     inputs.file(changelogScript)
         .withPropertyName("changelogScript")

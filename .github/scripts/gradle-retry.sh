@@ -18,7 +18,7 @@
 # GRADLE_RETRY_MAX_DELAY (default 300). A Retry-After of N seconds in the failure report makes
 # that wait at least N. GRADLE_RETRY_WINDOW (default 900) bounds the waits together: when the
 # next wait would pass it, the run ends instead. pr-check-android.yml's timeout-minutes leaves
-# room for five runs and the whole window.
+# room for five runs and the whole window; release.yml's build job keeps the default 360 minutes.
 set -uo pipefail
 
 if (($# == 0)); then
