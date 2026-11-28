@@ -94,6 +94,60 @@ class PaneSurfaceView(
         }
     var onRead: () -> Unit = {}
 
+    /** What a screen reader hears for the pane: its name, and whether it takes the keys. Null for a preview. */
+    var spokenLabel: String? = null
+        set(value) {
+            field = value
+            describe()
+        }
+
+    /**
+     * The caption's words the pane that takes the keys says after its name while the caption gives way (#260), or
+     * null. A screen reader reads a new description of the node it is on again, and the tab's name of an agent's tab is
+     * its title, which may change many times a second: so while the pane holds a screen reader's focus, the words it
+     * says stay as they were when the focus came, and the new ones are said when it comes again. Words that go (the
+     * pane no longer takes the keys, the caption shows again) go at once: they belong to no other pane.
+     */
+    var captionWords: String? = null
+        set(value) {
+            field = value
+            if (!readerFocused || value == null) describe()
+        }
+
+    /** The caption's words the description says now: [captionWords] as they were when a screen reader's focus came. */
+    private var saidWords: String? = null
+
+    /** Whether a screen reader's focus is on this pane, as its focus events tell. */
+    private var readerFocused = false
+
+    private fun describe() {
+        if (!readerFocused || captionWords == null) saidWords = captionWords
+        val label = spokenLabel
+        val said = label?.let { inputTargetSaid(it, saidWords) }
+        if (contentDescription?.toString() != said) contentDescription = said
+    }
+
+    private fun readerFocus(eventType: Int) {
+        when (eventType) {
+            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED -> readerFocused = true
+            AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED -> {
+                readerFocused = false
+                describe()
+            }
+        }
+    }
+
+    // The focus comes with the one and goes with the other ([View.requestAccessibilityFocus], [View.clearAccessibilityFocus]).
+    override fun sendAccessibilityEvent(eventType: Int) {
+        readerFocus(eventType)
+        super.sendAccessibilityEvent(eventType)
+    }
+
+    override fun sendAccessibilityEventUnchecked(event: AccessibilityEvent) {
+        readerFocus(event.eventType)
+        super.sendAccessibilityEventUnchecked(event)
+    }
+
     override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
         super.onInitializeAccessibilityNodeInfo(info)
         if (preview || block.isEmpty()) return

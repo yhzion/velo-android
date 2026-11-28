@@ -3,6 +3,8 @@ package io.github.yhzion.velo.ui
 import android.app.Application
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.getBoundsInRoot
@@ -38,6 +40,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -107,7 +110,29 @@ class LandscapeKeyboardCaptionTest {
     /** What a screen reader hears for the pane that takes the keys: its view's description. */
     private fun paneSaid() = panesSaid().single()
     /** What a screen reader hears for each pane, in the order of the views. */
-    private fun panesSaid() = compose.runOnIdle { (view as ViewGroup).descendants.filterIsInstance<PaneSurfaceView>().map { it.contentDescription?.toString() }.toList() }
+    private fun panesSaid() = compose.runOnIdle { paneViews().map { it.contentDescription?.toString() } }
+    private fun paneViews() = (view as ViewGroup).descendants.filterIsInstance<PaneSurfaceView>().toList()
+
+    /** A screen reader's focus comes to the [n]th pane view, as [View.requestAccessibilityFocus] tells it. */
+    private fun readerFocusTo(n: Int) = compose.runOnIdle {
+        shadowOf(view.context.getSystemService(AccessibilityManager::class.java)).setEnabled(true)
+        paneViews()[n].sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
+    }
+
+    /** And goes, as [View.clearAccessibilityFocus] tells it. */
+    private fun readerFocusOff(n: Int) = compose.runOnIdle {
+        paneViews()[n].sendAccessibilityEventUnchecked(AccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED))
+    }
+
+    private fun twoPanes(label: String, focused: String = "a") = state.copy(focused = focused, windows = listOf(WindowInfo("w1", label = label,
+        layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"), second = LayoutNode(block = "b")))))
+
+    /** The state as the server sends it again, with the titles. */
+    private var generation = 1L
+    private fun serverSends(next: UiState) {
+        compose.runOnIdle { conn!!.onState(++generation, true, Json { encodeDefaults = true }.encodeToString(UiState.serializer(), next)) }
+        settle()
+    }
 
     /** With Gboard up the pane keeps at least [least] dp, the caption is gone, to a screen reader too, and the key bar stays. */
     private fun theCaptionGivesWay(style: String, least: Float) {
@@ -173,15 +198,45 @@ class LandscapeKeyboardCaptionTest {
      * which comes with the state with the titles, reaches it while the caption is hidden.
      */
     @Test fun onlyTheInputTargetSaysTheCaptionAndANewNameReachesIt() {
-        fun twoPanes(label: String) = state.copy(windows = listOf(WindowInfo("w1", label = label,
-            layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"), second = LayoutNode(block = "b")))))
         workspace("comfortable", twoPanes("build"))
         keyboard(249)
         assertFalse(captionShown())
         assertEquals(listOf("Pane 1, input target, velo · build, Terminal, 2 panes", "Pane 2"), panesSaid())
-        compose.runOnIdle { conn!!.onState(2, true, Json { encodeDefaults = true }.encodeToString(UiState.serializer(), twoPanes("deploy"))) }
-        settle()
+        serverSends(twoPanes("deploy"))
         assertEquals(listOf("Pane 1, input target, velo · deploy, Terminal, 2 panes", "Pane 2"), panesSaid())
+    }
+
+    /**
+     * A screen reader reads a new description of the node it is on again: an agent's tab, named by a title that changes
+     * many times a second, was read again each time (42 times in 10 s on the Velvet). While its focus is on the pane, the
+     * caption's words stay; the new name is heard when the focus comes again.
+     */
+    @Test fun whileAScreenReaderIsOnThePaneTheWordsStay() {
+        workspace("comfortable", twoPanes("build"))
+        keyboard(249)
+        readerFocusTo(0)
+        for (name in listOf("agent a 1", "agent b 2", "agent c 3")) {
+            serverSends(twoPanes(name))
+            assertEquals("Pane 1, input target, velo · build, Terminal, 2 panes", panesSaid()[0])
+        }
+        readerFocusOff(0)
+        assertEquals("the focus gone, the new name", "Pane 1, input target, velo · agent c 3, Terminal, 2 panes", panesSaid()[0])
+        readerFocusTo(0)
+        serverSends(twoPanes("agent d 4"))
+        assertEquals("and that one is heard when the focus comes again", "Pane 1, input target, velo · agent c 3, Terminal, 2 panes", panesSaid()[0])
+    }
+
+    /** A change of the input target is read as before, the screen reader's focus on the pane or not; the words go with it. */
+    @Test fun theInputTargetChangesAtOnceUnderTheFocus() {
+        workspace("comfortable", twoPanes("build"))
+        keyboard(249)
+        readerFocusTo(0)
+        readerFocusTo(1)
+        serverSends(twoPanes("build", focused = "b"))
+        assertEquals(listOf("Pane 1", "Pane 2, input target"), panesSaid())
+        // The pane the focus is on takes the words when the focus comes again.
+        readerFocusOff(1)
+        assertEquals("Pane 2, input target, velo · build, Terminal, 2 panes", panesSaid()[1])
     }
 
     @Test fun theRuleComesBackOnlyWhereTheCaptionFits() {

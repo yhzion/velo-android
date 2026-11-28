@@ -373,8 +373,10 @@ private fun PaneCard(
                 v.haptics = haptics
                 v.importantForAccessibility = if (preview) View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     else View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                v.spokenLabel = if (preview) null else label
                 // The caption's words are read here, in the view's update, so that they change it and compose nothing.
-                v.contentDescription = if (preview) null else if (focused) inputTargetSaid(label, captionSaid()) else label
+                // The view keeps them as they were while a screen reader's focus is on it.
+                v.captionWords = if (!preview && focused) captionSaid() else null
                 v.onRead = { reading = true }
                 v.onFinger = {
                     input.forgetImeContext()
