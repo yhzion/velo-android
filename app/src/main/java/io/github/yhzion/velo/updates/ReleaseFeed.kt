@@ -77,17 +77,18 @@ object ReleaseFeed {
      * Blocking I/O. Eligible releases newer than [installedCode], newest first; the first of them is
      * the update. Every one when the API answered; on the stable channel, the manifest's release alone
      * when the API failed or saw no newer one ([check]). Empty means no eligible update, not a failed check.
-     * [limit] is told what each of the API's answers says of its limit.
+     * [limit] is told what each of the API's answers says of its limit. [now] is when the check started.
      */
-    fun newer(channel: UpdateChannel, installedCode: Long, limit: ApiLimit): List<AppRelease> =
-        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, source, limit = limit)
+    fun newer(channel: UpdateChannel, installedCode: Long, limit: ApiLimit, now: Long): List<AppRelease> =
+        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, source, now, limit)
 
     /**
      * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
-     * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
+     * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead of [now], when the check
+     * started, the API is not asked.
      */
-    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, limit: ApiLimit): AppRelease? =
-        check(channel, installedCode, everyRelease = false, apiBlockedUntil, source, limit = limit).firstOrNull()
+    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, limit: ApiLimit, now: Long): AppRelease? =
+        check(channel, installedCode, everyRelease = false, apiBlockedUntil, source, now, limit).firstOrNull()
 
     /**
      * Stable checks read the latest release's update manifest first: a release download, so not under

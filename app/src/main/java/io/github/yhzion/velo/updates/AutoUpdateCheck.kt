@@ -18,8 +18,10 @@ internal fun installedVersionCode(context: Context): Long =
  * Blocking I/O. The Updates page's check of [channel]: every release newer than [installed]. What the API
  * says of its limit is stored as of this check's start (#274): the time it is called (#289).
  */
-internal fun manualCheck(context: Context, channel: UpdateChannel, installed: Long): List<AppRelease> =
-    ReleaseFeed.newer(channel, installed, UpdateSettings.apiLimit(context.applicationContext, UpdateSettings.clock()))
+internal fun manualCheck(context: Context, channel: UpdateChannel, installed: Long): List<AppRelease> {
+    val startedAt = UpdateSettings.clock()
+    return ReleaseFeed.newer(channel, installed, UpdateSettings.apiLimit(context.applicationContext, startedAt), startedAt)
+}
 
 /**
  * "Check for updates automatically": when Velo comes to the foreground, a feed check of the
@@ -50,7 +52,7 @@ internal object AutoUpdateCheck {
             try {
                 val blockedUntil = UpdateSettings.apiBlockedUntil(app)
                 val release = runInterruptible(Dispatchers.IO) {
-                    ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil, UpdateSettings.apiLimit(app, now))
+                    ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil, UpdateSettings.apiLimit(app, now), now)
                 }
                 UpdateSettings.record(app, channel, now, release)
             } catch (cancelled: CancellationException) {

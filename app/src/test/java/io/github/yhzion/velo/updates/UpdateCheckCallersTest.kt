@@ -119,9 +119,12 @@ class UpdateCheckCallersTest {
     /** While the check waits, a check that started 1 s after it clears the limit. */
     private fun aNewerCheckClears(startedAt: Long) = { UpdateSettings.apiSeen(context, startedAt + 1_000, 0L) }
 
+    /** The start time of the check whose answer the stored limit is: what [UpdateSettings.apiSeen] keeps. */
+    private fun storedBy() = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE).getLong("apiSeenBy", -1)
+
     /**
-     * Run [check] twice: a refusal with nothing else going on is stored, and one that comes after a newer
-     * check cleared the limit changes nothing. The second starts [gap] after the first.
+     * Run [check] twice: a refusal with nothing else going on is stored as of the check's start, and one that
+     * comes after a newer check cleared the limit changes nothing. The second starts [gap] after the first.
      */
     private fun eachCallerStoresAsOfItsStart(gap: Long, check: () -> Unit) {
         val first = time.get()
@@ -129,6 +132,8 @@ class UpdateCheckCallersTest {
         check()
         assertEquals(1, asked.get())
         assertEquals("the refusal is stored", first + 60_000, UpdateSettings.apiBlockedUntil(context))
+        // Neither an earlier time (the system's clock, 0) nor a later one (the answer's) passes for the start.
+        assertEquals("as of the check's start", first, storedBy())
 
         time.set(first + gap)
         val second = time.get()
@@ -136,6 +141,7 @@ class UpdateCheckCallersTest {
         check()
         assertEquals(2, asked.get())
         assertEquals("the newer check's clearing stands", 0L, UpdateSettings.apiBlockedUntil(context))
+        assertEquals(second + 1_000, storedBy())
     }
 
     @Test fun theUpdatesPageStoresTheLimitAsOfItsStart() = eachCallerStoresAsOfItsStart(gap = 120_000) {
