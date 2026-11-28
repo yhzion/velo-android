@@ -221,17 +221,23 @@ waits() { # waits <expected waits> [NAME=value...] -- <expect arguments...>
   ) || exit 1
   [[ $(slept) == "$want" ]] || fail "Case at line ${BASH_LINENO[0]}: waited '$(slept)', expected '$want'"
 }
-waits '60 120 240 300' -- 1 5 "${m5[@]}"
+# An empty GRADLE_RETRY_DELAY falls back to the default, as in the pull request checks.
+waits '60 120 240 300' GRADLE_RETRY_DELAY= -- 1 5 "${m5[@]}"
 
 # A Retry-After longer than the planned wait lengthens it; a shorter one does not shorten it.
 maven_429_after="${maven_429/Too Many Requests/Too Many Requests (Retry-After: 200)}"
 waits '200 120' -- 0 3 "$maven_429_after" "$maven_429"
 waits '60 120' -- 0 3 "${maven_429/Too Many Requests/Retry-After: 30}" "$maven_429"
 waits '60' -- 0 2 "${maven_429/Too Many Requests/retry-after=007}"
+waits '90' -- 0 2 "${maven_429/Too Many Requests/\"Retry-After\": 90}"
+# A Retry-After beside a failing test does not make it a network failure.
+waits '' -- 1 1 "${failing_tests/There were failing tests/Retry-After: 30. There were failing tests}"
 
-# The waits together stay inside GRADLE_RETRY_WINDOW: a Retry-After of 1000 seconds ends the
-# run at once, and a third wait that would pass 300 seconds ends it after two.
-waits '' -- 1 1 "${maven_429/Too Many Requests/Retry-After: 1000}"
+# The waits together stay inside GRADLE_RETRY_WINDOW: the default of 900 seconds takes a
+# Retry-After of 900 and ends the run at 901, and a third wait that would pass 300 seconds ends
+# it after two.
+waits '900' -- 0 2 "${maven_429/Too Many Requests/Retry-After: 900}"
+waits '' -- 1 1 "${maven_429/Too Many Requests/Retry-After: 901}"
 waits '60 120' GRADLE_RETRY_WINDOW=300 -- 1 3 "${m5[@]}"
 grep -q '::error::A repository could not be reached in 3 attempts; waiting 240s more would pass the 300s window' \
   "$work/stdout" || fail "No ::error:: line when the window ends the retries"

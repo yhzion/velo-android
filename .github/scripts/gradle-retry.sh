@@ -31,6 +31,7 @@ delay=${GRADLE_RETRY_DELAY:-60}
 max_delay=${GRADLE_RETRY_MAX_DELAY:-300}
 window=${GRADLE_RETRY_WINDOW:-900}
 waited=0
+delay=$((delay < max_delay ? delay : max_delay))
 
 # Gradle prints each failure on stderr as a block from "* What went wrong:" to "* Try:".
 # A block is a network failure when it names one of these. Plugin resolution names no status
@@ -79,17 +80,17 @@ for ((attempt = 1; ; attempt++)); do
     echo "::error::A repository could not be reached in $attempts attempts"
     exit "$status"
   fi
-  wait=$((delay < max_delay ? delay : max_delay))
+  pause=$delay
   asked=$(retry_after "$err")
-  if [[ -n $asked ]] && ((10#$asked > wait)); then
-    wait=$((10#$asked))
+  if [[ -n $asked ]] && ((10#$asked > pause)); then
+    pause=$((10#$asked))
   fi
-  if ((waited + wait > window)); then
-    echo "::error::A repository could not be reached in $attempt attempts; waiting ${wait}s more would pass the ${window}s window"
+  if ((waited + pause > window)); then
+    echo "::error::A repository could not be reached in $attempt attempts; waiting ${pause}s more would pass the ${window}s window"
     exit "$status"
   fi
-  echo "::warning::A repository could not be reached (attempt $attempt of $attempts); retrying in ${wait}s"
-  sleep "$wait"
-  waited=$((waited + wait))
-  delay=$((delay * 2))
+  echo "::warning::A repository could not be reached (attempt $attempt of $attempts); retrying in ${pause}s"
+  sleep "$pause"
+  waited=$((waited + pause))
+  delay=$((delay * 2 < max_delay ? delay * 2 : max_delay))
 done

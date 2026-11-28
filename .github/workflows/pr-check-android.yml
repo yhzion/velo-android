@@ -34,8 +34,8 @@ jobs:
   unit-test:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
-    # A run takes 3 to 4 minutes. gradle-retry.sh may run the tests five times and wait up to
-    # 15 minutes between them (#221).
+    # A run takes 3 to 4 minutes. gradle-retry.sh may run the tests five times and wait 12
+    # minutes between them, up to 15 when a server asks for longer with Retry-After (#221).
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
