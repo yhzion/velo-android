@@ -212,8 +212,11 @@ internal fun Sidebar(
     settingsBadge: Boolean = false,
     /** The pin beside the toggle ([dockSwitch]): whether the sidebar is docked beside the panes; null draws no pin. */
     docked: Boolean? = null,
-    /** The notices it holds under its Filter field while it covers the panes ([Workspace]): the list makes room for them. */
-    notices: (@Composable ColumnScope.() -> Unit)? = null,
+    /**
+     * The notices it holds under its Filter field while it covers the panes ([Workspace]): the list makes room for them.
+     * Those that do not fit wait as in the pane column ([waitsIn], #240).
+     */
+    notices: (@Composable () -> Unit)? = null,
     state: SidebarState = remember { SidebarState() },
 ) = VeloSurface(VeloTheme.colors.sidebar) {
     val c = VeloTheme.surface
@@ -375,10 +378,48 @@ internal fun Sidebar(
     }, notices = notices?.let { content ->
         {
             // On the band under the field, the board's 12 from its edges: the list above grows shorter.
-            Column(Modifier.fillMaxWidth().padding(start = 12.bd, end = 12.bd, bottom = 12.bd), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(VeloTheme.sizes.gap), content = content)
+            SidebarNotices(12.bd, VeloTheme.sizes.gap, content)
         }
     })
+}
+
+/**
+ * The sidebar's notices, [gap] apart, centred [padding] from its sides and foot, as one node that [SidebarColumn] places: so a keyboard that opens
+ * from the Filter field moves them together, and a screen reader does not read a live region again (#195). The height
+ * they are given is the room above the Filter's band. Where two or more are taller, those without a control
+ * ([waitsIn]) wait, the oldest first, until the rest fit or one is left (#240): the rule of the pane column's notices
+ * (#192). A waiting notice is not placed, and its [NoticeWait] says so. Notices still taller than the room keep their
+ * height and run on below it, over the band, as one alone does.
+ */
+@Composable
+private fun SidebarNotices(padding: Dp, gap: Dp, content: @Composable () -> Unit) {
+    // No modifier: a node around them would be taller than it was let be too, and Compose would centre them in it.
+    Layout(content) { measurables, constraints ->
+        val side = padding.roundToPx()
+        val width = (constraints.maxWidth - side * 2).coerceAtLeast(0)
+        val between = gap.roundToPx()
+        // With the padding under them; nothing for none.
+        fun heightOf(heights: List<Int>) = if (heights.isEmpty()) 0 else heights.sum() + between * (heights.size - 1) + side
+        // Only by their intrinsic heights until the notices that wait are known, since each is measured once.
+        var shown = measurables
+        if (constraints.hasBoundedHeight) {
+            for (m in measurables.filter { it.parentData is NoticeWait }.sortedBy { (it.parentData as NoticeWait).since }) {
+                if (shown.size < 2 || heightOf(shown.map { it.maxIntrinsicHeight(width) }) <= constraints.maxHeight) break
+                shown = shown.filter { it !== m }
+            }
+        }
+        measurables.forEach { m -> (m.parentData as? NoticeWait)?.onScreen(shown.any { it === m }) }
+        val notices = shown.map { it.measure(Constraints(maxWidth = width)) }
+        val height = heightOf(notices.map { it.height })
+        // Their own height, even past the room: [SidebarColumn] places them by it.
+        layout(constraints.maxWidth, height) {
+            var y = 0
+            notices.forEach {
+                it.placeRelative(side + (width - it.width) / 2, y)
+                y += it.height + between
+            }
+        }
+    }
 }
 
 /**
@@ -395,8 +436,8 @@ internal fun Sidebar(
  * Compose then leaves out of what a screen reader sees, taking the field's focus away. They are composed with the
  * column, not where it measures, so a notice that moves in from the pane column is made before the one there goes
  * ([HeardNotices]). The Filter field stays where it is in the body as the head folds, so it keeps its focus too. Only
- * a column shorter than the band, or notices taller than the room above it, has them over the band. The notices keep
- * their own height: only the body is cut.
+ * a column shorter than the band, or notices taller than the room above it ([SidebarNotices] lets some wait first, #240),
+ * has them over the band. The notices keep their own height: only the body is cut.
  */
 @Composable
 private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: @Composable () -> Unit,
@@ -408,8 +449,12 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: 
     Layout(listOf({ SidebarHeadAndBody(least, headHeight, moving, body) }, notices ?: {}), modifier) { (inner, notes), constraints ->
         val width = constraints.maxWidth
         val band = least.roundToPx()
-        val stack = notes.map { it.measure(Constraints(maxWidth = width)) }
-        val stackHeight = stack.sumOf { it.height }
+        // The notices learn the room above the band as the height they may take ([SidebarNotices]); none where the
+        // column is shorter than the band, which leaves them at its foot.
+        val above = if (constraints.hasBoundedHeight) constraints.maxHeight - band else 0
+        val stack = notes.map { it.measure(Constraints(maxWidth = width, maxHeight = if (above > 0) above else Constraints.Infinity)) }
+        // Their own height, which may pass the room they were given.
+        val stackHeight = stack.sumOf { it.measuredHeight }
         val height = if (constraints.hasBoundedHeight) constraints.maxHeight else headHeight.coerceAtLeast(0) + band + stackHeight
         // The head and the body take the height the notices leave under the band, or all of it: folded, the head asks
         // nothing of its own ([sidebarBodyHeight] with no head). The inner column folds it where it leaves the body less.
@@ -420,7 +465,8 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: 
             column.forEach { it.placeRelative(0, 0) }
             // Placed last, so over the body when it keeps the height under them.
             var at = sidebarNoticesTop(height, 0, stackHeight, band)
-            stack.forEach { it.placeRelative(0, at); at += it.height }
+            // Compose centres a node taller than it was let be on the height it was let have: placed back to its top.
+            stack.forEach { it.placeRelative(0, at - (it.height - it.measuredHeight) / 2); at += it.measuredHeight }
         }
     }
 }

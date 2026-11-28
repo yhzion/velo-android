@@ -10,7 +10,6 @@ import org.junit.Before
 import org.robolectric.Shadows.shadowOf
 import android.view.View
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -20,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.getBoundsInRoot
@@ -68,7 +68,7 @@ class SidebarFoldTest {
         shadowOf(manager).setEnabledAccessibilityServiceList(listOf(AccessibilityServiceInfo()))
     }
 
-    private fun show(width: Dp, height: () -> Dp, notices: (@Composable ColumnScope.() -> Unit)? = null) = compose.setContent {
+    private fun show(width: Dp, height: () -> Dp, notices: (@Composable () -> Unit)? = null) = compose.setContent {
         view = LocalView.current
         VeloTheme {
             Box(Modifier.width(width).height(height())) {
@@ -208,6 +208,38 @@ class SidebarFoldTest {
         compose.waitForIdle()
         assertEquals("the same This Device", device, compose.onNodeWithTag("this-device-row").fetchSemanticsNode().id)
         assertTrue("This Device keeps the focus as the head unfolds", focused(device))
+    }
+
+    @Test fun landscapeWithTheKeyboardUpKeepsTheFilterFieldWholeUnderTwoNotices() {
+        // 130 dp, with the upload's notice and then an error's (#240): the two are taller than the room above the Filter
+        // band, so the older waits behind the newer, as the pane column's do (#192).
+        var error by mutableStateOf(false)
+        show(800.dp, { 130.dp }, notices = {
+            ToastSurface("Uploading photo.png…", Modifier.testTag("upload-notice").waitsIn(rememberNoticeWait(null, "upload")))
+            if (error) ToastSurface("The remote has no file at file:///tmp/a.txt.", Modifier.testTag("error-notice")
+                .waitsIn(rememberNoticeWait(null, "error")))
+        })
+        compose.waitForIdle()
+        val field = filterField.fetchSemanticsNode().id
+        compose.runOnIdle { view.accessibilityNodeProvider.performAction(field, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
+        compose.waitForIdle()
+        assertTrue("the Filter field has the focus at first", focused(field))
+        error = true
+        compose.waitForIdle()
+        val input = compose.onNodeWithTag("sidebar-filter-input", useUnmergedTree = true).getBoundsInRoot()
+        val shown = listOf("upload-notice", "error-notice").filter { info(it)?.isVisibleToUser == true }
+        for (tag in shown) {
+            val n = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
+            assertTrue("the notice $tag $n is clear of the Filter field $input", n.bottom <= input.top || n.top >= input.bottom)
+        }
+        assertEquals("the newer notice shows, the older waits", listOf("error-notice"), shown)
+        assertTheFilterHasItsRow()
+        assertTrue("the Filter field keeps the screen reader's focus", focused(field))
+        // The error goes, and the upload's notice comes back.
+        error = false
+        compose.waitForIdle()
+        assertTrue("the upload's notice is back", info("upload-notice")?.isVisibleToUser == true)
+        assertTrue("the Filter field keeps the focus as it comes back", focused(field))
     }
 
     private fun actions() = SidebarActions(

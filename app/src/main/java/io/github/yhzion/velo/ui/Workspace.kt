@@ -709,8 +709,8 @@ internal fun Workspace(
                 // its list (#209), so they stay off the Filter field and the toolbar's buttons.
                 notices = if (panesHidden && anyNotice) {
                     {
-                        UploadToast(conn, heard)
-                        ErrorNotice(conn, text = ::noticeText, heard = heard)
+                        UploadToast(conn, heard, waits = true)
+                        ErrorNotice(conn, text = ::noticeText, heard = heard, waits = true)
                     }
                 } else null)
             if (!covers) Spacer(Modifier.width(gap))
