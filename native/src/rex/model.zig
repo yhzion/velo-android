@@ -714,7 +714,8 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
             const b = h.asBlock();
             try jw.objectField(b.id);
             try jw.beginObject();
-            const info = state.blocks.get(b.id) orelse BlockInfo{};
+            // The core follows a minimized terminal as it does a lead block (#233).
+            const info = blockInfo(state, b.id);
             // Each pane's program as a tab's `icon` names its lead's, so the app can draw every pane's brand (#217).
             try writeTabIcon(jw, null, info);
             try writeBlockInfo(jw, &b, info);
@@ -728,7 +729,8 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
 }
 
 /// What the core learned about block `id`: from the selected session's panes, else from
-/// the lead blocks it follows in the other sessions.
+/// the blocks it follows (the lead blocks of the other sessions' tabs, the selected
+/// session's minimized panes).
 fn blockInfo(state: UiState, id: Id) BlockInfo {
     if (state.blocks.get(id)) |info| return info;
     if (state.leads) |leads| if (leads.get(id)) |info| return info;

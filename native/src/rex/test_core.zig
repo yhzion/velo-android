@@ -8344,3 +8344,133 @@ test "Core: its threads carry names a trace tells apart, a pane's with the end o
     // `block:t`: what follows `block:`, at most its last four bytes.
     try testing.expect(try threadNamed("velo-data-t"));
 }
+
+/// `session:a` at `revision`: the terminal `block:t` tiled and the terminal `block:m` in
+/// a floating layer, drawn or `minimized`.
+fn stashedView(buf: []u8, revision: u32, minimized: bool) ![]const u8 {
+    return std.fmt.bufPrint(buf,
+        \\{{"session_id":"session:a","label":"a","revision":{d},"active_window_id":"window:w","windows":[
+        \\{{"window_id":"window:w","label":"w","focused_block_id":"block:t","layers":[{{"layer_id":"layer:l",
+        \\"kind":"tiled","bounds":[0,0,1,1],"layout":{{"rect":[0,0,1,1],"block_id":"block:t"}},
+        \\"blocks":[{{"block_id":"block:t","creator_name":"com.superlogical.terminal"}}]}},
+        \\{{"layer_id":"layer:m","kind":"floating",{s}"bounds":[0.1,0.1,0.5,0.5],"layout":{{"block_id":"block:m"}},
+        \\"blocks":[{{"block_id":"block:m","creator_name":"com.superlogical.terminal"}}]}}]}}]}}
+    , .{ revision, if (minimized) "\"state\":\"minimized\"," else "" });
+}
+
+/// A bootstrapped core that is `client:me` and attached `session:a` as `stashedView` says.
+fn withStashed(recorder: *Recorder, minimized: bool) !*Core {
+    const core = try bootstrapped(recorder);
+    errdefer core.destroy();
+    core.receive("{\"type\":\"welcome\",\"protocol\":\"rex.control.v1\",\"client\":{\"id\":\"" ++ me ++ "\",\"reconnect_token\":\"\"},\"api_revision\":18}");
+    const id = (try pendingId(core, .attach)) orelse return error.NoAttachRequest;
+    var buf: [1024]u8 = undefined;
+    try receiveFmt(core, "{{\"type\":\"response\",\"id\":\"{d}\",\"payload\":{{\"client_id\":\"" ++ me ++ "\",\"view\":{s}}}}}", .{ id, try stashedView(&buf, 1, minimized) });
+    return core;
+}
+
+/// The view of `session:a` moved to `revision`, as `stashedView` says.
+fn stashedUpdate(core: *Core, revision: u32, minimized: bool) !void {
+    var event: [32]u8 = undefined;
+    try sessionEvent(core, "session:a", "session_view_changed", try std.fmt.bufPrint(&event, "{{\"revision\":{d}}}", .{revision}));
+    var buf: [1024]u8 = undefined;
+    try answer(core, (try pendingId(core, .view)) orelse return error.NoViewRequest, try stashedView(&buf, revision, minimized));
+}
+
+fn blockOf(recorder: *Recorder, a: std.mem.Allocator, block: []const u8) !std.json.Value {
+    return model.get(try recorder.lastValue(a, "blocks"), block) orelse error.NoSuchBlock;
+}
+
+test "Core: a minimized terminal of the selected session is asked what it runs, with no pane, and named by it (#233)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try withStashed(&recorder, true);
+    defer core.destroy();
+    const status_method = protocol.methods.terminalProgramStatus;
+    const title_method = protocol.methods.terminalTitle;
+    // Three requests, as a pane's; no pane and no data stream.
+    for ([_][]const u8{ process_method, status_method, title_method }) |method| {
+        try testing.expectEqual(@as(usize, 1), queuedFor(core, method, "block:m"));
+    }
+    try testing.expect(core.entries.get("block:m") == null);
+    try testing.expect(core.entries.get("block:t") != null);
+
+    try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"bash\"},\"cwd\":\"/home/me\"}");
+    try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
+
+    // Its events keep it current, one request each.
+    try blockEvent(core, "session:a", "block:m", "process_changed", "{}");
+    try testing.expectEqual(@as(usize, 2), queuedFor(core, process_method, "block:m"));
+    try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"vim\"}}");
+    try testing.expectEqualStrings("vim", field(try blockOf(&recorder, a, "block:m"), "program"));
+    const before = sent(core);
+    try blockEvent(core, "session:a", "block:m", "title_changed", "{\"title\":\"vim README.md\"}");
+    try testing.expectEqual(before, sent(core));
+    try testing.expectEqualStrings("vim README.md", field(try blockOf(&recorder, a, "block:m"), "title"));
+    try answer(core, try requestId(core, status_method, "\"block:m\""), "{\"records\":[]}");
+    try blockEvent(core, "session:a", "block:m", "program_status_changed", "{}");
+    try testing.expectEqual(@as(usize, 2), queuedFor(core, status_method, "block:m"));
+
+    // Events sent while the link was down are gone: a new connection asks again.
+    try answer(core, try requestId(core, status_method, "\"block:m\""), "{\"records\":[]}");
+    core.lock.lock();
+    core.linkEnded();
+    core.lock.unlock();
+    const id = registerBootstrap(core);
+    var buf: [1024]u8 = undefined;
+    try receiveFmt(core,
+        \\{{"type":"response","id":"{d}","payload":{{"attach_all":{{"sessions":[
+        \\{{"session_id":"session:a","label":"a"}},{{"session_id":"session:b","label":"b"}}]}},
+        \\"attached_sessions":[{{"session":{{"session_id":"session:a","label":"a"}},"view":{s}}}],"data_tickets":[]}}}}
+    , .{ id, try stashedView(&buf, 2, true) });
+    // The outbox started empty with the new connection.
+    for ([_][]const u8{ process_method, status_method, title_method }) |method| {
+        try testing.expectEqual(@as(usize, 1), queuedFor(core, method, "block:m"));
+    }
+    try testing.expectEqualStrings("vim", field(try blockOf(&recorder, a, "block:m"), "program"));
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}
+
+test "Core: a pane minimized and shown again keeps its program, and minimizing it asks nothing (#233)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try withStashed(&recorder, false);
+    defer core.destroy();
+    const methods = [_][]const u8{ process_method, protocol.methods.terminalProgramStatus, protocol.methods.terminalTitle };
+    for (methods) |method| try answer(core, try requestId(core, method, "\"block:m\""), switch (method[method.len - 1]) {
+        's' => "{\"foreground\":{\"name\":\"bash\"}}",
+        else => "{}",
+    });
+    try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
+
+    try stashedUpdate(core, 2, true);
+    try testing.expect(core.entries.get("block:m") == null);
+    for (methods) |method| try testing.expectEqual(@as(usize, 1), queuedFor(core, method, "block:m"));
+    try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
+
+    // Shown again: its pane starts from what the capsule said, and asks as a new pane does.
+    try stashedUpdate(core, 3, false);
+    try testing.expect(core.entries.get("block:m") != null);
+    try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
+    for (methods) |method| try testing.expectEqual(@as(usize, 2), queuedFor(core, method, "block:m"));
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}
+
+test "Core: a session switch drops the minimized panes it followed (#233)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    const core = try withStashed(&recorder, true);
+    defer core.destroy();
+    try testing.expectEqual(@as(usize, 1), core.stashed.count());
+    core.selectSession("session:b");
+    try testing.expectEqual(@as(usize, 0), core.stashed.count());
+    // A late answer about it changes nothing.
+    try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"bash\"}}");
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}

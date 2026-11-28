@@ -417,9 +417,12 @@ const Follow = struct {
 
 /// The lead block of a tab of a followed session, when it is a terminal: what the state
 /// shows for that tab. Kept current by the block's events and the methods they point to.
+/// A terminal block of a minimized layer of the selected session is kept so too: it has
+/// no pane, and the state names it from this (#233).
 const Lead = struct {
-    /// Block id; also the key in `Core.leads`.
+    /// Block id; also the key in `Core.leads` or `Core.stashed`.
     id: []u8,
+    /// Owned.
     session: []u8,
     /// Names the lead in pending requests.
     serial: u64,
@@ -1009,6 +1012,9 @@ pub const Core = struct {
     follows: std.StringHashMapUnmanaged(*Follow) = .empty,
     /// Lead blocks of the followed sessions' tabs, by block id.
     leads: std.StringHashMapUnmanaged(*Lead) = .empty,
+    /// Terminal blocks of the selected session's minimized layers, by block id: no pane is
+    /// drawn for them, so they are followed as lead blocks are (#233).
+    stashed: std.StringHashMapUnmanaged(*Lead) = .empty,
     /// The fence (intent `fence`): with a prefix, a session exists for this core only
     /// when its label starts with it or this core created it. "" is no fence.
     fence_prefix: []u8 = &.{},
@@ -1100,6 +1106,7 @@ pub const Core = struct {
         self.entries.deinit(gpa);
         self.follows.deinit(gpa);
         self.leads.deinit(gpa);
+        self.stashed.deinit(gpa);
         gpa.free(self.fence_prefix);
         var made = self.made.keyIterator();
         while (made.next()) |id| gpa.free(id.*);
@@ -2483,16 +2490,19 @@ pub const Core = struct {
             .connections = f.connections,
         };
         var leads: std.StringHashMapUnmanaged(model.BlockInfo) = .empty;
-        var it = self.leads.valueIterator();
-        while (it.next()) |l| try leads.put(a, l.*.id, .{
-            .title = l.*.title,
-            .program = l.*.program,
-            .agent = l.*.agent,
-            .tab_report = l.*.tab_report,
-            .cwd = l.*.cwd,
-            .activity = l.*.activity,
-            .since = l.*.since,
-        });
+        // The selected session's minimized panes are named from theirs (#233).
+        for ([_]*const std.StringHashMapUnmanaged(*Lead){ &self.stashed, &self.leads }) |map| {
+            var it = map.valueIterator();
+            while (it.next()) |l| try leads.put(a, l.*.id, .{
+                .title = l.*.title,
+                .program = l.*.program,
+                .agent = l.*.agent,
+                .tab_report = l.*.tab_report,
+                .cwd = l.*.cwd,
+                .activity = l.*.activity,
+                .since = l.*.since,
+            });
+        }
         return model.stateSnapshot(self.gpa, .{
             .status = self.status,
             .server = self.server,
@@ -3010,12 +3020,14 @@ pub const Core = struct {
             f.*.again = false;
             f.*.asked = false;
         }
-        var leads = self.leads.valueIterator();
-        while (leads.next()) |l| {
-            l.*.asked = false;
-            l.*.process = .{};
-            l.*.status = .{};
-            l.*.title_refresh = .{};
+        for ([_]*std.StringHashMapUnmanaged(*Lead){ &self.leads, &self.stashed }) |map| {
+            var leads = map.valueIterator();
+            while (leads.next()) |l| {
+                l.*.asked = false;
+                l.*.process = .{};
+                l.*.status = .{};
+                l.*.title_refresh = .{};
+            }
         }
         self.resume_pending = false;
         self.refresh_pending = false;
@@ -3765,7 +3777,7 @@ pub const Core = struct {
             },
             .block_event => {
                 if (session) |s| self.receivePaneEvent(s, payload);
-                if (mine) self.handleBlockEvent(payload) else self.handleLeadEvent(payload);
+                if (mine) self.handleBlockEvent(payload) else if (self.leads.get(model.str(model.get(payload, "block_id")) orelse "")) |lead| self.leadEvent(lead, payload);
             },
             .session_label_changed => {
                 self.requestList();
@@ -3786,6 +3798,7 @@ pub const Core = struct {
                     self.requestList();
             } else if (mine) {
                 self.requestView();
+                if (self.stashed.get(model.str(model.get(payload, "block_id")) orelse "")) |lead| self.requestLead(lead);
                 if (std.mem.eql(u8, model.str(model.get(payload, "event_type")) orelse "", "block_event") and
                     std.mem.eql(u8, model.str(model.get(payload, "block_event_name")) orelse "", "title_changed"))
                 {
@@ -3889,7 +3902,12 @@ pub const Core = struct {
     /// A terminal reported a new foreground process or program status. Both events carry
     /// only part of what the methods return, so each one asks for the whole answer.
     fn handleBlockEvent(self: *Core, payload: json.Value) void {
-        const entry = self.entries.get(model.str(model.get(payload, "block_id")) orelse return) orelse return;
+        const block = model.str(model.get(payload, "block_id")) orelse return;
+        const entry = self.entries.get(block) orelse {
+            // A minimized pane: named in the state, with no pane to refresh.
+            if (self.stashed.get(block)) |lead| self.leadEvent(lead, payload);
+            return;
+        };
         const name = model.str(model.get(payload, "name")) orelse return;
         if (std.mem.eql(u8, name, "process_changed")) {
             self.requestProcess(entry);
@@ -4434,7 +4452,7 @@ pub const Core = struct {
         if (follow.view) |*view| for (view.windows) |*w| {
             const block = model.leadBlock(w) orelse continue;
             if (!block.terminal) continue;
-            const lead = self.leads.get(block.id) orelse self.createLead(follow, block.id) orelse continue;
+            const lead = self.leads.get(block.id) orelse self.createLead(&self.leads, follow.session, block.id) orelse continue;
             lead.seen = true;
             if (!lead.asked) self.requestLead(lead);
         };
@@ -4442,23 +4460,29 @@ pub const Core = struct {
             var rest = self.leads.valueIterator();
             while (rest.next()) |l| {
                 if (l.*.seen) continue;
-                self.destroyLead(l.*);
+                self.destroyLead(&self.leads, l.*);
                 continue :sweep;
             }
             break;
         }
     }
 
-    fn createLead(self: *Core, follow: *const Follow, block: []const u8) ?*Lead {
+    /// A lead of `block` of `session` in `map` (`leads` or `stashed`).
+    fn createLead(self: *Core, map: *std.StringHashMapUnmanaged(*Lead), session: []const u8, block: []const u8) ?*Lead {
         const gpa = self.gpa;
         const lead = gpa.create(Lead) catch return null;
         const id = gpa.dupe(u8, block) catch {
             gpa.destroy(lead);
             return null;
         };
-        // Borrowed: a follow outlives its leads.
-        lead.* = .{ .id = id, .session = follow.session, .serial = self.next_serial };
-        self.leads.put(gpa, id, lead) catch {
+        const owner = gpa.dupe(u8, session) catch {
+            gpa.free(id);
+            gpa.destroy(lead);
+            return null;
+        };
+        lead.* = .{ .id = id, .session = owner, .serial = self.next_serial };
+        map.put(gpa, id, lead) catch {
+            gpa.free(owner);
             gpa.free(id);
             gpa.destroy(lead);
             return null;
@@ -4487,9 +4511,10 @@ pub const Core = struct {
         return lead;
     }
 
-    fn destroyLead(self: *Core, lead: *Lead) void {
+    fn destroyLead(self: *Core, map: *std.StringHashMapUnmanaged(*Lead), lead: *Lead) void {
         const gpa = self.gpa;
-        _ = self.leads.remove(lead.id);
+        _ = map.remove(lead.id);
+        gpa.free(lead.session);
         lead.tab_report.deinit(gpa);
         if (lead.title) |title| gpa.free(title);
         gpa.free(lead.program);
@@ -4500,8 +4525,10 @@ pub const Core = struct {
     }
 
     fn leadBySerial(self: *Core, serial: u64) ?*Lead {
-        var it = self.leads.valueIterator();
-        while (it.next()) |lead| if (lead.*.serial == serial) return lead.*;
+        for ([_]*const std.StringHashMapUnmanaged(*Lead){ &self.leads, &self.stashed }) |map| {
+            var it = map.valueIterator();
+            while (it.next()) |lead| if (lead.*.serial == serial) return lead.*;
+        }
         return null;
     }
 
@@ -4544,10 +4571,10 @@ pub const Core = struct {
         lead.status.inflight = self.sendRequest(protocol.methods.terminalProgramStatus, payload, .{ .lead_status = lead.serial });
     }
 
-    /// A terminal of a session that is not selected sent an event. Only the lead block of
-    /// a tab is of interest; any other block costs no request.
-    fn handleLeadEvent(self: *Core, payload: json.Value) void {
-        const lead = self.leads.get(model.str(model.get(payload, "block_id")) orelse return) orelse return;
+    /// A followed block sent an event: a lead block of a tab of a session that is not
+    /// selected, or a minimized pane of the selected one. Any other block of a session that
+    /// is not selected costs no request.
+    fn leadEvent(self: *Core, lead: *Lead, payload: json.Value) void {
         const name = model.str(model.get(payload, "name")) orelse return;
         if (std.mem.eql(u8, name, "process_changed")) {
             self.requestLeadProcess(lead);
@@ -4591,6 +4618,8 @@ pub const Core = struct {
             // The view names each block's owner; a block this client made is its own.
             if (self.entries.get(b.id)) |entry| entry.size.owned = self.isMe(b.owner);
         };
+        // Before the panes go: a pane minimized now starts from what it knew.
+        self.syncStashed();
 
         // Removing invalidates the iterator: start over after each removal.
         sweep: while (true) {
@@ -4598,6 +4627,31 @@ pub const Core = struct {
             while (rest.next()) |entry| {
                 if (entry.*.seen) continue;
                 self.removeEntry(entry.*);
+                continue :sweep;
+            }
+            break;
+        }
+    }
+
+    /// Make `stashed` match the terminal blocks of the view's minimized layers that no tab
+    /// draws. A new one asks what its terminal runs, reports and is titled (three requests),
+    /// unless the pane it was until now knew already (#233).
+    fn syncStashed(self: *Core) void {
+        var it = self.stashed.valueIterator();
+        while (it.next()) |l| l.*.seen = false;
+        if (self.view) |view| for (view.windows) |w| for (w.hidden) |h| {
+            if (!h.terminal) continue;
+            if (self.entries.get(h.id)) |entry| if (entry.seen) continue;
+            const lead = self.stashed.get(h.id) orelse self.createLead(&self.stashed, view.session, h.id) orelse continue;
+            lead.seen = true;
+            // A fenced session that is reattaching asks once its attach answers.
+            if (!lead.asked and !self.resume_pending) self.requestLead(lead);
+        };
+        sweep: while (true) {
+            var rest = self.stashed.valueIterator();
+            while (rest.next()) |l| {
+                if (l.*.seen) continue;
+                self.destroyLead(&self.stashed, l.*);
                 continue :sweep;
             }
             break;
@@ -4626,8 +4680,9 @@ pub const Core = struct {
         };
         entry.* = .{ .core = self, .id = id, .serial = self.next_serial, .pane = p };
         self.entries.put(gpa, id, entry) catch return self.destroyEntry(entry);
-        // A tab of a session followed until now: start from what its row showed.
-        if (self.leads.get(block)) |lead| {
+        // A tab of a session followed until now, or a pane shown again: start from what
+        // its row or its capsule showed.
+        if (self.stashed.get(block) orelse self.leads.get(block)) |lead| {
             if (lead.title) |title| _ = self.setTitle(&entry.title, title);
             self.setText(&entry.program, lead.program);
             self.setText(&entry.cwd, lead.cwd);
