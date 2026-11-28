@@ -467,7 +467,7 @@ pub fn leadBlock(w: *const Window) ?*const Block {
 ///  forwards:[{block,host,port,localPort,connections}], sessions:[{id,label,tabs:[{id,label,icon?,panes,active,minimized,block,title,program,cwd,
 ///  activity,since?,attention}]}], session, windows:[{id,label,icon?,
 ///  layout,zoomed,minimized, floating:[{block,x,y,w,h}]}], window, focused,
-///  blocks:{id:{title,program,cwd,activity,since?,attention}}}
+///  blocks:{id:{icon?,title,program,cwd,activity,since?,attention}}}
 /// `tabs` are the session's windows in order. It is left out while the windows are not
 /// known (`Session.view` null); `[]` is a session without windows. `panes` counts the
 /// tab's blocks (not those of minimized layers), `active` marks the session's active
@@ -700,7 +700,10 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
             if (seenBefore(windows, wi, bi, b.id)) continue;
             try jw.objectField(b.id);
             try jw.beginObject();
-            try writeBlockInfo(jw, &b, state.blocks.get(b.id) orelse .{});
+            const info = state.blocks.get(b.id) orelse BlockInfo{};
+            // Each pane's program as a tab's `icon` names its lead's, so the app can draw every pane's brand (#217).
+            try writeTabIcon(jw, null, info);
+            try writeBlockInfo(jw, &b, info);
             try jw.endObject();
         }
     }
@@ -711,7 +714,10 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
             const b = h.asBlock();
             try jw.objectField(b.id);
             try jw.beginObject();
-            try writeBlockInfo(jw, &b, state.blocks.get(b.id) orelse .{});
+            const info = state.blocks.get(b.id) orelse BlockInfo{};
+            // Each pane's program as a tab's `icon` names its lead's, so the app can draw every pane's brand (#217).
+            try writeTabIcon(jw, null, info);
+            try writeBlockInfo(jw, &b, info);
             try jw.endObject();
         }
     }

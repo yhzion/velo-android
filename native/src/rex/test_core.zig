@@ -3618,6 +3618,11 @@ test "Core: selected and followed tab metadata from the Rex terminal methods" {
         var tab = (try tabsOf(&recorder, a, session))[0];
         try testing.expectEqualStrings("claude", field(tab, "icon"));
         try testing.expectEqualStrings("2.1.329", field(tab, "program"));
+        if (std.mem.eql(u8, session, "session:a")) {
+            // A pane of the selected session names its program as a tab does, so a layer behind a tile can (#217).
+            const info = model.get(try recorder.lastValue(a, "blocks"), block).?;
+            try testing.expectEqualStrings("claude", field(info, "icon"));
+        }
         try testing.expectEqualStrings("Example Claude terminal", field(tab, "title"));
         try testing.expectEqualStrings("Example Claude thread · Deployment check", field(tab, "statusTitle"));
 
@@ -3644,6 +3649,10 @@ test "Core: selected and followed tab metadata from the Rex terminal methods" {
         try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, target), "{\"records\":[]}");
         tab = (try tabsOf(&recorder, a, session))[0];
         try testing.expectEqualStrings("2.1.329", field(tab, "icon"));
+        if (std.mem.eql(u8, session, "session:a")) {
+            const info = model.get(try recorder.lastValue(a, "blocks"), block).?;
+            try testing.expectEqualStrings("2.1.329", field(info, "icon"));
+        }
         try testing.expect(model.get(tab, "statusTitle") == null);
         try testing.expect(model.get(tab, "statusSummary") == null);
         try testing.expect(model.get(tab, "reportedIdle") == null);

@@ -100,6 +100,7 @@ class TabTileTest {
         val x = TileBrand.Codex
         val t = TileBrand.Terminal
         assertEquals(emptyList<TileBrand>(), tileBehind(t, emptyList(), 1))
+        assertEquals(emptyList<TileBrand>(), tileBehind(t, listOf(c), 0))
         // 2 panes: bash in front, Claude Code behind it.
         assertEquals(listOf(c), tileBehind(t, listOf(c), 2))
         // 3 and 4: the first other pane nearest, whatever the face is.

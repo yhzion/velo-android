@@ -340,7 +340,9 @@ test "stateJson: view.json round-trips as the JSON UiState.kt decodes" {
     try expectStr(waiting, "activity", "blocked");
     try testing.expectEqual(true, model.boolean(model.get(waiting, "attention")).?);
     // Since when it waits; an idle block names no time.
-    try expectFields(waiting, &.{ "title", "program", "cwd", "activity", "since", "attention" });
+    try expectFields(waiting, &.{ "icon", "title", "program", "cwd", "activity", "since", "attention" });
+    // Its program names it, as a tab's lead pane is named (#217).
+    try expectStr(waiting, "icon", "vim");
     try testing.expectEqual(@as(?i64, at_1003), model.int(model.get(waiting, "since")));
 }
 

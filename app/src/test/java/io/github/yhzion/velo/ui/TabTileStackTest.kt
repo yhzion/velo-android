@@ -52,6 +52,18 @@ class TabTileStackTest {
         assertEquals(listOf(t, o), focusedOnClaude.behind)
     }
 
+    @Test fun aPaneIsNamedByTheAgentTheCoreReportsElseByItsProgram() {
+        val s = state(listOf("bash", "2.1.329", "node", "2.1.329"))
+        // The core names each pane's program as it names a tab's (`icon`): Claude Code installed natively runs as a
+        // version, and Codex from npm as node.
+        val named = s.copy(blocks = s.blocks + mapOf("b1" to BlockInfo(icon = "claude", program = "2.1.329"), "b2" to BlockInfo(icon = "codex", program = "node")))
+        assertEquals(listOf(c, x, t), tile(named).behind)
+        assertEquals("bash, 4 panes: 1 Claude Code, 1 Codex, 1 bash, 1 unknown", said(named))
+        // Without the core's `icon`, a version says nothing and node is no brand: the tool look.
+        assertEquals(listOf(t, t, t), tile(s).behind)
+        assertEquals("bash, 4 panes: 1 node, 1 bash, 2 unknown", said(s))
+    }
+
     @Test fun theStackKeepsTheLayoutOrderWhenFocusMoves() {
         val programs = listOf("claude", "bash", "opencode", "codex")
         // Focus on the last pane: the others still stack in layout order, the first nearest.

@@ -180,7 +180,8 @@ fun tileLayerRect(layer: TileLayer, size: Float): Rect {
  */
 fun tileBehind(face: TileBrand, others: List<TileBrand>, panes: Int): List<TileBrand> {
     val slots = tileLayers(panes) - 1
-    val known = (others + List((panes - 1 - others.size).coerceAtLeast(0)) { TileBrand.Terminal }).take(panes - 1)
+    val count = (panes - 1).coerceAtLeast(0)
+    val known = (others + List((count - others.size).coerceAtLeast(0)) { TileBrand.Terminal }).take(count)
     if (!tilePaneCountShown(panes)) return known.take(slots)
     val counts = known.groupingBy { it }.eachCount()
     // groupingBy keeps the order brands first appear in, so sortedByDescending breaks a tie by layout order.
