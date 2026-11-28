@@ -170,6 +170,9 @@ internal fun WindowPanes(
     // A second finger may land on an AndroidView or a different split. Observe all
     // descendants before dispatch, without consuming their pinch or tab gestures.
     val multiTouch = remember { mutableIntStateOf(0) }
+    // The ratio each split of the tree lays its panes out by while it differs from the layout's (#283): one a finger drags,
+    // or one sent and not yet back from the core. A handle judges the panes beside it by these ([edgePaneExtent]).
+    val local = remember { mutableStateMapOf<Split, Float>() }
     Box(Modifier.fillMaxSize().pointerInput(Unit) {
         awaitPointerEventScope {
             while (true) {
@@ -182,7 +185,7 @@ internal fun WindowPanes(
         // Keyed like the panes of the tree: a view is bound to one block for its whole life.
         if (zoomed != null) key(zoomed) { PaneCard(conn, window, zoomed, zoomed == focused, radius, input, preview, haptics, handles, returning, focusMark, onFinger, onFocus, floating = false, Modifier.fillMaxSize()) }
         else window.layout?.let {
-            LayoutTree(conn, window, it, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.fillMaxSize())
+            LayoutTree(conn, window, it, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.fillMaxSize())
         }
         val floats = drawnFloating(window)
         if (floats.isNotEmpty()) {
@@ -200,7 +203,7 @@ internal fun WindowPanes(
 
 @Composable
 private fun LayoutTree(
-    conn: HostConnection, window: WindowInfo, node: LayoutNode, multiTouch: IntState, focused: String?, gap: Dp, radius: Dp, input: TerminalInputView,
+    conn: HostConnection, window: WindowInfo, node: LayoutNode, multiTouch: IntState, local: MutableMap<Split, Float>, focused: String?, gap: Dp, radius: Dp, input: TerminalInputView,
     preview: Boolean, controls: Boolean, haptics: Boolean, handles: PaneHandles?, returning: Set<String>, focusMark: () -> Float, onFinger: (String) -> Unit, onFocus: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -212,7 +215,7 @@ private fun LayoutTree(
     val a = node.first
     val b = node.second
     if (a == null || b == null) {
-        (a ?: b)?.let { LayoutTree(conn, window, it, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, modifier) }
+        (a ?: b)?.let { LayoutTree(conn, window, it, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, modifier) }
         return
     }
     val before = a.lastBlock()
@@ -229,15 +232,22 @@ private fun LayoutTree(
         }
     }
     val r = dragged ?: pending ?: serverRatio
+    // Told to the handles above this split while it lays its panes out by a ratio of its own (#283).
+    val split = Split(before, after, column)
+    val own = dragged ?: pending
+    DisposableEffect(local, split, own) {
+        if (own != null) local[split] = own
+        onDispose { local.remove(split) }
+    }
     BoxWithConstraints(modifier) {
         if (node.dir == "column") Column(Modifier.fillMaxSize()) {
-            LayoutTree(conn, window, a, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(r).fillMaxWidth())
+            LayoutTree(conn, window, a, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(r).fillMaxWidth())
             Spacer(Modifier.height(gap))
-            LayoutTree(conn, window, b, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(1f - r).fillMaxWidth())
+            LayoutTree(conn, window, b, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(1f - r).fillMaxWidth())
         } else Row(Modifier.fillMaxSize()) {
-            LayoutTree(conn, window, a, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(r).fillMaxHeight())
+            LayoutTree(conn, window, a, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(r).fillMaxHeight())
             Spacer(Modifier.width(gap))
-            LayoutTree(conn, window, b, multiTouch, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(1f - r).fillMaxHeight())
+            LayoutTree(conn, window, b, multiTouch, local, focused, gap, radius, input, preview, controls, haptics, handles, returning, focusMark, onFinger, onFocus, Modifier.weight(1f - r).fillMaxHeight())
         }
         // No handle while the panes draw no controls: a drag is a command to a core that is down.
         if (!preview && controls && before != null && after != null) {
@@ -274,8 +284,8 @@ private fun LayoutTree(
             // under each handle rounded up, was still covered whole.
             val onePx = with(LocalDensity.current) { 1.toDp() }
             val reach = (hit - gap).coerceAtLeast(0.dp) / 2
-            val gapOnly = handleOnGapOnly(reach + onePx, a.edgePaneExtent(column, end = true, space * r, gap),
-                b.edgePaneExtent(column, end = false, space * (1f - r), gap))
+            val gapOnly = handleOnGapOnly(reach + onePx, a.edgePaneExtent(column, end = true, space * r, gap, local),
+                b.edgePaneExtent(column, end = false, space * (1f - r), gap, local))
             // On the gap: a pixel in from each side of it, so that the panes' rounding puts no part of it on a pane.
             val inset = onePx.coerceAtMost(gap / 4)
             val saidAt = if (gapOnly) (space * r - start).coerceIn(0.dp, (hit - gap).coerceAtLeast(0.dp)) + inset else 0.dp
@@ -358,19 +368,24 @@ internal fun Modifier.paneFrame(focused: Boolean, radius: Dp, focusMark: () -> F
  */
 internal fun handleOnGapOnly(reach: Dp, before: Dp, after: Dp): Boolean = minOf(before, after) <= reach * 2
 
+/** A split of a tab's tree, as [LayoutTree] keeps its state: the blocks on each side of its gap, and its axis. */
+internal data class Split(val before: String?, val after: String?, val column: Boolean)
+
 /**
  * The least length, along a split's axis ([column]: heights, else widths), of the panes of this node that touch its
- * [end] edge (else its start edge): the node [extent] long, its panes [gap] apart, as [LayoutTree] lays them out.
+ * [end] edge (else its start edge): the node [extent] long, its panes [gap] apart, as [LayoutTree] lays them out, each
+ * split by its ratio in [local] where it has one (#283), else by the layout's.
  */
-internal fun LayoutNode.edgePaneExtent(column: Boolean, end: Boolean, extent: Dp, gap: Dp): Dp {
+internal fun LayoutNode.edgePaneExtent(column: Boolean, end: Boolean, extent: Dp, gap: Dp, local: Map<Split, Float> = emptyMap()): Dp {
     if (block != null) return extent
     val a = first
     val b = second
-    if (a == null || b == null) return (a ?: b)?.edgePaneExtent(column, end, extent, gap) ?: extent
-    if ((dir == "column") != column) return minOf(a.edgePaneExtent(column, end, extent, gap), b.edgePaneExtent(column, end, extent, gap))
-    val r = ratio.coerceIn(0.05f, 0.95f)
+    if (a == null || b == null) return (a ?: b)?.edgePaneExtent(column, end, extent, gap, local) ?: extent
+    val along = dir == "column"
+    if (along != column) return minOf(a.edgePaneExtent(column, end, extent, gap, local), b.edgePaneExtent(column, end, extent, gap, local))
+    val r = (if (local.isEmpty()) null else local[Split(a.lastBlock(), b.firstBlock(), along)]) ?: ratio.coerceIn(0.05f, 0.95f)
     val space = (extent - gap).coerceAtLeast(0.dp)
-    return if (end) b.edgePaneExtent(column, end, space * (1f - r), gap) else a.edgePaneExtent(column, end, space * r, gap)
+    return if (end) b.edgePaneExtent(column, end, space * (1f - r), gap, local) else a.edgePaneExtent(column, end, space * r, gap, local)
 }
 
 private tailrec fun LayoutNode.firstBlock(): String? = block ?: first?.firstBlock()

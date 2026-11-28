@@ -18,6 +18,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - In landscape with the keyboard up, the sidebar shows the newer of the upload and error notices and keeps them off the Filter field; a long error alone there shows one line, read whole.
 - A screen reader now finds every pane the keyboard squeezes to a line, the pane that takes the keys among them, instead of skipping them under the resize handles.
 - A split tab of a session other than the one shown now stacks its panes' programs, such as Claude Code, behind its sidebar tile, and its screen reader label names them.
+- A screen reader also finds a pane while a split beside it is dragged or its new size is on its way, instead of losing it under the handle for a moment.
 
 ## 2.16.1 - 2026-11-28
 

@@ -9,6 +9,9 @@ import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -262,6 +265,48 @@ class SqueezedPaneTreeTest {
         }
     }
 
+    /** One pane on the left and three stacked on the right (#283). */
+    private val three = UiState(status = "connected", server = "velo", session = "s", focused = "c",
+        windows = listOf(WindowInfo("w1", label = "build", layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"),
+            second = stack(listOf("b", "c", "d"))))))
+
+    /**
+     * A screen reader sets the lowest handle to 0.05, and pane c grows small while the new ratio is pending (the fake core
+     * sends no layout back): the handle above c judges c by that ratio, not the server's, and c stays in the tree (#283).
+     */
+    @Test fun aPaneSqueezedByAPendingRatioStaysInTheTree() {
+        workspace(UiSize.Small, "comfortable", "c", three)
+        val lowest = handles().filter { it.first.endsWith("above and below") }.maxBy { it.second.top }
+        val id = Speech.virtualId(lowest.third)
+        compose.runOnIdle {
+            view.accessibilityNodeProvider.performAction(id, AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, 0.05f) })
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(200)
+        compose.waitForIdle()
+        val heights = paneHeights()
+        assertTrue("c squeezed: $heights", heights[2] < px(25f))
+        assertEquals("pending, panes $heights", listOf(true, true, true, true), panesFound().map { it != null })
+    }
+
+    /** The same while a finger drags the lowest handle and has not let go: c stays in the tree (#283). */
+    @Test fun aPaneSqueezedByADragStaysInTheTree() {
+        workspace(UiSize.Small, "comfortable", "c", three)
+        val lowest = handles().filter { it.first.endsWith("above and below") }.maxBy { it.second.top }.second
+        val rect = paneRects()[2]
+        compose.onRoot().performTouchInput {
+            down(Offset(lowest.exactCenterX(), lowest.exactCenterY()))
+            // Up past c's top: the split stops at 0.05.
+            moveBy(Offset(0f, -(rect.height() + 40f)))
+        }
+        compose.waitForIdle()
+        val heights = paneHeights()
+        assertTrue("c squeezed: $heights", heights[2] < px(25f))
+        assertEquals("dragging, panes $heights", listOf(true, true, true, true), panesFound().map { it != null })
+        compose.onRoot().performTouchInput { up() }
+    }
+
     /**
      * The keyboard up: the handles between the squeezed panes are found on the gap alone, on no pane, and keep their
      * names and action; the one between the left pane and the stack, beside panes of their full width, keeps its 32 dp.
@@ -304,6 +349,10 @@ class SqueezedPaneTreeTest {
         val row = LayoutNode(dir = "row", first = leaf, second = stack)
         assertEquals(75f, row.edgePaneExtent(column = true, end = true, 108.dp, gap).value, 0.01f)
         assertEquals(25f, row.edgePaneExtent(column = false, end = true, 58.dp, gap).value, 0.01f)
+        // The stack's split dragged or pending at 0.5 (#283): that ratio counts, not the layout's.
+        val local = mapOf(Split("a", "b", column = true) to 0.5f)
+        assertEquals(50f, stack.edgePaneExtent(column = true, end = false, 108.dp, gap, local).value, 0.01f)
+        assertEquals(50f, row.edgePaneExtent(column = true, end = true, 108.dp, gap, local).value, 0.01f)
         assertTrue(handleOnGapOnly(12.dp, before = 24.dp, after = 80.dp))
         assertFalse(handleOnGapOnly(12.dp, before = 25.dp, after = 80.dp))
     }
