@@ -169,15 +169,11 @@ data class Capsule(val block: String, val name: String, val others: Int) {
     val text: String get() = if (others > 0) "$name +$others" else name
 }
 
-/** What a capsule calls a pane: its title, else its program, else `Pane`. */
-fun capsuleName(info: BlockInfo?): String =
-    info?.title?.takeIf { it.isNotBlank() } ?: info?.program?.takeIf { it.isNotBlank() } ?: "Pane"
-
-/** One capsule per minimized floating window of [window], in the layer stack's order. */
+/** One capsule per minimized floating window of [window], in the layer stack's order, named by its first pane ([paneName], #208). */
 fun capsules(window: WindowInfo, blocks: Map<String, BlockInfo>): List<Capsule> =
     window.minimizedLayers.mapNotNull { layer ->
         val first = layer.firstOrNull() ?: return@mapNotNull null
-        Capsule(first, capsuleName(blocks[first]), layer.size - 1)
+        Capsule(first, paneName(blocks[first]), layer.size - 1)
     }
 
 /** Shows [block]'s whole minimized floating window again, on top and focused. */

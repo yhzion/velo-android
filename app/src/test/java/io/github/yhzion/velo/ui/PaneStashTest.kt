@@ -47,14 +47,19 @@ class PaneStashTest {
         assertEquals(emptyList<Capsule>(), capsules(WindowInfo("w", layout = tiled("a")), blocks))
     }
 
+    /** A capsule names its pane as every place does (#208, [paneName]), not by the server's label made from an ID. */
     @Test
-    fun capsuleNameFallsBackToProgramThenPane() {
-        assertEquals("Pane", capsuleName(null))
-        assertEquals("Pane", capsuleName(BlockInfo()))
-        assertEquals("Pane", capsuleName(BlockInfo(title = "  ", program = " ")))
-        assertEquals("vim", capsuleName(BlockInfo(program = "vim")))
-        assertEquals("top", capsuleName(BlockInfo(title = "top", program = "vim")))
-        assertEquals("Pane", capsules(WindowInfo("w", minimizedLayers = listOf(listOf("z"))), emptyMap()).single().name)
+    fun aCapsuleNamesItsPaneByTheOneRule() {
+        fun named(info: BlockInfo?) = capsules(WindowInfo("w", minimizedLayers = listOf(listOf("z"))), listOfNotNull(info?.let { "z" to it }).toMap()).single().name
+        assertEquals("Terminal", named(null))
+        assertEquals("Terminal", named(BlockInfo()))
+        assertEquals("Terminal", named(BlockInfo(title = "  ", program = " ")))
+        assertEquals("vim", named(BlockInfo(program = "vim")))
+        assertEquals("top", named(BlockInfo(title = "top", program = "vim")))
+        // The issue's zsh pane: the label before the program said "Block 9ac42573".
+        assertEquals("zsh", named(BlockInfo(title = "Block 9ac42573", titleIsLabel = true, program = "/bin/zsh")))
+        assertEquals("Terminal", named(BlockInfo(title = "Block 9ac42573", titleIsLabel = true)))
+        assertEquals("Claude Code", named(BlockInfo(title = "Block 9ac42573", titleIsLabel = true, icon = "claude")))
     }
 
     @Test

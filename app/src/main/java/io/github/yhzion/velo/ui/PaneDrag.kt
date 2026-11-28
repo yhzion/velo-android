@@ -84,6 +84,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import io.github.yhzion.velo.HostConnection
+import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.core.WindowInfo
 import io.github.yhzion.velo.ui.theme.VeloButton
@@ -326,8 +327,11 @@ fun destinationTab(place: MovePlace): String? = when (place) {
     MovePlace.NewTab -> null
 }
 
-/** A pane's name in text: the pane menu's, from the panes of its tab. */
-private fun paneName(windows: List<WindowInfo>, block: String): String =
+/** The header of a moved pane's ghost: its [place] ("Pane 2"), then its name by the one rule ([paneName], #208). */
+internal fun ghostHeader(place: String, info: BlockInfo?): String = "$place · ${paneName(info)}"
+
+/** A pane's place in text: the pane menu's ("Pane 2"), from the panes of its tab. */
+private fun panePlace(windows: List<WindowInfo>, block: String): String =
     windows.firstOrNull { block in tabBlocks(it) }?.let { paneLabel(tabBlocks(it), block) } ?: "Pane"
 
 /**
@@ -591,7 +595,7 @@ internal fun PaneMoveOverlay(
     }
     val windows = state.windows
     val cards = row.map { id -> cardWindow(windows.firstOrNull { it.id == id } ?: WindowInfo(id), move.block, move.sourceTab) }
-    val name = { block: String -> paneName(windows, block) }
+    val name = { block: String -> panePlace(windows, block) }
     val tabName = { tab: String -> windows.firstOrNull { it.id == tab }?.let { tabTitle(state, it) }.orEmpty() }
     // Everything here stands at absolute px of the pane area: no child starts on the right in RTL.
     Box(Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
@@ -781,7 +785,7 @@ private fun PickNodes(
     }
 }
 
-/** The ghost of the pane being dragged, above the finger: its name and title, then its first lines, on a raised surface. */
+/** The ghost of the pane being dragged, above the finger: its place and its name ([paneName]), then its first lines, on a raised surface. */
 @Composable
 private fun BoxScope.Ghost(conn: HostConnection, state: UiState, overview: OverviewState, move: PaneMoveSession, stage: Stage, name: (String) -> String) {
     val overlay = VeloTheme.colors.overlay
@@ -790,8 +794,7 @@ private fun BoxScope.Ghost(conn: HostConnection, state: UiState, overview: Overv
     val lines = remember(move) {
         conn.viewportText(move.block).lines().map(String::trimEnd).filter(String::isNotEmpty).take(GhostLines)
     }
-    val title = state.blocks[move.block]?.title.orEmpty()
-    val header = name(move.block) + if (title.isEmpty()) "" else " · $title"
+    val header = ghostHeader(name(move.block), state.blocks[move.block])
     Column(
         Modifier.align(AbsoluteAlignment.TopLeft)
             .layout { measurable, constraints ->
@@ -892,7 +895,7 @@ internal fun UndoNotice(conn: HostConnection, notice: MoveNotice?, onDone: () ->
     if (!landed) return
     val sizes = VeloTheme.sizes
     Row(modifier.height(sizes.capsule).glass(), verticalAlignment = Alignment.CenterVertically) {
-        Text(undoCaption(notice.place, notice.block) { paneName(conn.state.windows, it) },
+        Text(undoCaption(notice.place, notice.block) { panePlace(conn.state.windows, it) },
             Modifier.weight(1f, fill = false).padding(horizontal = sizes.rowPadding).semantics { liveRegion = LiveRegionMode.Polite },
             color = VeloTheme.surface.onGlass, style = VeloTheme.type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
         notice.undo?.let { undo ->

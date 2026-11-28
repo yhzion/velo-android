@@ -737,7 +737,14 @@ class SidebarModelTest {
 
         val tapped = CloseTarget.Pane("block:b2")
         assertEquals("Close claude? Its process will end.", closeQuestion(state, tapped))
-        assertEquals("Close this pane? Its process will end.", closeQuestion(state, CloseTarget.Pane("block:b1")))
+        // Named as everywhere else (#208): a pane whose program is not reported is a terminal.
+        assertEquals("Close Terminal? Its process will end.", closeQuestion(state, CloseTarget.Pane("block:b1")))
+        // The server's label made from an ID is not a name: the pane is named by its program, else it is a terminal.
+        val auto = BlockInfo(title = "Block 9ac42573", titleIsLabel = true)
+        assertEquals("Close Terminal? Its process will end.",
+            closeQuestion(state.copy(blocks = state.blocks + ("block:b2" to auto)), tapped))
+        assertEquals("Close zsh? Its process will end.",
+            closeQuestion(state.copy(blocks = state.blocks + ("block:b2" to auto.copy(program = "/bin/zsh"))), tapped))
         // A block may still be in the snapshot when its pane has left the tab.
         val otherTab = WindowInfo("window:c", layout = LayoutNode(block = "block:c1"))
         assertNull(closeQuestion(state.copy(windows = listOf(tab.copy(floating = emptyList()), otherTab)), tapped))

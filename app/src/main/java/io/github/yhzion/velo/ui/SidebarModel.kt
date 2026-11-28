@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.TabInfo
 import io.github.yhzion.velo.core.UiState
@@ -125,7 +126,8 @@ internal fun blockedIndicator(kind: String?) = when (kind) {
  * the server reports its program: only a tab is named "Tab" then (#181).
  */
 private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, others: List<String?> = emptyList()): TabRow {
-    val executable = program.substringAfterLast('/')
+    // A blank program says no more than none does (a capsule named a pane so before #208).
+    val executable = program.substringAfterLast('/').trim()
     val hint = programHint(icon, program)
     val agent = TabAgent.from(hint)
     val osc = if (titleIsLabel) "" else title.singleLine()
@@ -202,15 +204,25 @@ internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): Ta
  * [block] of [this] tab as a row of its own, as if it were the tab's only pane: named, marked and read by its own
  * program, title and report, with no label of the tab's. The caption's minimap names and marks a hidden pane so.
  */
-internal fun WindowInfo.paneRow(state: UiState, session: String, block: String): TabRow {
-    val info = state.blocks[block]
-    return TabInfo(id, icon = info?.icon, block = block, terminalBlocks = listOf(block),
-        program = info?.program.orEmpty(), title = info?.title.orEmpty(), cwd = info?.cwd.orEmpty(),
-        activity = info?.activity ?: "idle", since = info?.since, statusTitle = info?.statusTitle.orEmpty(),
-        kind = info?.kind, reportedIdle = info?.reportedIdle == true, titleIsLabel = info?.titleIsLabel == true,
-        statusSummary = info?.statusSummary.orEmpty())
-        .row(session, shown = false, pane = true)
-}
+internal fun WindowInfo.paneRow(state: UiState, session: String, block: String): TabRow =
+    state.blocks[block].asPane(id, block).row(session, shown = false, pane = true)
+
+/** [this] block as a tab [tab] of the one pane [block] ([paneRow]), with no label of the tab's. */
+private fun BlockInfo?.asPane(tab: String, block: String?): TabInfo =
+    TabInfo(tab, icon = this?.icon, block = block, terminalBlocks = listOfNotNull(block),
+        program = this?.program.orEmpty(), title = this?.title.orEmpty(), cwd = this?.cwd.orEmpty(),
+        activity = this?.activity ?: "idle", since = this?.since, statusTitle = this?.statusTitle.orEmpty(),
+        kind = this?.kind, reportedIdle = this?.reportedIdle == true, titleIsLabel = this?.titleIsLabel == true,
+        statusSummary = this?.statusSummary.orEmpty())
+
+/**
+ * What a pane whose block is [info] is called on its own, by one rule wherever one pane is named (#208): its row's
+ * name ([paneRow]), with no label of its tab's. That is the label the user gave it, else what its program reports,
+ * else its program; a label the server makes from an ID ("Block 9ac42573", [ownTabLabel]) is not a name, and a pane
+ * whose program is not reported is "Terminal" (#181, #198). The minimap's picker, its covered panes' row, the
+ * palette, the hardware keys' pane picker, the close question, a move's ghost and a minimized pane's capsule say it.
+ */
+internal fun paneName(info: BlockInfo?): String = info.asPane("", null).row("", shown = false, pane = true).name
 
 /** The name the sidebar shows for [this] tab of [session]: never the server's ID-made label. */
 internal fun TabInfo.displayName(session: String): String = row(session, shown = false).name
@@ -468,7 +480,7 @@ fun closeQuestion(state: UiState, target: CloseTarget): String? = when (target) 
                 target.block in blocks && blocks.size > 1
             }
         }
-        ?.let { "Close ${it.title.ifEmpty { "this pane" }}? Its process will end." }
+        ?.let { "Close ${paneName(it)}? Its process will end." }
     is CloseTarget.LastPane -> state.windows.firstOrNull { it.id == target.tab }
         ?.takeIf {
             state.status == "connected" && state.session == target.session &&

@@ -154,14 +154,22 @@ internal fun KeyboardPanePicker(
     VeloMenu(true, onDismiss, modifier = Modifier.dismissWithEscape(onDismiss), anchor = { null }) {
         val first = remember { FocusRequester() }
         for ((index, block) in panes.withIndex()) {
-            val current = if (block == focused) " (focused)" else ""
-            val title = blocks[block]?.title.orEmpty()
-            val label = (paneLabel(tabPanes, block) ?: continue) + current + if (title.isEmpty()) "" else " · $title"
+            val label = keyboardPaneLabel(tabPanes, block, focused, blocks[block]) ?: continue
             MenuItem(label, onClick = { onPick(block) },
                 modifier = if (index == 0) Modifier.focusRequester(first) else Modifier)
         }
         LaunchedEffect(panes.first()) { first.requestFocus() }
     }
+}
+
+/**
+ * An item of the hardware keys' pane picker: [block]'s place in [tabPanes] ([paneLabel]), " (focused)" for the
+ * [focused] one, then its name by the one rule ([paneName], #208), as the palette's Focus Pane names it. Null for a
+ * pane not in [tabPanes].
+ */
+internal fun keyboardPaneLabel(tabPanes: List<String>, block: String, focused: String?, info: BlockInfo?): String? {
+    val place = paneLabel(tabPanes, block) ?: return null
+    return place + (if (block == focused) " (focused)" else "") + " · " + paneName(info)
 }
 
 private fun Modifier.dismissWithEscape(onDismiss: () -> Unit): Modifier = onPreviewKeyEvent {
