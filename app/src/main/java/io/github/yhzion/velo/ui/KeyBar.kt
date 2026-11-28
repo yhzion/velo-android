@@ -28,7 +28,7 @@ internal val KEY_CODES = mapOf(
     "Up" to KeyEvent.KEYCODE_DPAD_UP, "Down" to KeyEvent.KEYCODE_DPAD_DOWN,
     "Home" to KeyEvent.KEYCODE_MOVE_HOME, "End" to KeyEvent.KEYCODE_MOVE_END,
     "PgUp" to KeyEvent.KEYCODE_PAGE_UP, "PgDn" to KeyEvent.KEYCODE_PAGE_DOWN,
-    "Backspace" to KeyEvent.KEYCODE_DEL,
+    "Space" to KeyEvent.KEYCODE_SPACE, "Backspace" to KeyEvent.KEYCODE_DEL,
 )
 
 /** The key bar's modifiers: a tap arms one for the next key, another tap takes it back. */

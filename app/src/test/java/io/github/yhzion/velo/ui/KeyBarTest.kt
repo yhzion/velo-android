@@ -25,7 +25,7 @@ class KeyBarTest {
             "Ctrl" to "Control", "Esc" to "Escape", "PgUp" to "Page Up", "PgDn" to "Page Down",
             "-" to "Minus", "|" to "Pipe", "/" to "Slash", "~" to "Tilde",
         )) assertEquals(key, said, spokenKeyName(key))
-        for (key in listOf("Tab", "Enter", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "Backspace"))
+        for (key in listOf("Tab", "Enter", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "Space", "Backspace"))
             assertEquals(key, spokenKeyName(key))
         // A key saved by an older Velo that is no longer offered is said as it is written.
         assertEquals("xY", spokenKeyName("xY"))
@@ -137,5 +137,21 @@ class KeyBarTest {
     @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {
         assertEquals(listOf("key-slash", "key-ctrl", "key-esc", "key-tab", "key-left", "key-down", "key-up", "key-right", "key-backspace"),
             Settings.DEFAULT_KEY_BAR.split(',').map(::keyTestTag))
+    }
+
+    /** #213: Space is typed, an Editing key sent by its keycode, so an armed Ctrl, Alt or Shift goes with it. */
+    @Test fun spaceIsAnEditingKeySentByItsKeycodeThatDoesNotRepeat() {
+        assertTrue("Space" in Settings.ALL_KEYS)
+        assertEquals(KeyGroup.Editing, keyGroup("Space"))
+        assertEquals(android.view.KeyEvent.KEYCODE_SPACE, KEY_CODES["Space"])
+        assertFalse("a held Space types one space", "Space" in REPEAT_KEYS)
+        assertEquals("SPACE", keyName("Space"))
+        assertEquals("Space", spokenKeyName("Space"))
+        assertEquals("key-space", keyTestTag("Space"))
+        assertEquals("space", keyTagId("Space"))
+        assertEquals(listOf("/", "Ctrl", "Esc", "Tab", "Left", "Down", "Up", "Right", "Space", "Backspace"),
+            toggleKey(Settings.DEFAULT_KEY_BAR.split(','), "Space"))
+        // A saved bar has no Space until it is picked.
+        assertFalse("Space" in Settings.DEFAULT_KEY_BAR.split(','))
     }
 }

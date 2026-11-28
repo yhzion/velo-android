@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- Keyboard settings offer a Space key for the key bar among the Editing keys, so you can type a space, or Ctrl+Space with Ctrl on, without the keyboard.
+
 ## 2.15.0 - 2026-11-28
 
 ### Added
