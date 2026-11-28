@@ -329,10 +329,14 @@ fun destinationTab(place: MovePlace): String? = when (place) {
 }
 
 /**
- * The name of each tab of [live], the state with titles, as its card says it ([tabTitle]): what a move's capsule and the
- * screen reader's actions of its places call the tabs (#234).
+ * The name of each tab of [conn]'s live state, the one with titles, as its card says it ([tabTitle]): what a move's
+ * capsule and the screen reader's actions of its places call the tabs (#234). Read without observing it: the caller
+ * says when to read again.
  */
-internal fun moveTabNames(live: UiState): Map<String, String> = live.windows.associate { it.id to tabTitle(live, it) }
+internal fun moveTabNames(conn: HostConnection): Map<String, String> {
+    val live = Snapshot.withoutReadObservation { conn.state }
+    return live.windows.associate { it.id to tabTitle(live, it) }
+}
 
 /** The header of a moved pane's ghost: its [place] ("Pane 2"), then its name by the one rule ([paneName], #208). */
 internal fun ghostHeader(place: String, info: BlockInfo?): String = "$place · ${paneName(info)}"
@@ -603,9 +607,13 @@ internal fun PaneMoveOverlay(
     val windows = state.windows
     val cards = row.map { id -> cardWindow(windows.firstOrNull { it.id == id } ?: WindowInfo(id), move.block, move.sourceTab) }
     val name = { block: String -> panePlace(windows, block) }
-    // Named from the live state, as the cards are (#234): the overlay's state is the steady one, without titles. Read once
-    // when the move starts, as the ghost's header is, and unobserved, so a new title does not compose the overlay again.
-    val liveTabs = remember(move) { Snapshot.withoutReadObservation { moveTabNames(conn.state) } }
+    // Read as the place under the finger and whether it is on the Cancel button, which change as the finger comes over
+    // another place or onto and off the button, not as the finger, which moves on each frame (#373).
+    val place = moves.shownPlace()
+    // The tabs are named from the live state, as their cards are (#234): the overlay's state is the steady one, without
+    // titles. Read again as the place changes, so the capsule, which a screen reader reads out, does not change its words
+    // for each new title of a tab that it names.
+    val liveTabs = remember(move, place) { moveTabNames(conn) }
     val tabName = { tab: String -> liveTabs[tab] ?: windows.firstOrNull { it.id == tab }?.let { tabTitle(state, it) }.orEmpty() }
     // Everything here stands at absolute px of the pane area: no child starts on the right in RTL.
     Box(Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
@@ -617,9 +625,6 @@ internal fun PaneMoveOverlay(
         // their places, as the strip does outside a move.
         if (stage.grid != null && stage.stripRoom > 0f) StripBackdrop(overview, Modifier.align(Alignment.TopCenter))
         if (!move.pick) Ghost(conn, overview, move, stage, name)
-        // Read as the place under the finger and whether it is on the Cancel button, which change as the finger comes over
-        // another place or onto and off the button, not as the finger, which moves on each frame (#373).
-        val place = moves.shownPlace()
         val caption = moveCaption(move.pick, place, moves.shownOnCancel(), move.block, name, tabName, closingTab(source, move.block, place))
         Capsule(overview, moves, caption, move.pick)
     }
@@ -805,8 +810,7 @@ private fun BoxScope.Ghost(conn: HostConnection, overview: OverviewState, move: 
         conn.viewportText(move.block).lines().map(String::trimEnd).filter(String::isNotEmpty).take(GhostLines)
     }
     // Named from the live state, as every other place names a pane (#208): the overlay's state is the steady one, without titles.
-    // Unobserved, so a new title does not compose the ghost again (#234).
-    val header = remember(move) { Snapshot.withoutReadObservation { ghostHeader(name(move.block), conn.state.blocks[move.block]) } }
+    val header = remember(move) { ghostHeader(name(move.block), conn.state.blocks[move.block]) }
     Column(
         Modifier.align(AbsoluteAlignment.TopLeft)
             .layout { measurable, constraints ->

@@ -8443,10 +8443,8 @@ test "Core: a pane minimized and shown again keeps its program, and minimizing i
     const core = try withStashed(&recorder, false);
     defer core.destroy();
     const methods = [_][]const u8{ process_method, protocol.methods.terminalProgramStatus, protocol.methods.terminalTitle };
-    for (methods) |method| try answer(core, try requestId(core, method, "\"block:m\""), switch (method[method.len - 1]) {
-        's' => "{\"foreground\":{\"name\":\"bash\"}}",
-        else => "{}",
-    });
+    const answers = [_][]const u8{ "{\"foreground\":{\"name\":\"bash\"}}", "{\"records\":[]}", "{\"title\":\"\"}" };
+    for (methods, answers) |method, payload| try answer(core, try requestId(core, method, "\"block:m\""), payload);
     try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
 
     try stashedUpdate(core, 2, true);
@@ -8467,10 +8465,46 @@ test "Core: a session switch drops the minimized panes it followed (#233)" {
     defer recorder.deinit();
     const core = try withStashed(&recorder, true);
     defer core.destroy();
+    try answer(core, try requestId(core, process_method, "\"block:t\""), "{\"foreground\":{\"name\":\"zsh\"}}");
     try testing.expectEqual(@as(usize, 1), core.stashed.count());
     core.selectSession("session:b");
     try testing.expectEqual(@as(usize, 0), core.stashed.count());
-    // A late answer about it changes nothing.
+    // Session a is followed now: its tab's lead block is `block:t`, which keeps what its pane knew.
+    const lead = core.leads.get("block:t").?;
+    try testing.expectEqualStrings("zsh", lead.program);
+    // A late answer about the minimized pane reaches no other block.
     try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"bash\"}}");
+    try testing.expectEqualStrings("zsh", core.leads.get("block:t").?.program);
+    try testing.expect(core.leads.get("block:m") == null);
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}
+
+test "Core: a pane minimized while the link was down asks again on the new connection (#233)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try withStashed(&recorder, false);
+    defer core.destroy();
+    const methods = [_][]const u8{ process_method, protocol.methods.terminalProgramStatus, protocol.methods.terminalTitle };
+    const answers = [_][]const u8{ "{\"foreground\":{\"name\":\"vim\"}}", "{\"records\":[]}", "{\"title\":\"\"}" };
+    for (methods, answers) |method, payload| try answer(core, try requestId(core, method, "\"block:m\""), payload);
+
+    // Meanwhile vim ended and the pane was minimized elsewhere; its events are gone.
+    core.lock.lock();
+    core.linkEnded();
+    core.lock.unlock();
+    const id = registerBootstrap(core);
+    var buf: [1024]u8 = undefined;
+    try receiveFmt(core,
+        \\{{"type":"response","id":"{d}","payload":{{"attach_all":{{"sessions":[
+        \\{{"session_id":"session:a","label":"a"}},{{"session_id":"session:b","label":"b"}}]}},
+        \\"attached_sessions":[{{"session":{{"session_id":"session:a","label":"a"}},"view":{s}}}],"data_tickets":[]}}}}
+    , .{ id, try stashedView(&buf, 2, true) });
+    try testing.expect(core.entries.get("block:m") == null);
+    for (methods) |method| try testing.expectEqual(@as(usize, 1), queuedFor(core, method, "block:m"));
+    try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"bash\"}}");
+    try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
     try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
 }

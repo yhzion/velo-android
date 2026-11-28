@@ -4619,7 +4619,7 @@ pub const Core = struct {
             if (self.entries.get(b.id)) |entry| entry.size.owned = self.isMe(b.owner);
         };
         // Before the panes go: a pane minimized now starts from what it knew.
-        self.syncStashed();
+        self.syncStashed(reattached);
 
         // Removing invalidates the iterator: start over after each removal.
         sweep: while (true) {
@@ -4635,8 +4635,10 @@ pub const Core = struct {
 
     /// Make `stashed` match the terminal blocks of the view's minimized layers that no tab
     /// draws. A new one asks what its terminal runs, reports and is titled (three requests),
-    /// unless the pane it was until now knew already (#233).
-    fn syncStashed(self: *Core) void {
+    /// unless the pane it was until now knew already (#233). On a new connection
+    /// (`reattached`) every one asks: a pane minimized while the link was down knew only
+    /// what it ran before.
+    fn syncStashed(self: *Core, reattached: bool) void {
         var it = self.stashed.valueIterator();
         while (it.next()) |l| l.*.seen = false;
         if (self.view) |view| for (view.windows) |w| for (w.hidden) |h| {
@@ -4644,8 +4646,8 @@ pub const Core = struct {
             if (self.entries.get(h.id)) |entry| if (entry.seen) continue;
             const lead = self.stashed.get(h.id) orelse self.createLead(&self.stashed, view.session, h.id) orelse continue;
             lead.seen = true;
-            // A fenced session that is reattaching asks once its attach answers.
-            if (!lead.asked and !self.resume_pending) self.requestLead(lead);
+            if (reattached) lead.asked = false;
+            if (!lead.asked) self.requestLead(lead);
         };
         sweep: while (true) {
             var rest = self.stashed.valueIterator();

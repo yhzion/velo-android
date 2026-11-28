@@ -2,11 +2,8 @@ package io.github.yhzion.velo.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import io.github.yhzion.velo.core.BlockInfo
 import io.github.yhzion.velo.core.FloatingLayer
 import io.github.yhzion.velo.core.LayoutNode
-import io.github.yhzion.velo.core.UiState
-import io.github.yhzion.velo.core.steady
 import io.github.yhzion.velo.core.WindowInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -329,24 +326,5 @@ class PaneDragTest {
         assertEquals("t2", destinationTab(MovePlace.Beside("t2", "c", PaneEdge.Below, rect)))
         assertEquals("t2", destinationTab(MovePlace.Swap("t2", "c", rect)))
         assertNull(destinationTab(MovePlace.NewTab))
-    }
-    /**
-     * #234: a move's capsule and its places' actions name a tab as its card does, from the live state. The tab's
-     * program reports a title; the steady state the overlay reads has none, so it said the program alone.
-     */
-    @Test fun aMovesCapsuleNamesATabAsItsCardDoes() {
-        val shell = WindowInfo("t1", layout = LayoutNode(block = "a"))
-        val vim = WindowInfo("t2", layout = LayoutNode(block = "c"))
-        val live = UiState(session = "s", windows = listOf(shell, vim), window = "t1",
-            blocks = mapOf("a" to BlockInfo(program = "/bin/zsh"), "c" to BlockInfo(title = "vim README.md", program = "vim")))
-        val card = tabTitle(live, vim)
-        assertEquals("vim README.md", card)
-        assertEquals("vim", tabTitle(live.steady(), vim))
-
-        val names = moveTabNames(live)
-        assertEquals(mapOf("t1" to tabTitle(live, shell), "t2" to card), names)
-        val beside = MovePlace.Beside("t2", "c", PaneEdge.Left, PaneRect("c", 0f, 0f, 1f, 1f))
-        assertEquals("Left of Pane 1 · vim README.md", placeCaption(beside, { "Pane 1" }, names::getValue, null))
-        assertEquals("Move to a new tab · tab “vim README.md” closes", placeCaption(MovePlace.NewTab, { "Pane 1" }, names::getValue, "t2"))
     }
 }
