@@ -6,8 +6,8 @@ name: Pull request check (Android)
 # workflow runs the same tests on the tag. No secrets, no signing, no artifacts.
 #
 # A push to main runs the same tests to fill the dependency cache that pull requests start from
-# (#257); GitHub lets a pull request read the caches of its base branch, never main those of a
-# pull request.
+# (#257). GitHub lets a pull request read the caches of its base branch, and main never reads a
+# pull request's caches.
 on:
   push:
     branches: [main]
@@ -64,7 +64,11 @@ jobs:
 
       # Gradle's downloaded plugins and libraries, and the android-all jars Robolectric fetches
       # itself into the local Maven repository (#257). release.yml keeps no cache on purpose:
-      # what ships is built from downloads checked at that moment.
+      # what ships is built from downloads checked at that moment. The Gradle distribution is
+      # not cached: services.gradle.org has not failed a run, and the step above checks its hash.
+      # The key names the Gradle version above and the SDK the Robolectric tests ask for with
+      # @Config(sdk = [34]), which no hashed file holds; change them here with those. A new key
+      # starts from the newest older cache and saves the result under itself.
       - name: Restore the dependency cache
         id: restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -72,7 +76,7 @@ jobs:
           path: |
             ~/.gradle/caches/modules-2
             ~/.m2/repository
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('*.gradle.kts', 'app/*.gradle.kts', 'gradle.properties') }}
+          key: gradle-deps-${{ runner.os }}-gradle-9.6.0-sdk-34-${{ hashFiles('*.gradle.kts', 'app/*.gradle.kts', 'gradle.properties', 'gradle/**') }}
           restore-keys: |
             gradle-deps-${{ runner.os }}-
 
@@ -85,6 +89,10 @@ jobs:
         run: >-
           bash .github/scripts/gradle-retry.sh
           gradle --no-daemon --no-scan :app:testDebugUnitTest -x zigCore -x tailscale
+
+      - name: Show the size of the dependency cache
+        if: steps.restore.outputs.cache-hit != 'true'
+        run: du -sh ~/.gradle/caches/modules-2 ~/.m2/repository || true
 
       # Saved only after the tests pass, so a run cut short by a 429 leaves no half-filled cache
       # under the key. A pull request from a fork saves nothing; GitHub would keep its cache to

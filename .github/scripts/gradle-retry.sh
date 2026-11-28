@@ -2,9 +2,8 @@
 # Runs a Gradle command, and again when it failed only because a repository could not be
 # reached (#212). release.yml keeps no dependency cache, so each release run downloads every
 # plugin and library; the pull request checks keep one since #257 but still download on a miss
-# or a new version. Between 2026-11-27 and 2026-11-28 the Compose
-# plugin did not resolve and Maven Central answered 429 more than six times, and a manual rerun
-# passed each time. A compile error, a failing test, a missing library or any other failure
+# or a new version. Between 2026-11-27 and 2026-11-28 the Compose plugin did not resolve and
+# Maven Central answered 429 more than six times, and a manual rerun passed each time. A compile error, a failing test, a missing library or any other failure
 # ends the run at once; the one exception is a plugin version that does not exist (see below).
 #
 # Robolectric downloads its android-all jar itself, inside the test JVM and not through Gradle;
