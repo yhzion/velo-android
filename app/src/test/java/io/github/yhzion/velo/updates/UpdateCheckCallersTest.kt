@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.PersistableBundle
 import androidx.test.core.app.ApplicationProvider
 import io.github.yhzion.velo.VeloApplication
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -51,6 +52,7 @@ class UpdateCheckCallersTest {
         UpdateSettings.clock = savedClock
         ReflectionHelpers.setStaticField(Build::class.java, "SUPPORTED_ABIS", savedAbis)
         context.applicationInfo.flags = savedFlags
+        AutoUpdateCheck.resetForTests()
     }
 
     /** An answer of the API: [status] with [headers], and [body] for a 200. */
@@ -159,6 +161,37 @@ class UpdateCheckCallersTest {
             assertTrue("the check started", AutoUpdateCheck.running)
             settle { !AutoUpdateCheck.running }
         }
+    }
+
+    /**
+     * #292: a failed foreground check holds off the next by the retry wait, and the reset that each test
+     * ends with forgets it, so a later test's check at the same fake time is not skipped.
+     */
+    @Test fun aResetForgetsTheLastForegroundAttempt() {
+        ReflectionHelpers.setStaticField(Build::class.java, "SUPPORTED_ABIS", arrayOf("arm64-v8a"))
+        context.applicationInfo.flags = savedFlags and ApplicationInfo.FLAG_DEBUGGABLE.inv()
+        UpdateSettings.select(context, UpdateChannel.Preview)
+        ReleaseFeed.source = object : FeedSource {
+            override fun page(page: Int): ApiPage {
+                asked.incrementAndGet()
+                throw IOException("offline")
+            }
+            override fun manifest() = throw AssertionError("A Preview check does not read the manifest")
+            override fun asset(tag: String, name: String) = throw AssertionError("No asset is read")
+        }
+        val check = {
+            AutoUpdateCheck.onForeground(context)
+            settle { !AutoUpdateCheck.running }
+        }
+        check()
+        assertEquals("the first check ran", 1, asked.get())
+        time.addAndGet(1_000)
+        check()
+        assertEquals("the failed attempt holds off the next", 1, asked.get())
+
+        AutoUpdateCheck.resetForTests()
+        check()
+        assertEquals("after the reset the check runs", 2, asked.get())
     }
 
     @Test fun theBackgroundCheckStoresTheLimitAsOfItsStart() {

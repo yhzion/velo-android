@@ -38,6 +38,14 @@ internal object AutoUpdateCheck {
         private set
     private var lastAttempt = 0L
 
+    /**
+     * Forgets the last attempt, as a new process would. Tests only: Robolectric shares this object across
+     * test classes, so a fake time left here would hold off a later test's check by the retry wait (#292).
+     */
+    internal fun resetForTests() {
+        lastAttempt = 0L
+    }
+
     fun onForeground(context: Context) {
         val app = context.applicationContext
         val now = UpdateSettings.clock()
