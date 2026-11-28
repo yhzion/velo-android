@@ -63,8 +63,17 @@ class PaneNameTest {
         for (block in panes.keys) {
             assertEquals(block, "Close ${expected.getValue(block)}? Its process will end.", closeQuestion(state, CloseTarget.Pane(block)))
         }
-        // The question of #236: the zsh pane a user labelled is asked about by its label again, as before #208.
-        assertEquals("Close server? Its process will end.", closeQuestion(state, CloseTarget.Pane("server")))
+    }
+
+    /**
+     * A pane's label names it before what its program reports, too (#236), and only the pane: a tab whose lead pane is
+     * the labelled zsh pane keeps the tab's rule, its program's name.
+     */
+    @Test fun aPanesLabelGoesBeforeItsReportAndNotIntoItsTabsName() {
+        val reporting = panes.getValue("labelledAgent").copy(statusTitle = "Fix login", statusSummary = "Reading files")
+        assertEquals("review", paneName(reporting))
+        val tab = WindowInfo("window:t", label = "Window 0c0c0c0c", layout = LayoutNode(block = "server"))
+        assertEquals("zsh", tabTitle(state.copy(window = tab.id, windows = listOf(tab)), tab))
     }
 
     @Test fun theKeyboardsPanePickerNamesThePaneByTheRule() {

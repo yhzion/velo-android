@@ -159,6 +159,7 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, 
     val name = own.ifEmpty { paneLabel }.ifEmpty { topic.orEmpty() }.ifEmpty { statusSummary.singleLine() }
         .ifEmpty { titles.firstOrNull { it.isNotEmpty() }.orEmpty() }
         .ifEmpty { agent?.label.orEmpty() }.ifEmpty { executable.takeUnless(VersionName::matches).orEmpty() }
+        // Only a tab gets this far with its lead pane's label: a pane's own row took it first ([paneLabel]).
         .ifEmpty { title.takeIf { titleIsLabel }?.singleLine()?.let(::ownTabLabel).orEmpty() }.ifEmpty { if (program.isEmpty() && !pane) "Tab" else "Terminal" }
     val mark = when (activity) {
         "working" -> TabIndicator.Working
@@ -208,7 +209,7 @@ internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): Ta
 
 /**
  * [block] of [this] tab as a row of its own, as if it were the tab's only pane: named, marked and read by its own
- * program, title and report, with no label of the tab's. The caption's minimap names and marks a hidden pane so.
+ * label (#236), program, title and report, with no label of the tab's. The caption's minimap names and marks a hidden pane so.
  */
 internal fun WindowInfo.paneRow(state: UiState, session: String, block: String): TabRow =
     state.blocks[block].asPane(id, block).row(session, shown = false, pane = true)
@@ -224,8 +225,8 @@ private fun BlockInfo?.asPane(tab: String, block: String?): TabInfo =
 /**
  * What a pane whose block is [info] is called on its own, by one rule wherever one pane is named (#208): its row's
  * name ([paneRow]), with no label of its tab's. That is its block's label while its terminal has no title (the core
- * sends the label in the title's place, [BlockInfo.titleIsLabel]), but not one the server makes from an ID ("Block
- * 9ac42573", [ownTabLabel]) (#236), else what its program reports (its title or its status), else the agent's or the
+ * sends the label in the title's place, [BlockInfo.titleIsLabel]) (#236), but not one the server makes from an ID
+ * ("Block 9ac42573", [ownTabLabel]) (#198), else what its program reports (its title or its status), else the agent's or the
  * program's name, else "Terminal" (#181, #198). It needs the live block, with its title: not the steady state's. The minimap's picker, its covered panes' row, the
  * palette, the hardware keys' pane picker, the close question, a move's ghost and a minimized pane's capsule say it.
  */

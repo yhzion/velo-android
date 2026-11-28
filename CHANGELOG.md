@@ -6,7 +6,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - On a short screen, such as a phone on its side, the caption under the panes hides while the keyboard is up, so the panes keep more than a line or two. The key bar stays.
-- A pane you labelled, such as "server", is called by its label before its program while it has no terminal title: in the close question, the pane picker, a minimized pane's capsule and the minimap.
+- A pane labelled in Rex, such as "server", goes by its label before its program while it has no terminal title: closing it, in the hardware keys' pane picker, the palette, the minimap and capsules.
 
 ### Fixed
 - A long error notice shows two lines and ends with an ellipsis, so at a large text size it no longer covers the key bar with the keyboard up. A screen reader still reads the whole error.
