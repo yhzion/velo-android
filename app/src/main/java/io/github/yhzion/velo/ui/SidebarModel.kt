@@ -145,6 +145,9 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, 
         else -> osc
     }
     val own = ownTabLabel(label)
+    // A pane's own label, which the core sends in its title's place while its terminal has no title: a user's label
+    // names the pane before its program does, as a tab's label names the tab (#236). One made from an ID does not.
+    val paneLabel = if (pane && titleIsLabel) ownTabLabel(title.singleLine()) else ""
     // Codex's OSC title includes the thread and any action-required prefix. The
     // structured title can instead name a task, even when that thread is available.
     val reported = statusTitle.singleLine()
@@ -153,7 +156,7 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, 
         it.isNotEmpty() && agent?.matchesProgramName(it) != true &&
             (agent != TabAgent.Codex || !CodexActionPrefix.matches(it))
     }
-    val name = own.ifEmpty { topic.orEmpty() }.ifEmpty { statusSummary.singleLine() }
+    val name = own.ifEmpty { paneLabel }.ifEmpty { topic.orEmpty() }.ifEmpty { statusSummary.singleLine() }
         .ifEmpty { titles.firstOrNull { it.isNotEmpty() }.orEmpty() }
         .ifEmpty { agent?.label.orEmpty() }.ifEmpty { executable.takeUnless(VersionName::matches).orEmpty() }
         .ifEmpty { title.takeIf { titleIsLabel }?.singleLine()?.let(::ownTabLabel).orEmpty() }.ifEmpty { if (program.isEmpty() && !pane) "Tab" else "Terminal" }
@@ -220,9 +223,10 @@ private fun BlockInfo?.asPane(tab: String, block: String?): TabInfo =
 
 /**
  * What a pane whose block is [info] is called on its own, by one rule wherever one pane is named (#208): its row's
- * name ([paneRow]), with no label of its tab's. That is what its program reports (its title or its status), else the
- * agent's or the program's name, else its block's label, but not one the server makes from an ID ("Block 9ac42573",
- * [ownTabLabel]), else "Terminal" (#181, #198). It needs the live block, with its title: not the steady state's. The minimap's picker, its covered panes' row, the
+ * name ([paneRow]), with no label of its tab's. That is its block's label while its terminal has no title (the core
+ * sends the label in the title's place, [BlockInfo.titleIsLabel]), but not one the server makes from an ID ("Block
+ * 9ac42573", [ownTabLabel]) (#236), else what its program reports (its title or its status), else the agent's or the
+ * program's name, else "Terminal" (#181, #198). It needs the live block, with its title: not the steady state's. The minimap's picker, its covered panes' row, the
  * palette, the hardware keys' pane picker, the close question, a move's ghost and a minimized pane's capsule say it.
  */
 internal fun paneName(info: BlockInfo?): String = info.asPane("", null).row("", shown = false, pane = true).name

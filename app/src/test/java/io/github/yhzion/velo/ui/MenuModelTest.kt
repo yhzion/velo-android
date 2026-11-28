@@ -458,16 +458,17 @@ class MenuModelTest {
 
     @Test
     fun thePaletteNamesAPaneAsTheMinimapsPickerDoes() {
-        // No title and a version for a program, a title that is the tab's label, and a title of two lines (#172).
+        // No title and a version for a program, a pane's label in its title's place, which names it before its
+        // program (#236), and a title of two lines (#172).
         val window = tiled("a", "b", "c").copy(zoomed = "a")
         val state = UiState(session = "s", blocks = mapOf(
             "a" to BlockInfo(program = "2.1.3"),
-            "b" to BlockInfo(program = "zsh", title = "window:1", titleIsLabel = true),
+            "b" to BlockInfo(program = "zsh", title = "server", titleIsLabel = true),
             "c" to BlockInfo(program = "zsh", title = "build\nlog"),
         ))
 
         val names = tabBlocks(window).associateWith { zoomPaneName(state, window, it) }
-        assertEquals(mapOf("a" to "Terminal", "b" to "zsh", "c" to "build log"), names)
+        assertEquals(mapOf("a" to "Terminal", "b" to "server", "c" to "build log"), names)
         val fullScreen = fullScreenPaneCommands(window, state)
         assertEquals(listOf("b", "c"), fullScreen.map { it.block })
         for (command in fullScreen) {

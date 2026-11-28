@@ -17,20 +17,28 @@ class PaneNameTest {
     private val auto = BlockInfo(title = "Block 9ac42573", titleIsLabel = true)
 
     /**
-     * The panes of the issue, a pane a user labelled whose program is not reported (a program would name it first, as
-     * [paneRow] does), a program that reports a title, an agent, and a pane the core knows nothing of.
+     * The panes of the issue, a pane a user labelled whose program is not reported, a zsh pane a user labelled
+     * "server" (#236: the label names it before its program, while the core sends it in the title's place), the same
+     * pane once its shell sets a title (the core sends the title, so the label is gone), a zsh pane the server
+     * labelled from another ID, a program that reports a title, an agent, an agent a user labelled, and a pane the
+     * core knows nothing of.
      */
     private val panes = mapOf(
         "zsh" to auto.copy(program = "/bin/zsh"),
         "bare" to auto,
         "labelled" to BlockInfo(title = "notes", titleIsLabel = true),
+        "server" to BlockInfo(title = "server", titleIsLabel = true, program = "/bin/zsh"),
+        "serverTitled" to BlockInfo(title = "~/src/velo", program = "/bin/zsh"),
+        "otherId" to BlockInfo(title = "Block 0bb89469", titleIsLabel = true, program = "/bin/zsh"),
         "titled" to BlockInfo(title = "vim README.md", program = "vim"),
         "agent" to auto.copy(icon = "claude", program = "/usr/bin/claude"),
+        "labelledAgent" to BlockInfo(title = "review", titleIsLabel = true, icon = "claude", program = "/usr/bin/claude"),
         "nothing" to BlockInfo(),
     )
     private val expected = mapOf(
-        "zsh" to "zsh", "bare" to "Terminal", "labelled" to "notes", "titled" to "vim README.md",
-        "agent" to "Claude Code", "nothing" to "Terminal",
+        "zsh" to "zsh", "bare" to "Terminal", "labelled" to "notes", "server" to "server",
+        "serverTitled" to "~/src/velo", "otherId" to "zsh", "titled" to "vim README.md",
+        "agent" to "Claude Code", "labelledAgent" to "review", "nothing" to "Terminal",
     )
 
     /** A tab of every pane above but the last, tiled, and the last floating, the shown tab of a connected remote. */
@@ -55,6 +63,8 @@ class PaneNameTest {
         for (block in panes.keys) {
             assertEquals(block, "Close ${expected.getValue(block)}? Its process will end.", closeQuestion(state, CloseTarget.Pane(block)))
         }
+        // The question of #236: the zsh pane a user labelled is asked about by its label again, as before #208.
+        assertEquals("Close server? Its process will end.", closeQuestion(state, CloseTarget.Pane("server")))
     }
 
     @Test fun theKeyboardsPanePickerNamesThePaneByTheRule() {
