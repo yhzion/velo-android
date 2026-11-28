@@ -1151,11 +1151,11 @@ internal fun Workspace(
  * Where it [waits] behind newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again.
  */
 @Composable
-internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null, waits: Boolean = false) {
+internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null, waits: Boolean = false, modifier: Modifier = Modifier) {
     conn.uploading?.let {
         val key = UploadToastKey(it)
         val wait = if (waits) rememberNoticeWait(heard, key) else null
-        ToastSurface(it, Modifier.waitsIn(wait), icon = Icons.Default.Upload, live = liveNotice(heard, key) && wait?.heardBefore != true)
+        ToastSurface(it, modifier.waitsIn(wait), icon = Icons.Default.Upload, live = liveNotice(heard, key, wait))
     }
 }
 

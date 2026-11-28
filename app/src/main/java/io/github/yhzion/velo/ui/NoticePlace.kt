@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -97,22 +98,33 @@ internal val SnackbarTextSide = 16.dp
 /**
  * Answers [width] px when asked how wide the element is at most, and measures it as it is: a notice whose own width
  * is not what its layout answers (the error notice's Snackbar answers its widest) tells a row of notices its real
- * width ([noticeRowWidths]). Where it is measured, as in a stack, nothing changes.
+ * width ([noticeRowWidths]). Where it is measured, as in a stack, nothing changes. With [height], it answers that
+ * for its height at a width too (the Snackbar answers one line's whatever its text, #192), so that [PaneNotices]
+ * knows how tall it is before it is measured.
  */
-internal fun Modifier.ownWidth(width: Int): Modifier = this then OwnWidthElement(width)
+internal fun Modifier.ownWidth(width: Int, height: ((Int) -> Int)? = null): Modifier = this then OwnWidthElement(width, height)
 
-private data class OwnWidthElement(val width: Int) : ModifierNodeElement<OwnWidthNode>() {
-    override fun create() = OwnWidthNode(width)
-    override fun update(node: OwnWidthNode) { node.width = width }
+private data class OwnWidthElement(val width: Int, val height: ((Int) -> Int)?) : ModifierNodeElement<OwnWidthNode>() {
+    override fun create() = OwnWidthNode(width, height)
+    override fun update(node: OwnWidthNode) {
+        node.width = width
+        node.height = height
+    }
 }
 
-private class OwnWidthNode(var width: Int) : Modifier.Node(), LayoutModifierNode {
+private class OwnWidthNode(var width: Int, var height: ((Int) -> Int)?) : Modifier.Node(), LayoutModifierNode {
     override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
         val placeable = measurable.measure(constraints)
         return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
 
     override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int = width
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int =
+        height?.invoke(width) ?: measurable.maxIntrinsicHeight(width)
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int =
+        height?.invoke(width) ?: measurable.minIntrinsicHeight(width)
 }
 
 /** The least width each notice keeps in a row ([noticeRowWidths]): a few words of an error notice on one line. */
@@ -124,11 +136,12 @@ internal val NoticeRowLeast = 160.dp
  * their own height, which a short pane area does not cut, and kept inside the column. Two or more that a short pane
  * area would stack into the [keyBar] (its box in the column, null without one) go side by side above it
  * ([noticeArrangement]), in their order from the start. [pane] and [keyBar] are read only to place them: the pane
- * area's moves with the keyboard place them again and compose nothing.
+ * area's moves with the keyboard place them again, and compose nothing unless a notice starts or stops waiting.
  *
  * Where two or more do not end [padding] above the key bar so (a larger text size wraps them to more lines, #192),
  * the notices without a control ([waitsIn]) wait, the oldest first, until the rest fit or one is left: a waiting
- * notice is not placed, and its [NoticeWait] says so. The move's Undo has a control and never waits.
+ * notice is not placed, and its [NoticeWait] says so. The move's Undo has a control and never waits. The notices
+ * left stay above the key bar, from the column's top if they must, as one or more stacked there do.
  */
 @Composable
 internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, gap: Dp, lift: Dp, modifier: Modifier, content: @Composable () -> Unit) {
@@ -187,7 +200,8 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
             if (notices.isEmpty()) return@layout
             val width = notices.maxOf { it.width }
             val height = notices.sumOf { it.height } + between * (count - 1)
-            val floor = if (arrangement == NoticeArrangement.AboveKeyBar) keyBarTop else constraints.maxHeight
+            // Where notices wait, those left keep off the key bar: alone, one goes there from the column's top.
+            val floor = if (arrangement == NoticeArrangement.AboveKeyBar || shown.size < measurables.size) keyBarTop else constraints.maxHeight
             val x = side + Alignment.CenterHorizontally.align(width, space, layoutDirection)
             var y = noticeTop(top, bottom, floor, height, side, up)
             notices.forEach {
@@ -201,15 +215,19 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
 /**
  * A notice without a control in the pane column, which waits behind newer ones where the notices do not fit
  * ([PaneNotices], #192): the upload toast or the error notice, one showing of it ([key] in [heard]). Its age, by
- * which the oldest waits first, is when [heard] first showed it, so a move to the sidebar and back keeps it.
- * [PaneNotices] says as it places the notices whether this one is on screen.
+ * which the oldest waits first, is when a node was first made for it ([HeardNotices.age]), so a move to the sidebar
+ * and back keeps it. [PaneNotices] says as it places the notices whether this one is on screen.
  */
 @Stable
 internal class NoticeWait(private val heard: HeardNotices?, private val key: Any) {
     private val made = nextNoticeAge()
     // What [PaneNotices] last said, read there without observing the states below.
     private var onScreenNow = true
-    private var everOnScreen = false
+    private var wasOnScreen = false
+
+    /** It has been on screen: only then has a screen reader had it to read ([liveNotice]). */
+    var shownOnce by mutableStateOf(false)
+        private set
 
     /** Not on screen: newer notices hold the row. A screen reader does not find it either. */
     var waiting by mutableStateOf(false)
@@ -223,14 +241,17 @@ internal class NoticeWait(private val heard: HeardNotices?, private val key: Any
         private set
 
     /** The order in which the notices came: the oldest has the least. */
-    val since: Long get() = heard?.since(key) ?: made
+    val since: Long get() = heard?.age(key) ?: made
 
     internal fun onScreen(on: Boolean) {
-        if (on == onScreenNow && (!on || everOnScreen)) return
+        if (on == onScreenNow && (!on || wasOnScreen)) return
         onScreenNow = on
-        if (on) everOnScreen = true
+        if (on && !wasOnScreen) {
+            wasOnScreen = true
+            shownOnce = true
+        }
         waiting = !on
-        if (!on && everOnScreen) heardBefore = true
+        if (!on && wasOnScreen) heardBefore = true
     }
 }
 
@@ -298,27 +319,40 @@ internal fun sidebarNoticesTop(height: Int, head: Int, notices: Int, least: Int)
  */
 @Stable
 internal class HeardNotices {
-    // How many nodes show each notice now: a move makes the new node before the old one goes.
+    // How many nodes show each notice now: a move makes the new node before the old one goes. A node in the pane
+    // column that waits ([NoticeWait]) counts only once it has been on screen.
     private val showing = mutableMapOf<Any, Int>()
-    // When each notice first showed ([NoticeWait.since]), kept while one node shows it.
-    private val first = mutableMapOf<Any, Long>()
+    // How many nodes are made for each notice, from the composition that makes one to the one that drops it, and the
+    // notice's age ([NoticeWait.since]). Counted as a node is made, so a move, whose old node is forgotten before the
+    // new one is remembered, keeps the age.
+    private val held = mutableMapOf<Any, Int>()
+    private val ages = mutableMapOf<Any, Long>()
 
     /** Whether a node made now for the notice [key] reads it out: no node shows it yet. */
     fun isNew(key: Any): Boolean = key !in showing
 
-    /** The age of the notice [key] ([NoticeWait.since]) while a node shows it. */
-    fun since(key: Any): Long? = first[key]
+    /** The age of the notice [key] ([NoticeWait.since]) while a node is made for it. */
+    fun age(key: Any): Long? = ages[key]
 
     fun shown(key: Any) {
-        if (key !in showing) first[key] = nextNoticeAge()
         showing[key] = (showing[key] ?: 0) + 1
     }
 
     fun gone(key: Any) {
         val left = (showing[key] ?: return) - 1
-        if (left > 0) showing[key] = left else {
-            showing -= key
-            first -= key
+        if (left > 0) showing[key] = left else showing -= key
+    }
+
+    internal fun hold(key: Any) {
+        if (key !in held) ages[key] = nextNoticeAge()
+        held[key] = (held[key] ?: 0) + 1
+    }
+
+    internal fun release(key: Any) {
+        val left = (held[key] ?: return) - 1
+        if (left > 0) held[key] = left else {
+            held -= key
+            ages -= key
         }
     }
 }
@@ -326,15 +360,30 @@ internal class HeardNotices {
 /**
  * Whether this node of the notice [key] is a live region ([HeardNotices]). It is decided once, when the node is made
  * for the key, so a node keeps it while it shows the notice, and a node made later for the same notice has none.
- * New words are a new key: they are read. Without [heard] every node is one.
+ * New words are a new key: they are read. Without [heard] every node is one. A node in the pane column that [wait]s
+ * counts as showing the notice only once it has been on screen (#192): one that waited from the start leaves the
+ * notice to be read where it first shows, there or in the sidebar. Once it comes back from waiting it is none.
  */
 @Composable
-internal fun liveNotice(heard: HeardNotices?, key: Any): Boolean {
-    if (heard == null) return true
+internal fun liveNotice(heard: HeardNotices?, key: Any, wait: NoticeWait? = null): Boolean {
+    if (heard == null) return wait?.heardBefore != true
+    remember(heard, key) { NoticeHold(heard, key) }
     val live = remember(heard, key) { heard.isNew(key) }
-    DisposableEffect(heard, key) {
-        heard.shown(key)
-        onDispose { heard.gone(key) }
+    val onScreen = wait == null || wait.shownOnce
+    DisposableEffect(heard, key, onScreen) {
+        if (onScreen) heard.shown(key)
+        onDispose { if (onScreen) heard.gone(key) }
     }
-    return live
+    return live && wait?.heardBefore != true
+}
+
+/** Holds the notice [key] in [heard] from the composition that makes its node until that node is dropped. */
+private class NoticeHold(private val heard: HeardNotices, private val key: Any) : RememberObserver {
+    init { heard.hold(key) }
+
+    override fun onRemembered() {}
+
+    override fun onForgotten() = heard.release(key)
+
+    override fun onAbandoned() = heard.release(key)
 }

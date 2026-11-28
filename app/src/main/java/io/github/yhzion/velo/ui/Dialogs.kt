@@ -14,15 +14,21 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.HostConnection
 import io.github.yhzion.velo.ui.theme.Capsule
 import io.github.yhzion.velo.ui.theme.VeloDialog
 import io.github.yhzion.velo.ui.theme.VeloSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
@@ -123,15 +129,19 @@ internal fun ErrorNotice(
                 val said = text(msg)
                 val shown = ErrorNoticeKey(reports, said)
                 val wait = if (waits) rememberNoticeWait(heard, shown) else null
-                val live = liveNotice(heard, shown) && wait?.heardBefore != true
+                val live = liveNotice(heard, shown, wait)
                 // The Snackbar answers its widest size (600 dp and more) when asked how wide it is, whatever its text:
-                // a row of notices asks its own width (#169). Its text style is the Snackbar's own.
-                val own = rememberTextMeasurer().measure(said, MaterialTheme.typography.bodyMedium).size.width +
-                    with(LocalDensity.current) { (SnackbarTextSide * 2).roundToPx() }
+                // a row of notices asks its own width (#169). Its text style is the Snackbar's own. Asked how tall it
+                // is, it answers one line's height however its text wraps: the row asks its own height too (#192).
+                val measurer = rememberTextMeasurer()
+                val style = MaterialTheme.typography.bodyMedium
+                val density = LocalDensity.current
+                val own = measurer.measure(said, style).size.width + with(density) { (SnackbarTextSide * 2).roundToPx() }
+                val ownHeight = remember(measurer, said, style, density) { { width: Int -> snackbarHeight(measurer, said, style, density, width) } }
                 // One node says it all, as a live region whose words name the error.
                 // Nothing while it waits: [waitsIn] hides it.
                 val waiting = wait?.waiting == true
-                Snackbar(modifier.waitsIn(wait).ownWidth(own).clearAndSetSemantics {
+                Snackbar(modifier.waitsIn(wait).ownWidth(own, ownHeight).clearAndSetSemantics {
                     if (!waiting) {
                         if (live) liveRegion = LiveRegionMode.Polite
                         contentDescription = errorNoticeSaid(msg, said)
@@ -141,6 +151,22 @@ internal fun ErrorNotice(
         }
     }
 }
+
+/**
+ * The height of a Material Snackbar that holds only [text] in [style], at most [width] px wide, as it lays itself out
+ * (Material3 1.5): 48 dp for one line; for more, at least 68 dp, its first baseline 30 dp from the top and 6 dp under
+ * its last line. Its text is 32 dp narrower than the Snackbar, which is at most 624 dp wide. Its own layout answers
+ * one line's height at any width, so the error notice answers this instead ([ownWidth], #192).
+ */
+internal fun snackbarHeight(measurer: TextMeasurer, text: String, style: TextStyle, density: Density, width: Int): Int = with(density) {
+    val textWidth = (minOf(width, SnackbarMaxWidth.roundToPx()) - (SnackbarTextSide * 2).roundToPx()).coerceAtLeast(0)
+    val laid = measurer.measure(text, style, constraints = Constraints(maxWidth = textWidth))
+    if (laid.lineCount < 2) maxOf(48.dp.roundToPx(), laid.size.height)
+    else maxOf(68.dp.roundToPx(), (30.dp.roundToPx() - laid.firstBaseline.roundToInt()).coerceAtLeast(0) + laid.size.height + 6.dp.roundToPx())
+}
+
+/** The widest a Material Snackbar draws itself ([snackbarHeight]). */
+private val SnackbarMaxWidth = 624.dp
 
 /** One showing of the error notice ([HeardNotices]): its words, at the renewal that made it (#280). */
 private data class ErrorNoticeKey(val reports: Long, val said: String)
