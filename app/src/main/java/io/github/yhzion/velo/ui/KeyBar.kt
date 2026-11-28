@@ -26,12 +26,12 @@ import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.keyCapRadius
 
 internal val KEY_CODES = mapOf(
-    "Esc" to KeyEvent.KEYCODE_ESCAPE, "Tab" to KeyEvent.KEYCODE_TAB, "Enter" to KeyEvent.KEYCODE_ENTER,
+    "Esc" to KeyEvent.KEYCODE_ESCAPE, "Tab" to KeyEvent.KEYCODE_TAB, "BackTab" to KeyEvent.KEYCODE_TAB, "Enter" to KeyEvent.KEYCODE_ENTER,
     "Left" to KeyEvent.KEYCODE_DPAD_LEFT, "Right" to KeyEvent.KEYCODE_DPAD_RIGHT,
     "Up" to KeyEvent.KEYCODE_DPAD_UP, "Down" to KeyEvent.KEYCODE_DPAD_DOWN,
     "Home" to KeyEvent.KEYCODE_MOVE_HOME, "End" to KeyEvent.KEYCODE_MOVE_END,
     "PgUp" to KeyEvent.KEYCODE_PAGE_UP, "PgDn" to KeyEvent.KEYCODE_PAGE_DOWN,
-    "Space" to KeyEvent.KEYCODE_SPACE, "Backspace" to KeyEvent.KEYCODE_DEL,
+    "Space" to KeyEvent.KEYCODE_SPACE, "Backspace" to KeyEvent.KEYCODE_DEL, "Delete" to KeyEvent.KEYCODE_FORWARD_DEL,
 )
 
 /**
@@ -40,6 +40,15 @@ internal val KEY_CODES = mapOf(
  * 0x20, so Space sent without it would type nothing unless Ctrl or Alt were armed.
  */
 internal fun barKeyChar(code: Int): Int = if (code == KeyEvent.KEYCODE_SPACE) ' '.code else 0
+
+/** The meta state a key of [KEY_CODES] is sent with, before an armed modifier adds its own: Shift+Tab is Tab with Shift (#219). */
+internal fun keyMeta(key: String): Int = when (key) {
+    "BackTab" -> KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+    else -> 0
+}
+
+/** The key that pastes the clipboard into the pane, as the pane menu's Paste does (#219): it sends no key of its own. */
+internal const val PasteKey = "Paste"
 
 /** The key bar's modifiers: a tap arms one for the next key, another tap takes it back. */
 val StickyKeys = setOf("Ctrl", "Alt", "Shift")
@@ -54,6 +63,7 @@ internal fun keyName(key: String): String = if (key in KEY_CODES || key in Stick
 fun spokenKeyName(key: String): String = when (key) {
     "Ctrl" -> "Control"
     "Esc" -> "Escape"
+    "BackTab" -> "Shift Tab"
     "PgUp" -> "Page Up"
     "PgDn" -> "Page Down"
     "-" -> "Minus"
@@ -84,8 +94,8 @@ enum class KeyGroup(val caption: String) { Modifiers("Modifiers"), Editing("Edit
 
 private val NAVIGATION_KEYS = setOf("Left", "Down", "Up", "Right", "Home", "End", "PgUp", "PgDn")
 
-/** Only movement by one step and deletion repeat; a held Enter never submits twice. */
-internal val REPEAT_KEYS = setOf("Backspace", "Left", "Down", "Up", "Right")
+/** Only movement by one step and deletion repeat; a held Enter never submits twice, nor a held Paste pastes twice. */
+internal val REPEAT_KEYS = setOf("Backspace", "Delete", "Left", "Down", "Up", "Right")
 
 /** The group [key] belongs to. A key that is neither a modifier nor moves the cursor is typed: Editing, also one the app does not know. */
 fun keyGroup(key: String): KeyGroup = when (key) {

@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.ui.theme.VeloTheme
@@ -25,6 +26,8 @@ private fun keyVector(name: String, path: String): ImageVector = ImageVector.Bui
 // Physical cursor directions do not mirror in RTL layouts. An arrow head on a bar or a bend has arms of 6, a plain arrow's of 7 (#218).
 private val keyIcons = mapOf(
     "Tab" to keyVector("Tab", "M3 12 H17 M11 6 L17 12 L11 18 M21 5 V19"),
+    // Tab turned round: the arrow runs to the bar at the start (#219).
+    "BackTab" to keyVector("BackTab", "M21 12 H7 M13 6 L7 12 L13 18 M3 5 V19"),
     "Enter" to keyVector("Enter", "M20 4 V10 A4 4 0 0 1 16 14 H4 M10 8 L4 14 L10 20"),
     "Shift" to keyVector("Shift", "M12 3.5 L20.5 12 H16 V20 H8 V12 H3.5 Z"),
     // The key itself comes with #213.
@@ -37,18 +40,27 @@ private val keyIcons = mapOf(
     "Right" to keyVector("Right", "M4 12 H20 M13 5 L20 12 L13 19"),
     "Up" to keyVector("Up", "M12 20 V4 M5 11 L12 4 L19 11"),
     "Down" to keyVector("Down", "M12 4 V20 M5 13 L12 20 L19 13"),
+    "PgUp" to keyVector("PageUp", "M6 11 L12 5 L18 11 M6 18 L12 12 L18 18"),
+    "PgDn" to keyVector("PageDown", "M6 6 L12 12 L18 6 M6 13 L12 19 L18 13"),
     "Backspace" to keyVector("Backspace", "M9 5 H21 V19 H9 L2 12 Z M11 9 L17 15 M17 9 L11 15"),
+    // Backspace turned round: it deletes the character after the cursor (#219).
+    "Delete" to keyVector("Delete", "M15 5 H3 V19 H15 L22 12 Z M7 9 L13 15 M13 9 L7 15"),
+    // A clipboard: its clip on top of the board.
+    "Paste" to keyVector("Paste", "M9 3 H15 V6 H9 Z M9 4.5 H6 V21 H18 V4.5 H15"),
 )
 
 /** The icon [key] is drawn with, or null for a key named in a word. */
 internal fun keyIcon(key: String): ImageVector? = keyIcons[key]
+
+/** The test tag of a key's icon ([KeyLegend]): a cap or a chip that holds one is drawn as an icon. */
+internal const val KeyIconTag = "key-icon"
 
 /** Visual legend only: the enclosing control supplies the key's accessible name. */
 @Composable
 internal fun KeyLegend(key: String, color: Color, modifier: Modifier = Modifier) {
     val icon = keyIcon(key)
     if (icon != null) {
-        Icon(icon, contentDescription = null, modifier = modifier.size(VeloTheme.sizes.keyIcon), tint = color)
+        Icon(icon, contentDescription = null, modifier = modifier.size(VeloTheme.sizes.keyIcon).testTag(KeyIconTag), tint = color)
     } else {
         Text(keyName(key), modifier.clearAndSetSemantics {}, style = VeloTheme.type.key, color = color, maxLines = 1, softWrap = false)
     }

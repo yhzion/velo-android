@@ -27,6 +27,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -214,6 +216,32 @@ class KeyBarCapsTest {
         }
         for (key in drawn) assertTrue("$key inks ${ink(key)} of $icon", ink(key) in 1f..icon + 0.5f)
         assertTrue("ALT inks ${ink("Alt")}", ink("Alt") > icon + 0.5f)
+    }
+
+    @Test fun shiftTabDeletePasteAndThePagesAreDrawnAsIconsAndSaidInWords() {
+        val drawn = listOf("BackTab", "Delete", "PgUp", "PgDn", "Paste")
+        show(560.dp, keys = drawn + "Esc")
+        for ((key, said) in drawn.zip(listOf("Shift Tab", "Delete", "Page Up", "Page Down", "Paste"))) {
+            key(key).assertContentDescriptionEquals(said)
+            compose.onNode(hasTestTag(KeyIconTag) and hasAnyAncestor(hasTestTag(keyTestTag(key))), useUnmergedTree = true).assertExists()
+        }
+        // ESC stays a word.
+        compose.onNode(hasTestTag(KeyIconTag) and hasAnyAncestor(hasTestTag(keyTestTag("Esc"))), useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun aHeldDeleteRepeatsAndAHeldPasteDoesNot() {
+        show(560.dp, keys = listOf("Delete", "Paste"))
+        compose.mainClock.autoAdvance = false
+        for (key in listOf("Delete", "Paste")) {
+            key(key).performTouchInput { down(center) }
+            compose.mainClock.advanceTimeBy(1_000)
+            key(key).performTouchInput { up() }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals("Delete" to false, sent.first())
+        assertTrue("$sent", sent.count { it == ("Delete" to true) } > 1)
+        assertEquals(listOf("Paste" to false), sent.filter { it.first == "Paste" })
     }
 
     @Test fun aCapRoundsOneGapLessThanTheStrip() {
