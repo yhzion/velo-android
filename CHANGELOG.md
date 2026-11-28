@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.16.0 - 2026-11-28
+
 ### Added
 - Keyboard settings offer a Space key for the key bar among the Editing keys, so you can type a space, or Ctrl+Space, without the keyboard.
 - The key bar can have Shift+Tab, Delete and Paste keys, chosen in Keyboard settings, and shows Page Up and Page Down as icons. Paste pastes as the pane menu's Paste does.
