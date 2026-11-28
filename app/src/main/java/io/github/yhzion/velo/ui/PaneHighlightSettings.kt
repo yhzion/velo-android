@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -50,7 +49,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -157,7 +160,12 @@ private fun HighlightPreview(colour: Color) {
 /** One cell of [Swatches]: a preset, or Custom with its [ring]. */
 private class SwatchChoice(val label: String, val selected: Boolean, val fill: Color?, val ring: Brush?, val pick: () -> Unit)
 
-/** The presets and Custom, four to a row; the chosen one has a ring and a check. */
+/**
+ * The presets and Custom, four to a row; the chosen one has a ring and a check. A screen reader
+ * hears each one's place in reading order, "2 of 8" (#204): Compose would count a cell's place in
+ * its own row against the cells of both rows, so Blue was "3 of 8" and Cyan "1 of 8". So the group
+ * and each cell give their places themselves.
+ */
 @Composable
 private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) {
     val choices = HighlightPreset.entries.map { preset ->
@@ -166,11 +174,16 @@ private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) 
         if (!highlight.isCustom) onPick(highlight.toCustom())
     }
     Column(
-        Modifier.fillMaxWidth().padding(top = VeloTheme.space.s16).testTag("appearance-highlight-swatches").selectableGroup(),
+        Modifier.fillMaxWidth().padding(top = VeloTheme.space.s16).testTag("appearance-highlight-swatches")
+            // In place of selectableGroup, which would count each place over again and drop the one given here.
+            .semantics { collectionInfo = CollectionInfo(rowCount = 1, columnCount = choices.size) },
         verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp)),
     ) {
-        for (row in choices.chunked(4)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {
-            for (choice in row) SwatchCell(choice, Modifier.weight(1f))
+        for ((r, row) in choices.chunked(4).withIndex()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s8)) {
+            for ((i, choice) in row.withIndex()) {
+                val place = r * 4 + i
+                SwatchCell(choice, Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(0, 1, place, 1) })
+            }
         }
     }
 }

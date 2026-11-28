@@ -56,7 +56,7 @@ import org.robolectric.annotation.GraphicsMode
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
  * and the SSH key actions (#149), SSH details' Forget, the sidebar's tab rows (#150), and Compose's
- * draft (#174). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * draft (#174) and the highlight swatches' places (#204). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -218,6 +218,23 @@ class ReadOnceTest {
         compose.waitForIdle()
         val stops = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
         assertTrue("$value selected in the open menu, among $stops", listOf("Selected", value) in stops)
+    }
+
+    // #204: the highlight colour's swatches, four to a row, say their places in reading order.
+
+    @Test fun theHighlightSwatchesSayTheirPlacesInOrder() {
+        scene("settings-appearance")
+        val swatches = listOf("Accent", "Blue", "Green", "Yellow", "Cyan", "Magenta", "Text", "Custom")
+        val group = compose.onNodeWithTag("appearance-highlight-swatches").performScrollTo().fetchSemanticsNode().id
+        val collection = compose.runOnIdle { Speech.node(view, group).collectionInfo }
+        assertEquals("one list of the swatches", listOf(1, swatches.size), listOf(collection.rowCount, collection.columnCount))
+        for ((place, name) in swatches.withIndex()) {
+            val tag = "appearance-highlight-${name.lowercase()}"
+            val id = compose.onNodeWithTag(tag).fetchSemanticsNode().id
+            val (item, said) = compose.runOnIdle { Speech.node(view, id).collectionItemInfo to Speech.saidAt(view, id) }
+            assertEquals("$name is ${place + 1} of ${swatches.size}", listOf(0, place), listOf(item.rowIndex, item.columnIndex))
+            assertTrue("$name is named, said $said", name in said)
+        }
     }
 
     // #167: About's Updates row says the release by its text, and no state says it again.
