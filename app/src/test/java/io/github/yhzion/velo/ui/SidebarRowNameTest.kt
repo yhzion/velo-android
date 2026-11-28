@@ -171,8 +171,10 @@ class SidebarRowNameTest {
     }
 
     /**
-     * Shortens the sidebar until its Filter band covers the words of the row tagged [tag] from just above their top,
-     * leaving the row's top in sight, as a list scrolled to it does. The row still says [name], once.
+     * Shortens the sidebar until the Filter field's own node, inside its band's padding, covers the words of the row
+     * tagged [tag] from about 15 dp above their top: the height leaves out the band's padding under the field. The row's
+     * top stays above that node, by about 2 dp for the rows here, though under the band's painted padding; a screen
+     * reader goes by the field's node. The row still says [name], once.
      */
     private fun assertHalfCoveredRowKeepsItsName(tag: String, name: String) {
         var height by mutableStateOf(800.dp)
@@ -190,7 +192,7 @@ class SidebarRowNameTest {
         val words = compose.onNode(hasText(name) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).getBoundsInRoot()
         val band = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot().let { it.bottom - it.top }
         assertTrue("the row reaches above its words", row.getBoundsInRoot().top < words.top - 2.dp)
-        // The band's top 1 dp above the words: they are covered, the row's top is not.
+        // The field's node starts about 15 dp above the words, just under the row's top: they are covered, the top is not.
         height = words.top - 1.dp + band
         compose.waitForIdle()
         val filter = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
