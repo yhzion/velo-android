@@ -116,11 +116,35 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.79.0")
 }
 
+// The Android framework jar Robolectric runs the tests on, for the SDK every test names with
+// @Config(sdk = [34]). Robolectric would download it itself inside the test JVM, outside Gradle,
+// so a 429 there would end as a failing test that gradle-retry.sh does not retry (#214). Gradle
+// resolves it instead, and Robolectric reads it offline from robolectricSdkDir. The "-i7" is the
+// instrumentation version of Robolectric 4.18.1: a Robolectric upgrade or another sdk in @Config
+// fails the tests with "Unable to locate dependency" until this line names the jar it asks for.
+val robolectricSdk by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+dependencies {
+    robolectricSdk("org.robolectric:android-all-instrumented:14-robolectric-10818077-i7")
+}
+// Robolectric's offline resolver looks for <artifact>-<version>.jar in one directory.
+val robolectricSdkDir = tasks.register<Sync>("robolectricSdkDir") {
+    from(robolectricSdk)
+    into(layout.buildDirectory.dir("robolectric"))
+}
+
 // The fidelity capture (FidelityCaptureTest) draws every app scene at each redesign board's size,
 // which takes minutes, so it runs only when asked: -Pvelo.fidelity.out=<dir> (tools/fidelity/fidelity.py).
 val fidelityOut = providers.gradleProperty("velo.fidelity.out").orNull
 val changelogScript = rootProject.layout.projectDirectory.file(".github/scripts/changelog.sh")
 tasks.withType<Test>().configureEach {
+    inputs.files(robolectricSdkDir)
+        .withPropertyName("robolectricSdk")
+        .withPathSensitivity(PathSensitivity.NAME_ONLY)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric").get().asFile.path)
     // ChangeNotesTest reads max_item_length from changelog.sh, so editing the script alone must rerun tests.
     inputs.file(changelogScript)
         .withPropertyName("changelogScript")
