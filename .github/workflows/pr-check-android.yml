@@ -16,6 +16,7 @@ on:
       - 'gradle/**'
       # ChangeNotesTest compares its max_item_length with MAX_CHANGE_LENGTH.
       - '.github/scripts/changelog.sh'
+      - '.github/scripts/gradle-retry.sh'
       - '.github/workflows/pr-check-android.yml'
 
 permissions:
@@ -54,6 +55,11 @@ jobs:
 
       # The JVM unit tests do not load the native libraries. zigCore and tailscale cross-compile
       # libvelocore.so and libtailscale.so for the APK (with zig, Go and the NDK), which is most of
-      # the build time; the release workflow still builds both.
+      # the build time; the release workflow still builds both. No dependency cache, as in
+      # release.yml: gradle-retry.sh runs the tests again only when a repository could not be
+      # reached (a plugin that did not resolve, HTTP 429, a timeout), never after a compile error
+      # or a failing test (#212).
       - name: Run Android unit tests
-        run: gradle --no-daemon --no-scan :app:testDebugUnitTest -x zigCore -x tailscale
+        run: >-
+          bash .github/scripts/gradle-retry.sh
+          gradle --no-daemon --no-scan :app:testDebugUnitTest -x zigCore -x tailscale
