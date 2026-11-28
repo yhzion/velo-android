@@ -613,13 +613,15 @@ private fun TabRowView(
                 drag += dx
             }
         }, subtitle = subtitle, subtitleSaid = progressSaid(tile, subtitle, PercentAt.AfterState), selected = row.shown, onLongClick = { menu = true }, id = id, titleSaid = said.nameSaid,
+            // The row says the tile's words, so they stay with it half under the Filter field (#238).
+            tileSaid = listOfNotNull(said.description, said.state),
             titleContent = if (ticker != null) {
                 { TitleTicker(row.name, ticker, type.body.naturalLines(), VeloTheme.surface.text, motion) }
             } else null,
             tile = {
                 BouncingMark(connected && bouncesIcon(activity.badge), motion) {
                     TabTile(tile.brand, panes = tile.panes, behind = tile.behind, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
-                        contentDescription = said.description, stateDescription = said.state, progress = tile.progress)
+                        contentDescription = null, progress = tile.progress)
                 }
             }, trailing = {
                 // The second line says what the program does now: the marks are drawn only (#150).
@@ -710,29 +712,31 @@ private fun RemoteHeader(host: SidebarHost, expanded: Boolean, actions: SidebarA
     val name = remote.label.ifEmpty { "Remote" }
     val c = VeloTheme.surface
     val button = Modifier.size(40.bd, 48.bd)
+    val dot = if (host.removed) null else connectionMark(status, removed = false).word
     // The row's pill is for the tab the panes show; the active remote is marked by its icon's colour, and says so here.
+    // The row says its words itself, its parts hidden, so that they stay with it half under the Filter field (#238).
     Row(Modifier.testTag("remote-row-$name").fillMaxWidth()
         .clickable(enabled = !host.removed) { actions.selectRemote(remote) }
-        .semantics { if (host.active) selected = true }
+        .semantics { contentDescription = remoteRowDescription(name, note, dot); if (host.active) selected = true }
         .heightIn(min = 56.bd).padding(start = 18.bd, end = 4.bd, top = 4.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
-        Icon(Icons.Outlined.LaptopMac, "Remote", Modifier.size(22.bd), tint = when {
+        Icon(Icons.Outlined.LaptopMac, null, Modifier.size(22.bd), tint = when {
             host.active -> c.accent
             note != null -> c.secondary
             else -> c.text
         })
         Column(Modifier.weight(1f)) {
-            Text(name, Modifier.testTag("remote-name-$name").fillMaxWidth(), style = VeloTheme.type.bodyStrong.naturalLines(), maxLines = 1,
+            Text(name, Modifier.testTag("remote-name-$name").fillMaxWidth().saidBy(name), style = VeloTheme.type.bodyStrong.naturalLines(), maxLines = 1,
                 overflow = TextOverflow.Ellipsis, color = when {
                     host.removed -> c.disabled
                     note != null -> c.secondary
                     else -> c.text
                 })
-            if (note != null) Text(note, style = VeloTheme.type.caption.naturalLines(), color = if (host.removed) c.disabled else c.secondary,
+            if (note != null) Text(note, Modifier.saidBy(note), style = VeloTheme.type.caption.naturalLines(), color = if (host.removed) c.disabled else c.secondary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!host.removed) {
-            ConnectionDot(status, Modifier.testTag("remote-dot-$name"), note = note)
+            ConnectionDot(status, Modifier.testTag("remote-dot-$name"))
             RowIconButton(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                 remoteFoldDescription(expanded, name), onChevron, button.testTag("remote-collapse-$name"))
         }
@@ -763,12 +767,19 @@ internal fun remoteActionIcon(action: RemoteAction) = when (action) {
 
 /**
  * The connection's mark as a dot ([connectionMark]): the colour of its level and its words, the
- * same as on the rail. The removed remote's row has none. A screen reader skips the dot's words
- * where the row's [note] says them already, as "connection failed" does (#201); a note that
- * says something else, such as an SSH login's question, leaves them.
+ * same as on the rail. The removed remote's row has none. The row says the dot's words
+ * ([remoteRowDescription]), so the dot is hidden from a screen reader.
  */
 @Composable
-private fun ConnectionDot(status: String, modifier: Modifier = Modifier, note: String? = null) {
+private fun ConnectionDot(status: String, modifier: Modifier = Modifier) {
     val mark = connectionMark(status, removed = false)
-    StatusMark(levelStatus(mark.level), mark.word, modifier.saidBy(mark.word.takeIf { note.equals(it, ignoreCase = true) }))
+    StatusMark(levelStatus(mark.level), mark.word, modifier.saidBy(mark.word))
 }
+
+/**
+ * What a remote's row says (#238): "Remote", its [name], its [note] and its [dot]'s words. The dot's words are left out
+ * where the note says them already, as "connection failed" does (#201); a note that says something else, such as an
+ * SSH login's question, leaves them. The removed remote's row has no dot.
+ */
+internal fun remoteRowDescription(name: String, note: String?, dot: String?): String =
+    listOfNotNull("Remote", name, note, dot?.takeUnless { note.equals(it, ignoreCase = true) }).joinToString(", ")

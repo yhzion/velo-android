@@ -444,27 +444,27 @@ class ReadOnceTest {
      */
     private fun assertTabRowsSayEachPartOnce(name: String) {
         scene(name)
-        assertEquals(listOf("Claude Code", "Refactor the sync queue", "Working · 2s since report · ~/src/api"), said("tab-row-refactor-sync-queue"))
-        assertEquals(listOf("Selected", "Codex, 2 panes", "Port the parser tests", "Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
-        assertEquals(listOf("zsh, 4 panes", "~/src/web"), said("tab-row-zsh"))
+        assertEquals(listOf("Claude Code, Refactor the sync queue, Working · 2s since report · ~/src/api"), said("tab-row-refactor-sync-queue"))
+        assertEquals(listOf("Selected", "Codex, 2 panes, Port the parser tests, Working · 12s since report · ~/src/cli"), said("tab-row-port-parser-tests"))
+        assertEquals(listOf("zsh, 4 panes, ~/src/web"), said("tab-row-zsh"))
         // The second line says the program works; the tile has no state to add, and the row none either.
         assertEquals(null, stateOf("tab-tile-refactor-sync-queue"))
         assertEquals(null, stateOf("tab-row-refactor-sync-queue"))
         assertStillActs("tab-row-zsh", null)
     }
 
-    // #201: a remote row whose note says its connection says it once; the dot says it where no note does.
+    // #201: a remote row whose note says its connection says it once; the row says the dot's words where no note does (#238).
 
     @Test fun aRemoteRowSaysItsConnectionOnce() {
         show { VeloTheme(UiSize.Medium) { RemoteStatesSidebar() } }
         compose.waitForIdle()
-        assertEquals(listOf("Selected", "Remote", "live", "Connected"), said("remote-row-live"))
-        assertEquals(listOf("Remote", "failed", "connection failed"), said("remote-row-failed"))
-        assertEquals(listOf("Remote", "again", "reconnecting…"), said("remote-row-again"))
-        assertEquals(listOf("Remote", "away", "offline"), said("remote-row-away"))
-        assertEquals(listOf("Remote", "dialing", "connecting…"), said("remote-row-dialing"))
+        assertEquals(listOf("Selected", "Remote, live, Connected"), said("remote-row-live"))
+        assertEquals(listOf("Remote, failed, connection failed"), said("remote-row-failed"))
+        assertEquals(listOf("Remote, again, reconnecting…"), said("remote-row-again"))
+        assertEquals(listOf("Remote, away, offline"), said("remote-row-away"))
+        assertEquals(listOf("Remote, dialing, connecting…"), said("remote-row-dialing"))
         // The note asks for the login's answer; the dot still says where the connection is.
-        assertEquals(listOf("Remote", "asking", NEEDS_ANSWER_NOTE, "Connecting…"), said("remote-row-asking"))
+        assertEquals(listOf("Remote, asking, $NEEDS_ANSWER_NOTE, Connecting…"), said("remote-row-asking"))
     }
 
     /** The state a service says for the node tagged [tag], read from its AccessibilityNodeInfo. */
@@ -475,17 +475,18 @@ class ReadOnceTest {
 
     /**
      * A selected row with an unread report and five or more panes, and a row of a remote that is not
-     * connected: the tile says the panes as a count, it says the finish not yet seen as "Unread" since
+     * connected: the tile's words say the panes as a count and the finish not yet seen as "Unread" since
      * the second line says "Completed", and the offline mark adds nothing to the line's "Disconnected".
+     * The row says the tile's words itself (#238), so the tile has none of its own.
      */
     @Test fun anUnreadSelectedRowAndAnOfflineRowSayEachPartOnce() {
         show { VeloTheme(UiSize.Medium) { RowCasesSidebar() } }
         compose.waitForIdle()
-        assertEquals(listOf("Selected", "htop, 6 panes", "Unread", "Build the release", "Completed · 26s since report · ~/src/api"), said("tab-row-build"))
-        assertEquals("Unread", stateOf("tab-tile-build"))
+        assertEquals(listOf("Selected", "htop, 6 panes, Unread, Build the release, Completed · 26s since report · ~/src/api"), said("tab-row-build"))
+        assertEquals(null, stateOf("tab-tile-build"))
         // Compose gives a selected row that is no tab its state as a checked node: "Selected", once.
         assertEquals("Selected", stateOf("tab-row-build"))
-        assertEquals(listOf("htop, 5 panes", "Watch the logs", "Disconnected · ~/var/log"), said("tab-row-watch"))
+        assertEquals(listOf("htop, 5 panes, Watch the logs, Disconnected · ~/var/log"), said("tab-row-watch"))
         assertEquals(null, stateOf("tab-tile-watch"))
     }
 
@@ -495,7 +496,7 @@ class ReadOnceTest {
         compose.waitForIdle()
         // The percent is said with the second line, which the screen draws without it (#251); the tile has no state to
         // say again at each new percent.
-        assertEquals(listOf("Selected", "Claude Code", "Index the files", "Working · 30% · 4s since report · ~/src/api"), said("tab-row-index"))
+        assertEquals(listOf("Selected", "Claude Code, Index the files, Working · 30% · 4s since report · ~/src/api"), said("tab-row-index"))
         assertEquals(null, stateOf("tab-tile-index"))
         // That the screen draws the line without the percent: TabListRowWordsTest.
         compose.onNodeWithTag("tab-tile-index-pie", useUnmergedTree = true).assertExists()

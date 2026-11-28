@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +53,10 @@ fun tabRowFill(selected: Boolean): Color = if (selected) VeloTheme.surface.selec
  * that only says again what the tile says, #150). A screen reader reads [subtitleSaid] for the subtitle when it is
  * given: words the line does not draw, such as a progress pie's percent (#251). The row keeps the outside room the
  * list gives it (the board's 8 from the sidebar's edge) in [modifier].
+ *
+ * The row says all of it as its own description, [tileSaid] (the tile's words, for a [tile] that leaves itself out)
+ * first, and its texts are hidden (#238): Compose leaves out a node that a later one covers whole, so a row half under
+ * the sidebar's Filter field lost its title and its status line.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -59,6 +64,7 @@ fun TabListRow(
     title: String, onClick: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null, selected: Boolean = false,
     onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null, id: String? = null,
     titleContent: (@Composable () -> Unit)? = null, titleSaid: Boolean = true, subtitleSaid: String? = null,
+    tileSaid: List<String> = emptyList(),
     tile: @Composable () -> Unit,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
@@ -69,17 +75,22 @@ fun TabListRow(
         modifier.part("tab-row").fillMaxWidth().heightIn(min = VeloTheme.sizes.tabRow).clip(Capsule)
             .background(if (selected) c.selected else Color.Transparent)
             .combinedClickable(onLongClickLabel = onLongClickLabel, onLongClick = onLongClick, onClick = onClick)
-            .semantics { if (selected) this.selected = true }
+            .semantics {
+                contentDescription = (tileSaid + listOfNotNull(title.takeIf { titleSaid }, subtitleSaid ?: subtitle)).joinToString(", ")
+                if (selected) this.selected = true
+            }
             .padding(start = VeloTheme.space.s12, end = VeloTheme.medium(6.dp)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(VeloTheme.space.s12),
     ) {
         tile()
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp))) {
-            if (titleContent != null) Box(Modifier.part("tab-title").fillMaxWidth().clearAndSetSemantics { if (titleSaid) text = AnnotatedString(title) }) { titleContent() }
-            else Text(title, Modifier.part("tab-title").fillMaxWidth().then(if (titleSaid) Modifier else Modifier.semantics { hideFromAccessibility() }), style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The row says the title and the line; their texts stay for what reads them, hidden from a screen reader.
+            if (titleContent != null) Box(Modifier.part("tab-title").fillMaxWidth().clearAndSetSemantics { text = AnnotatedString(title); hideFromAccessibility() }) { titleContent() }
+            else Text(title, Modifier.part("tab-title").fillMaxWidth().semantics { hideFromAccessibility() }, style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, Modifier.part("tab-status").fillMaxWidth()
-                .then(if (subtitleSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(subtitleSaid) } else Modifier), style = type.caption.naturalLines(), color = c.secondary,
+                .then(if (subtitleSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(subtitleSaid); hideFromAccessibility() }
+                    else Modifier.semantics { hideFromAccessibility() }), style = type.caption.naturalLines(), color = c.secondary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (trailing != null) trailing()
