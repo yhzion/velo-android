@@ -20,7 +20,8 @@ class PaneNameTest {
      * The panes of the issue, a pane a user labelled whose program is not reported, a zsh pane a user labelled
      * "server" (#236: the label names it before its program, while the core sends it in the title's place), the same
      * pane once its shell sets a title (the core sends the title, so the label is gone), a zsh pane the server
-     * labelled from another ID, a program that reports a title, an agent, an agent a user labelled, and a pane the
+     * labelled from another ID, a zsh pane with Rex's own "shell" label (most blocks no one labelled have it, so it is
+     * not a name), a program that reports a title, an agent, an agent a user labelled, and a pane the
      * core knows nothing of.
      */
     private val panes = mapOf(
@@ -30,6 +31,7 @@ class PaneNameTest {
         "server" to BlockInfo(title = "server", titleIsLabel = true, program = "/bin/zsh"),
         "serverTitled" to BlockInfo(title = "~/src/velo", program = "/bin/zsh"),
         "otherId" to BlockInfo(title = "Block 0bb89469", titleIsLabel = true, program = "/bin/zsh"),
+        "shell" to BlockInfo(title = "shell", titleIsLabel = true, program = "/bin/zsh"),
         "titled" to BlockInfo(title = "vim README.md", program = "vim"),
         "agent" to auto.copy(icon = "claude", program = "/usr/bin/claude"),
         "labelledAgent" to BlockInfo(title = "review", titleIsLabel = true, icon = "claude", program = "/usr/bin/claude"),
@@ -37,7 +39,7 @@ class PaneNameTest {
     )
     private val expected = mapOf(
         "zsh" to "zsh", "bare" to "Terminal", "labelled" to "notes", "server" to "server",
-        "serverTitled" to "~/src/velo", "otherId" to "zsh", "titled" to "vim README.md",
+        "serverTitled" to "~/src/velo", "otherId" to "zsh", "shell" to "zsh", "titled" to "vim README.md",
         "agent" to "Claude Code", "labelledAgent" to "review", "nothing" to "Terminal",
     )
 
