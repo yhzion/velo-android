@@ -28,6 +28,7 @@ import io.github.yhzion.velo.fidelity.ShadowVeloCore
 import io.github.yhzion.velo.fidelity.fakeConnection
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,7 +74,7 @@ class LandscapeKeyboardCaptionTest {
     }
 
     /** The workspace at the app's default size, Medium, in the pane [style], the bar's keys the default ones. */
-    private fun workspace(style: String) {
+    private fun workspace(style: String, state: UiState = this.state) {
         val c = fakeConnection(ApplicationProvider.getApplicationContext(), state).also { conn = it }
         val app = AppController(ApplicationProvider.getApplicationContext()).also { this.app = it }
         app.settings.savePaneStyle(style)
@@ -104,7 +105,9 @@ class LandscapeKeyboardCaptionTest {
     private fun pane() = height(compose.onNodeWithTag("pane-1").getBoundsInRoot())
     private fun captionShown() = compose.onAllNodesWithTag("pane-caption").fetchSemanticsNodes().isNotEmpty()
     /** What a screen reader hears for the pane that takes the keys: its view's description. */
-    private fun paneSaid() = compose.runOnIdle { (view as ViewGroup).descendants.filterIsInstance<PaneSurfaceView>().single().contentDescription?.toString() }
+    private fun paneSaid() = panesSaid().single()
+    /** What a screen reader hears for each pane, in the order of the views. */
+    private fun panesSaid() = compose.runOnIdle { (view as ViewGroup).descendants.filterIsInstance<PaneSurfaceView>().map { it.contentDescription?.toString() }.toList() }
 
     /** With Gboard up the pane keeps at least [least] dp, the caption is gone, to a screen reader too, and the key bar stays. */
     private fun theCaptionGivesWay(style: String, least: Float) {
@@ -163,6 +166,22 @@ class LandscapeKeyboardCaptionTest {
         assertEquals("Pane 1, input target", paneSaid())
         repeat(5) { settle() }
         assertTrue("and stays", captionShown())
+    }
+
+    /**
+     * Two panes side by side: only the one that takes the keys says the caption's words, and a new name of the tab,
+     * which comes with the state with the titles, reaches it while the caption is hidden.
+     */
+    @Test fun onlyTheInputTargetSaysTheCaptionAndANewNameReachesIt() {
+        fun twoPanes(label: String) = state.copy(windows = listOf(WindowInfo("w1", label = label,
+            layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"), second = LayoutNode(block = "b")))))
+        workspace("comfortable", twoPanes("build"))
+        keyboard(249)
+        assertFalse(captionShown())
+        assertEquals(listOf("Pane 1, input target, velo · build, Terminal, 2 panes", "Pane 2"), panesSaid())
+        compose.runOnIdle { conn!!.onState(2, true, Json { encodeDefaults = true }.encodeToString(UiState.serializer(), twoPanes("deploy"))) }
+        settle()
+        assertEquals(listOf("Pane 1, input target, velo · deploy, Terminal, 2 panes", "Pane 2"), panesSaid())
     }
 
     @Test fun theRuleComesBackOnlyWhereTheCaptionFits() {

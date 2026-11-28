@@ -115,7 +115,7 @@ class TabletopKeyboardCaptionTest {
         val before = pane()
         keyboard(300)
         assertFalse("the caption gives way", captionShown())
-        assertEquals("the key bar is whole", 56f, keyBar(), 1f)
+        assertEquals("the key bar is whole", 56.4f, keyBar(), 0.5f)
         assertEquals("the panes keep the hinge's height", before, pane(), 0.5f)
         assertEquals("the pane that takes the keys says the caption's words", "Pane 1, input target, velo · build, Terminal", paneSaid())
         keyboard(0)
@@ -135,7 +135,7 @@ class TabletopKeyboardCaptionTest {
         tabletop(1088, 821, "compact")
         keyboard(300)
         assertTrue("the caption stays", captionShown())
-        assertEquals("the key bar is whole", 56f, keyBar(), 1f)
+        assertEquals("the key bar is whole", 56.4f, keyBar(), 0.5f)
         assertEquals("Pane 1, input target", paneSaid())
     }
 
@@ -152,7 +152,7 @@ class TabletopKeyboardCaptionTest {
         assertFalse("short of the margin, it stays hidden", captionShown())
         keyboard(240)
         assertTrue("with the margin, it comes back", captionShown())
-        assertEquals("the key bar stays whole", 56f, keyBar(), 1f)
+        assertEquals("the key bar stays whole", 56.4f, keyBar(), 0.5f)
         repeat(5) { settle() }
         assertTrue("and stays", captionShown())
     }
@@ -161,9 +161,9 @@ class TabletopKeyboardCaptionTest {
         // Not with the keyboard down, however little is left.
         assertFalse(captionGivesWayUnderHinge(squeezed = false, gaveWay = false, left = 0f, caption = 48f))
         assertFalse(captionGivesWayUnderHinge(squeezed = false, gaveWay = true, left = 0f, caption = 48f))
-        // Shown: it goes where nothing is left over, and stays where anything is.
+        // Shown: it goes where nothing is left over, and stays where a pixel is.
         assertTrue(captionGivesWayUnderHinge(squeezed = true, gaveWay = false, left = 0f, caption = 48f))
-        assertFalse(captionGivesWayUnderHinge(squeezed = true, gaveWay = false, left = 1f, caption = 48f))
+        assertFalse(captionGivesWayUnderHinge(squeezed = true, gaveWay = false, left = 0.4f, caption = 48f))
         // Hidden: it comes back only where what is left holds it and the margin.
         assertTrue(captionGivesWayUnderHinge(squeezed = true, gaveWay = true, left = 50f, caption = 48f))
         assertFalse(captionGivesWayUnderHinge(squeezed = true, gaveWay = true, left = 56f, caption = 48f))

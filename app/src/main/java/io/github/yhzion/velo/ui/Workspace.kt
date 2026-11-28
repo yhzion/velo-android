@@ -1280,10 +1280,7 @@ internal fun captionGivesWay(squeezed: Boolean, gaveWay: Boolean, pane: Float, c
  * the key bar whole and a row of suggestions does not show and hide it each time. In dp.
  */
 internal fun captionGivesWayUnderHinge(squeezed: Boolean, gaveWay: Boolean, left: Float, caption: Float): Boolean =
-    squeezed && if (gaveWay) left < caption + CaptionComesBackMarginDp else left < NothingLeftDp
-
-/** Less than this is nothing left over under the hinge-high panes: the weighted space under them is placed whole pixels. */
-private const val NothingLeftDp = 0.5f
+    squeezed && if (gaveWay) left < caption + CaptionComesBackMarginDp else left <= 0f
 
 /**
  * What the caption under the panes says to a screen reader (#260): the tab's title, which machine the keys go to and
