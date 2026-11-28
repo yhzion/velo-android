@@ -4,6 +4,8 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+## 2.16.2 - 2026-11-28
+
 ### Changed
 - While the caption under the panes hides for the keyboard, a screen reader hears the tab's name and program with the pane that takes the keys.
 
