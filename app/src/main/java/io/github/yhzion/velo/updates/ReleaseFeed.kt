@@ -66,16 +66,16 @@ object ReleaseFeed {
      * Blocking I/O. Eligible releases newer than [installedCode], newest first; the first of them is
      * the update. Every one when the API answered; on the stable channel, the manifest's release alone
      * when the API failed or saw no newer one ([check]). Empty means no eligible update, not a failed check.
-     * [onApiAnswered] runs once the API returns a page: its limit is not used up.
+     * [onApiAnswered] runs once the API returns a page: a limit stored before no longer holds.
      */
-    fun newer(channel: UpdateChannel, installedCode: Long, onApiAnswered: () -> Unit = {}): List<AppRelease> =
+    fun newer(channel: UpdateChannel, installedCode: Long, onApiAnswered: () -> Unit): List<AppRelease> =
         check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network, onApiAnswered = onApiAnswered)
 
     /**
      * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
      * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
      */
-    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, onApiAnswered: () -> Unit = {}): AppRelease? =
+    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, onApiAnswered: () -> Unit): AppRelease? =
         check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network, onApiAnswered = onApiAnswered).firstOrNull()
 
     /**
@@ -85,6 +85,7 @@ object ReleaseFeed {
      * [everyRelease] also asks the API for every newer release's notes when the manifest found one,
      * and keeps the manifest's release if the API fails or disagrees. [onApiAnswered] runs once, when
      * the API first returns a page (#264): a limit stored before, perhaps on another network, is over.
+     * A refusal stored while the API was not asked is rethrown with that same [apiBlockedUntil].
      */
     internal fun check(
         channel: UpdateChannel, installedCode: Long, everyRelease: Boolean, apiBlockedUntil: Long, source: FeedSource,

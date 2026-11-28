@@ -147,7 +147,9 @@ class UpdateManifestTest {
         assertEquals(1, answers(Fake(api = { "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }), UpdateChannel.Edge, everyRelease = false))
         // Once for a list of several pages.
         val full = (1..100).joinToString(",", "[", "]") { apiEntry("v2.15.$it", 3000000L + it) }
-        assertEquals(1, answers(Fake(api = { if (it == 1) full else "[]" }), installed = 2_000_000))
+        val twoPages = Fake(api = { if (it == 1) full else "[]" })
+        assertEquals(1, answers(twoPages, installed = 2_000_000))
+        assertEquals(2, twoPages.apiCalls)
         // A list that does not parse still came back with 200: the limit is not used up.
         assertEquals(1, answers(Fake(latest = null, api = { "not json" }), everyRelease = false))
         assertEquals(0, answers(Fake(api = { throw RateLimitedException(now + 60_000) })))

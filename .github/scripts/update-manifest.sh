@@ -10,6 +10,10 @@ set -euo pipefail
 tag=$1 code=$2 apk=$3 notes=$4
 [[ $code =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Invalid version code: $code" >&2; exit 1; }
 [[ $apk == "velo-$tag-arm64-v8a.apk" ]] || { echo "Unexpected APK name: $apk" >&2; exit 1; }
+# ReleaseFeed takes a manifest only when its notes carry one version-code marker, for this code.
+markers=$(grep -F -- '<!-- android-version-code' <<<"$notes" || true)
+[[ $markers == "<!-- android-version-code: $code -->" ]] ||
+  { echo "The notes need one version-code marker for $code" >&2; exit 1; }
 checksum=$(<"$apk.sha256")
 [[ $checksum =~ ^([0-9a-f]{64})\ \ (.+)$ && ${BASH_REMATCH[2]} == "$apk" ]] ||
   { echo "Unexpected checksum line in $apk.sha256" >&2; exit 1; }

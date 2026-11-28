@@ -24,18 +24,21 @@ class UpdateCheckJobService : JobService() {
         runningGeneration = generation
         val startedAt = System.currentTimeMillis()
         work = scope.launch {
+            var blockedUntil = 0L
             try {
                 val release = runInterruptible(Dispatchers.IO) {
                     @Suppress("DEPRECATION")
                     val installed = packageManager.getPackageInfo(packageName, 0).longVersionCode
                     val service = this@UpdateCheckJobService
-                    ReleaseFeed.update(channel, installed, UpdateSettings.apiBlockedUntil(service)) { UpdateSettings.apiAnswered(service) }
+                    blockedUntil = UpdateSettings.apiBlockedUntil(service)
+                    ReleaseFeed.update(channel, installed, blockedUntil) { UpdateSettings.apiAnswered(service) }
                 }
                 UpdateSettings.finish(this@UpdateCheckJobService, generation, startedAt, release)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (limited: RateLimitedException) {
-                UpdateSettings.limitReached(this@UpdateCheckJobService, limited.resetAt)
+                // The stored limit itself, rethrown without asking the API: not stored again (#264).
+                if (limited.resetAt != blockedUntil) UpdateSettings.limitReached(this@UpdateCheckJobService, limited.resetAt)
                 Log.w("UpdateCheck", "Background update check waits for GitHub's limit to reset")
             } catch (failure: Exception) {
                 // A failed feed request is not evidence that an announced release is gone.
