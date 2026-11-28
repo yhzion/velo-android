@@ -375,16 +375,8 @@ private fun PaneCard(
                 v.onCopySelection = { copyToClipboard(context, conn.selectedText(block)) }
                 v.onLink = { tap, notAFile -> linkTaps.tap(conn, block, tap, notAFile) }
                 v.onPasteSelection = {
-                    if (input.connection === conn && input.workspaceAcceptsInput && conn.connected) {
-                        // A file another app copied goes as Compose's attachment (#109); a text clip as before.
-                        val file = clipboardFile(context)
-                        if (file != null) {
-                            if (!input.finishCompositionBeforePaste()) pasteClipboardFile(context, conn, block, file)
-                        } else {
-                            val text = clipboardText(context)
-                            if (text.isNotEmpty() && !input.finishCompositionBeforePaste()) input.pasteTextIntoPane(conn, block, text)
-                        }
-                    }
+                    // A file another app copied goes as Compose's attachment (#109); a text clip as before.
+                    if (input.connection === conn && input.workspaceAcceptsInput && conn.connected) pasteClipboardIntoPane(context, input, conn, block)
                 }
             },
             onRelease = { v -> v.block = "" },

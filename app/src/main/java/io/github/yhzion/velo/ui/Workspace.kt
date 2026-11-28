@@ -872,10 +872,17 @@ internal fun Workspace(
                             if (takesComposedKey(stickyMeta(next)) && !takesComposedKey(input.stickyMeta)) input.finishBarComposition()
                             armed = next
                             input.stickyMeta = stickyMeta(armed)
+                        } else if (k == PasteKey) {
+                            // The clipboard into the pane that takes the keys, as the pane menu's Paste puts it (#219):
+                            // a file as its upload, text through the paste question. An armed modifier waits for a key.
+                            val block = input.target()
+                            if (block != null && input.connection === conn && input.workspaceAcceptsInput && conn.connected)
+                                pasteClipboardIntoPane(fileContext, input, conn, block)
                         } else if (!input.finishBarComposition()) {
                             // A composition that was a paste waits for its question; the key waits with it, unsent.
                             val code = KEY_CODES[k]
-                            if (code != null) input.sendKey(code, 0, 0) else input.sendText(k)
+                            // Shift+Tab is Tab with Shift; an armed Ctrl or Alt joins it ([TerminalInputView.sendKey]).
+                            if (code != null) input.sendKey(code, keyMeta(k), 0) else input.sendText(k)
                         }
                     }
                 }

@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Added
+- The key bar can have Shift+Tab, Delete and Paste keys, chosen in Keyboard settings, and shows Page Up and Page Down as icons. Paste pastes as the pane menu's Paste does.
+
 ### Changed
 - The key bar spans the pane column, rounds as the panes do, and shows Tab, Enter, Shift and Space as icons. On a narrow upright screen its keys wrap into two rows instead of shrinking.
 

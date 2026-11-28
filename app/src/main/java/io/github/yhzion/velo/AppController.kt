@@ -167,7 +167,7 @@ class Settings(
     fun saveTailnetRan(v: Boolean) { if (v != tailnetRan) { tailnetRan = v; prefs.edit().putBoolean("tailnetRan", v).apply() } }
 
     companion object {
-        val ALL_KEYS = listOf("/", "Esc", "Tab", "Enter", "Ctrl", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "PgUp", "PgDn", "~", "|", "-", "Backspace")
+        val ALL_KEYS = listOf("/", "Esc", "Tab", "BackTab", "Enter", "Ctrl", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "PgUp", "PgDn", "~", "|", "-", "Paste", "Backspace", "Delete")
         const val DEFAULT_KEY_BAR = "/,Ctrl,Esc,Tab,Left,Down,Up,Right,Backspace"
         const val DEFAULT_TAILNET_NAME = "velo"
     }

@@ -1,5 +1,6 @@
 package io.github.yhzion.velo.ui
 
+import android.view.KeyEvent
 import io.github.yhzion.velo.Settings
 import io.github.yhzion.velo.ui.theme.Feel
 import org.junit.Assert.*
@@ -23,9 +24,9 @@ class KeyBarTest {
     @Test fun eachKeyHasOneSpokenNameAndAWordKeepsItsOwn() {
         for ((key, said) in listOf(
             "Ctrl" to "Control", "Esc" to "Escape", "PgUp" to "Page Up", "PgDn" to "Page Down",
-            "-" to "Minus", "|" to "Pipe", "/" to "Slash", "~" to "Tilde",
+            "-" to "Minus", "|" to "Pipe", "/" to "Slash", "~" to "Tilde", "BackTab" to "Shift Tab",
         )) assertEquals(key, said, spokenKeyName(key))
-        for (key in listOf("Tab", "Enter", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "Backspace"))
+        for (key in listOf("Tab", "Enter", "Alt", "Shift", "Left", "Down", "Up", "Right", "Home", "End", "Backspace", "Delete", "Paste"))
             assertEquals(key, spokenKeyName(key))
         // A key saved by an older Velo that is no longer offered is said as it is written.
         assertEquals("xY", spokenKeyName("xY"))
@@ -117,5 +118,63 @@ class KeyBarTest {
     @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {
         assertEquals(listOf("key-slash", "key-ctrl", "key-esc", "key-tab", "key-left", "key-down", "key-up", "key-right", "key-backspace"),
             Settings.DEFAULT_KEY_BAR.split(',').map(::keyTestTag))
+        assertEquals(listOf("key-backtab", "key-delete", "key-pgup", "key-pgdn", "key-paste"),
+            listOf("BackTab", "Delete", "PgUp", "PgDn", "Paste").map(::keyTestTag))
+    }
+
+    // #219: Shift+Tab, Delete and Paste.
+
+    @Test fun shiftTabIsTabWithShiftAndDeleteIsForwardDelete() {
+        assertEquals(KeyEvent.KEYCODE_TAB, KEY_CODES["BackTab"])
+        assertEquals(KeyEvent.KEYCODE_FORWARD_DEL, KEY_CODES["Delete"])
+        // Paste sends no key: the clipboard goes instead.
+        assertNull(KEY_CODES[PasteKey])
+        assertEquals("Paste", PasteKey)
+        val shift = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+        assertEquals(shift, keyMeta("BackTab"))
+        for (key in KEY_CODES.keys - "BackTab") assertEquals(key, 0, keyMeta(key))
+    }
+
+    @Test fun anArmedCtrlOrAltJoinsShiftTabAndAnArmedShiftChangesNothing() {
+        // What the workspace sends: the key's own meta, with the armed modifiers added ([TerminalInputView.sendKey]).
+        fun sent(armed: Set<String>) = keyMeta("BackTab") or stickyMeta(armed)
+        val shift = KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+        val ctrl = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        val alt = KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
+        assertEquals(shift, sent(emptySet()))
+        assertEquals(shift, sent(setOf("Shift")))
+        assertEquals(shift or ctrl, sent(setOf("Ctrl")))
+        assertEquals(shift or alt, sent(setOf("Alt")))
+        assertEquals(shift or ctrl or alt, sent(setOf("Ctrl", "Alt", "Shift")))
+    }
+
+    @Test fun theNewKeysAreEditingAndPagesStayNavigation() {
+        for (key in listOf("BackTab", "Delete", "Paste")) assertEquals(key, KeyGroup.Editing, keyGroup(key))
+        for (key in listOf("PgUp", "PgDn")) assertEquals(key, KeyGroup.Navigation, keyGroup(key))
+    }
+
+    @Test fun deletionRepeatsAndShiftTabPasteAndPagesDoNot() {
+        assertTrue("Delete" in REPEAT_KEYS)
+        assertTrue("Backspace" in REPEAT_KEYS)
+        for (key in listOf("BackTab", "Paste", "PgUp", "PgDn", "Tab", "Enter")) assertFalse(key, key in REPEAT_KEYS)
+    }
+
+    @Test fun theNewKeysAreOfferedButNotOnANewBar() {
+        for (key in listOf("BackTab", "Delete", "Paste", "PgUp", "PgDn")) assertTrue(key, key in Settings.ALL_KEYS)
+        assertEquals("/,Ctrl,Esc,Tab,Left,Down,Up,Right,Backspace", Settings.DEFAULT_KEY_BAR)
+        // A bar saved before stays as it was: none of them is added.
+        assertEquals(listOf("Ctrl", "Esc"), readKeyOrder("Ctrl,Esc", ordered = true))
+    }
+
+    @Test fun aPickedNewKeyGoesBeforeABackspaceAtTheEnd() {
+        val bar = Settings.DEFAULT_KEY_BAR.split(',')
+        for (key in listOf("BackTab", "Delete", "Paste")) {
+            val picked = toggleKey(bar, key)
+            assertEquals(key, bar.dropLast(1) + key + "Backspace", picked)
+            assertEquals(key, bar, toggleKey(picked, key))
+        }
+        // Without Backspace at the end, the key goes last.
+        assertEquals(listOf("Up", "Delete"), toggleKey(listOf("Up"), "Delete"))
+        assertEquals(listOf("Up", "Backspace", "Esc", "Paste"), toggleKey(listOf("Up", "Backspace", "Esc"), "Paste"))
     }
 }

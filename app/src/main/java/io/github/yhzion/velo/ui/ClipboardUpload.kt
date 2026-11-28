@@ -29,6 +29,29 @@ internal fun once(f: () -> Unit): () -> Unit {
     }
 }
 
+/**
+ * A Paste of the clipboard into a pane, from the key bar's Paste (#219) or a selection's toolbar,
+ * as the pane menu's Paste does it: a [file] another app copied goes as Compose's attachment
+ * ([sendFile], #109), and [text] through the paste question when it asks one ([sendText]). What
+ * the keyboard composes goes first ([beforePaste]); while a paste waits for its question, true
+ * there, nothing goes. An empty clipboard does nothing, and leaves the composition as it is.
+ */
+internal fun pasteClipboard(
+    file: ClipboardFile?, text: () -> String, beforePaste: () -> Boolean, sendFile: (ClipboardFile) -> Unit, sendText: (String) -> Unit,
+) {
+    if (file != null) {
+        if (!beforePaste()) sendFile(file)
+        return
+    }
+    val clip = text()
+    if (clip.isNotEmpty() && !beforePaste()) sendText(clip)
+}
+
+/** [pasteClipboard] of the clipboard [context] reads, into [block] of [conn], through [input] ([TerminalInputView.pasteTextIntoPane]). */
+internal fun pasteClipboardIntoPane(context: Context, input: TerminalInputView, conn: HostConnection, block: String) =
+    pasteClipboard(clipboardFile(context), { clipboardText(context) }, input::finishCompositionBeforePaste,
+        sendFile = { pasteClipboardFile(context, conn, block, it) }, sendText = { input.pasteTextIntoPane(conn, block, it) })
+
 internal enum class FocusWait { Take, Wait, GiveUp }
 
 /** What a paste does when it has waited [waitedMs] for its pane: a pane shown focused is taken, even at the bound. */
