@@ -694,8 +694,12 @@ test "stateJson: every session lists its tabs with their lead block" {
     const full = [_][]const u8{ "id", "label", "icon", "panes", "terminalBlocks", "active", "minimized", "block", "title", "program", "cwd", "activity", "attention" };
 
     // Window order; tiled and floating blocks both count; the lead is the focused block.
-    try expectFields(tabs[0], &(full ++ .{"since"}));
+    try expectFields(tabs[0], &(full ++ .{ "since", "others" }));
     try expectStr(tabs[0], "id", "window:a");
+    // Its other panes in layout order, the tiled one then the floating one: neither is known (#226).
+    const others = model.items(model.get(tabs[0], "others"));
+    try testing.expectEqual(@as(usize, 2), others.len);
+    for (others) |o| try testing.expect(o == .null);
     try expectStr(tabs[0], "label", "editor");
     try expectStr(tabs[0], "icon", "claude");
     try expectNum(model.get(tabs[0], "panes"), 3);
@@ -707,7 +711,7 @@ test "stateJson: every session lists its tabs with their lead block" {
     try expectStr(tabs[0], "activity", "blocked");
     try testing.expectEqual(true, model.boolean(model.get(tabs[0], "attention")).?);
     // `since` stands beside the state it times, as epoch milliseconds.
-    try testing.expect(std.mem.find(u8, text, "\"activity\":\"blocked\",\"since\":1795168980000,\"attention\":true}") != null);
+    try testing.expect(std.mem.find(u8, text, "\"activity\":\"blocked\",\"since\":1795168980000,\"attention\":true,") != null);
 
     // Without a focused block the lead is the first; without a title its label stands in.
     // Its program works and the server gave no time: `since` is left out.
@@ -1770,4 +1774,56 @@ test "stateJson: a forward is listed with the phone's port among the scalars" {
     const change = try parseValue(a, patch);
     try testing.expect(change.object.contains("forwards") and change.object.contains("status"));
     try testing.expect(!change.object.contains("sessions") and !change.object.contains("blocks"));
+}
+
+test "stateJson: a tab of another session names its other panes' programs in layout order (#226)" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const shell = "\"creator_name\":\"com.superlogical.terminal\"";
+    // Four panes: c | (a above f), with the focus on `a`; the layer's list is in another
+    // order. `w` floats and is not a terminal.
+    const other = try model.parseView(a, try parseValue(a, "{\"session_id\":\"session:o\",\"label\":\"o\",\"revision\":2,\"windows\":[" ++
+        "{\"window_id\":\"window:s\",\"label\":\"split\",\"focused_block_id\":\"block:a\",\"layers\":[" ++
+        "{\"layer_id\":\"layer:t\",\"kind\":\"tiled\",\"bounds\":[0,0,1,1],\"layout\":{\"rect\":[0,0,1,1],\"split\":{" ++
+        "\"split_id\":\"split:1\",\"direction\":\"horizontal\",\"ratio\":0.5," ++
+        "\"before\":{\"rect\":[0,0,0.5,1],\"block_id\":\"block:c\"}," ++
+        "\"after\":{\"rect\":[0.5,0,0.5,1],\"split\":{\"split_id\":\"split:2\",\"direction\":\"vertical\",\"ratio\":0.5," ++
+        "\"before\":{\"rect\":[0.5,0,0.5,0.5],\"block_id\":\"block:a\"},\"after\":{\"rect\":[0.5,0.5,0.5,0.5],\"block_id\":\"block:f\"}}}}}," ++
+        "\"blocks\":[{\"block_id\":\"block:f\",\"label\":\"shell\"," ++ shell ++ "},{\"block_id\":\"block:a\",\"label\":\"shell\"," ++ shell ++ "}," ++
+        "{\"block_id\":\"block:c\",\"label\":\"shell\"," ++ shell ++ "}]}," ++
+        "{\"layer_id\":\"layer:w\",\"kind\":\"floating\",\"bounds\":[0.1,0.1,0.5,0.5],\"layout\":{\"rect\":[0.1,0.1,0.5,0.5],\"block_id\":\"block:w\"}," ++
+        "\"blocks\":[{\"block_id\":\"block:w\",\"label\":\"web\"}]}]}]}"));
+    const own = try model.parseView(a, try parseValue(a, "{\"session_id\":\"session:me\",\"label\":\"me\",\"revision\":1,\"windows\":[]}"));
+    var panes: std.StringHashMapUnmanaged(model.BlockInfo) = .empty;
+    var leads: std.StringHashMapUnmanaged(model.BlockInfo) = .empty;
+    try leads.put(a, "block:a", .{ .program = "zsh" });
+    // What a pane beside the lead is asked: its process only, so its agent or its program.
+    try leads.put(a, "block:c", .{ .program = "node", .agent = "opencode" });
+    // `block:f` has not answered yet.
+    const sessions = [_]model.Session{
+        .{ .id = "session:me", .label = "me", .view = &own },
+        .{ .id = "session:o", .label = "o", .view = &other },
+    };
+    const text = try model.stateJson(testing.allocator, .{
+        .status = .connected,
+        .server = "rex.test.example",
+        .url = "https://rex.test.example",
+        .sessions = &sessions,
+        .session = "session:me",
+        .view = &own,
+        .blocks = &panes,
+        .leads = &leads,
+    });
+    defer testing.allocator.free(text);
+    const root = try parseValue(a, text);
+    const tab = model.items(model.get(model.items(model.get(root, "sessions"))[1], "tabs"))[0];
+    try expectStr(tab, "icon", "zsh");
+    try expectNum(model.get(tab, "panes"), 4);
+    // c, then f (the lead `a` is the face), then the floating `w`, which runs no terminal.
+    const others = model.items(model.get(tab, "others"));
+    try testing.expectEqual(@as(usize, 3), others.len);
+    try testing.expectEqualStrings("opencode", model.str(others[0]).?);
+    try testing.expect(others[1] == .null);
+    try testing.expect(others[2] == .null);
 }

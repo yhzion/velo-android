@@ -3515,10 +3515,10 @@ fn following(recorder: *Recorder, a: std.mem.Allocator) !*Core {
     return core;
 }
 
-fn counts(core: *Core) struct { follows: usize, leads: usize, panes: usize } {
+fn counts(core: *Core) struct { follows: usize, leads: usize, panes: usize, beside: usize } {
     core.lock.lock();
     defer core.lock.unlock();
-    return .{ .follows = core.follows.count(), .leads = core.leads.count(), .panes = core.entries.count() };
+    return .{ .follows = core.follows.count(), .leads = core.leads.count(), .panes = core.entries.count(), .beside = core.beside.count() };
 }
 
 /// 2026-11-20T10:00:00Z in epoch milliseconds.
@@ -3972,12 +3972,16 @@ test "Core: the state lists every session's tabs, one session selected and the o
     try testing.expectEqualStrings("block:b1", field(tabs[0], "block"));
     try testing.expectEqualStrings("block:b3", field(tabs[1], "block"));
 
-    // The lead block of each tab is asked about once; the pane beside it is not.
-    inline for (.{ process_method, protocol.methods.terminalProgramStatus, protocol.methods.terminalTitle }) |method| {
+    // The lead block of each tab is asked about once; the pane beside it only what it runs,
+    // for the tile's layer behind (#226).
+    inline for (.{ protocol.methods.terminalProgramStatus, protocol.methods.terminalTitle }) |method| {
         try testing.expectEqual(@as(usize, 3), queued(followed, method));
         try testing.expectEqual(@as(usize, 0), queuedFor(followed, method, "block:b2"));
         try testing.expectEqual(@as(usize, 1), queuedFor(followed, method, "block:b3"));
     }
+    try testing.expectEqual(@as(usize, 4), queued(followed, process_method));
+    try testing.expectEqual(@as(usize, 1), queuedFor(followed, process_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 1), queuedFor(followed, process_method, "block:b3"));
     try answer(followed, try requestId(followed, process_method, "\"block:b3\""),
         \\{"last_exit":null,"child":{"name":"zsh","cwd":"/home/alice"},"foreground":{"name":"vim","cwd":"/home/alice/notes"},"home":"/home/alice"}
     );
@@ -3994,6 +3998,7 @@ test "Core: the state lists every session's tabs, one session selected and the o
     // Followed sessions have no pane, and their blocks are not in `blocks`.
     try testing.expectEqual(@as(usize, 0), counts(followed).panes);
     try testing.expectEqual(@as(usize, 3), counts(followed).leads);
+    try testing.expectEqual(@as(usize, 1), counts(followed).beside);
     try testing.expectEqual(@as(usize, 1), (try second.lastValue(a, "blocks")).object.count());
 
     // Another client closes a tab, renames one, moves one and adds one: one event, one
@@ -4012,9 +4017,10 @@ test "Core: the state lists every session's tabs, one session selected and the o
     try testing.expectEqualStrings("window:b1", field(tabs[1], "id"));
     try testing.expectEqualStrings("window:b9", field(tabs[2], "id"));
     try testing.expectEqual(true, model.boolean(model.get(tabs[2], "active")).?);
-    // The closed tab's lead is forgotten; only the new one is asked about.
+    // The closed tab's lead and the pane beside it are forgotten; only the new one is asked about.
     try testing.expectEqual(@as(usize, 3), counts(followed).leads);
-    try testing.expectEqual(@as(usize, 4), queued(followed, process_method));
+    try testing.expectEqual(@as(usize, 0), counts(followed).beside);
+    try testing.expectEqual(@as(usize, 5), queued(followed, process_method));
     try testing.expectEqual(@as(usize, 1), queuedFor(followed, process_method, "block:b9"));
     try testing.expectEqualStrings("session:a", try second.lastString(a, "session"));
     try testing.expectEqual(@as(usize, 1), queued(followed, "session.attach"));
@@ -4402,9 +4408,17 @@ test "Core: another session's owner change and process change touch its tab only
     try blockEvent(core, "session:b", "block:b1", "process_changed", "{\"generation\":3}");
     try blockEvent(core, "session:b", "block:b1", "process_changed", "{\"generation\":4}");
     try testing.expectEqual(@as(usize, 2), queuedFor(core, process_method, "block:b1"));
-    // A pane beside the lead is not on any row: no request.
+    // A pane beside the lead is asked only what it runs, for the tile's layer behind (#226):
+    // once with the view, once more when its process changes, never about its report or title.
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b2"));
     try blockEvent(core, "session:b", "block:b2", "process_changed", "{\"generation\":2}");
-    try testing.expectEqual(@as(usize, 0), queuedFor(core, process_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b2"));
+    try answer(core, try requestId(core, process_method, "\"block:b2\""), "{\"foreground\":{\"name\":\"claude\"}}");
+    try testing.expectEqual(@as(usize, 2), queuedFor(core, process_method, "block:b2"));
+    try blockEvent(core, "session:b", "block:b2", "program_status_changed", "{\"id\":\"\"}");
+    try blockEvent(core, "session:b", "block:b2", "title_changed", "{\"title\":\"x\"}");
+    try testing.expectEqual(@as(usize, 0), queuedFor(core, protocol.methods.terminalProgramStatus, "block:b2"));
+    try testing.expectEqual(@as(usize, 0), queuedFor(core, protocol.methods.terminalTitle, "block:b2"));
     try blockEvent(core, "session:b", "block:b1", "title_changed", "{\"title\":\"make test\"}");
     try blockEvent(core, "session:b", "block:b1", "program_status_changed", "{\"id\":\"\"}");
     try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, "\"block:b1\""), "{\"records\":[{\"state\":\"working\"}]}");
@@ -4540,9 +4554,12 @@ test "Core: after a reconnect the sessions and their tabs come back without the 
         .{ .window = "window:b2", .label = "editor", .blocks = &.{ "block:b2", "block:b3" }, .focused = "block:b3" },
     }, true));
     try testing.expectEqual(@as(usize, 2), (try tabsOf(&recorder, a, "session:b")).len);
-    // What the lead blocks run may have changed meanwhile: each is asked once more.
-    try testing.expectEqual(@as(usize, 2), queued(core, process_method));
+    // What the lead blocks and the pane beside one run may have changed meanwhile: each is
+    // asked once more.
+    try testing.expectEqual(@as(usize, 3), queued(core, process_method));
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b2"));
     try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b3"));
+    try testing.expectEqual(@as(usize, 0), queuedFor(core, protocol.methods.terminalTitle, "block:b2"));
     try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
 }
 
@@ -8506,5 +8523,64 @@ test "Core: a pane minimized while the link was down asks again on the new conne
     for (methods) |method| try testing.expectEqual(@as(usize, 1), queuedFor(core, method, "block:m"));
     try answer(core, try requestId(core, process_method, "\"block:m\""), "{\"foreground\":{\"name\":\"bash\"}}");
     try testing.expectEqualStrings("bash", field(try blockOf(&recorder, a, "block:m"), "program"));
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}
+
+test "Core: a pane beside a followed tab's lead is asked only what it runs, and names the tile's layer behind (#226)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // `session:b`'s tab `window:b2` draws `block:b2` beside its lead `block:b3`.
+    const core = try following(&recorder, a);
+    defer core.destroy();
+    const status_method = protocol.methods.terminalProgramStatus;
+    const title_method = protocol.methods.terminalTitle;
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 0), queuedFor(core, status_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 0), queuedFor(core, title_method, "block:b2"));
+    // Until it answers, the layer behind is not known.
+    var tab = (try tabsOf(&recorder, a, "session:b"))[1];
+    try testing.expectEqual(@as(usize, 1), model.items(model.get(tab, "others")).len);
+    try testing.expect(model.items(model.get(tab, "others"))[0] == .null);
+
+    try answer(core, try requestId(core, process_method, "\"block:b2\""), "{\"foreground\":{\"name\":\"claude\",\"cwd\":\"/srv\"}}");
+    try answer(core, try requestId(core, process_method, "\"block:b3\""), "{\"foreground\":{\"name\":\"zsh\"}}");
+    tab = (try tabsOf(&recorder, a, "session:b"))[1];
+    try testing.expectEqualStrings("zsh", field(tab, "icon"));
+    try testing.expectEqualStrings("claude", model.str(model.items(model.get(tab, "others"))[0]).?);
+    // A tab of one pane has no layer behind.
+    try testing.expect(model.get((try tabsOf(&recorder, a, "session:b"))[0], "others") == null);
+    // Nor do its blocks join the selected session's.
+    try testing.expectEqual(@as(usize, 1), (try recorder.lastValue(a, "blocks")).object.count());
+
+    // Focus moves to it: it becomes the lead and is asked as one, starting from what it ran;
+    // the lead it replaces steps aside with its program, and is not asked again.
+    try sessionEvent(core, "session:b", "session_view_changed", "{\"revision\":8}");
+    try answer(core, try requestId(core, view_method, "\"session:b\""), try tabsView(a, "session:b", 8, "window:b2", &.{
+        .{ .window = "window:b1", .blocks = &.{"block:b1"} },
+        .{ .window = "window:b2", .label = "editor", .blocks = &.{ "block:b2", "block:b3" }, .focused = "block:b2" },
+        .{ .window = "window:b3", .blocks = &.{"block:b4"} },
+    }, true));
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, status_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, title_method, "block:b2"));
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, process_method, "block:b3"));
+    tab = (try tabsOf(&recorder, a, "session:b"))[1];
+    try testing.expectEqualStrings("block:b2", field(tab, "block"));
+    try testing.expectEqualStrings("claude", field(tab, "icon"));
+    try testing.expectEqualStrings("zsh", model.str(model.items(model.get(tab, "others"))[0]).?);
+    try testing.expectEqual(@as(usize, 3), counts(core).leads);
+    try testing.expectEqual(@as(usize, 1), counts(core).beside);
+
+    // A dropped event of the pane beside asks what it runs again; nothing else.
+    const before = sent(core);
+    try droppedEvent(core, "block_event", ",\"block_id\":\"block:b3\",\"creator_name\":\"com.superlogical.terminal\",\"block_event_name\":\"program_status_changed\"");
+    try testing.expectEqual(@as(usize, 2), queuedFor(core, process_method, "block:b3"));
+    // The one report request it had was asked while it was the lead.
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, status_method, "block:b3"));
+    // The view read again, and the process.
+    try testing.expectEqual(before + 2, sent(core));
+
     try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
 }

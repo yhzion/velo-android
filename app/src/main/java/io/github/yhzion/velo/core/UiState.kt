@@ -191,6 +191,11 @@ data class TabInfo(
     val statusSummary: String = "",
     /** How far a working or blocked program says it is, 0 to 100 (OSC 7501); null when it did not say. */
     val progress: Int? = null,
+    /**
+     * The programs of the panes it draws other than [block], as [icon] names that one's, in layout order; null for one
+     * the core does not know. Empty for a tab of one pane (#226).
+     */
+    val others: List<String?> = emptyList(),
 )
 
 @Serializable

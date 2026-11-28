@@ -72,14 +72,33 @@ class TabTileStackTest {
         assertEquals(listOf(c, o, x), tile(state(programs, focus = 1)).behind)
     }
 
-    @Test fun aTabOfAnotherSessionDrawsItsUnknownPanesAsTools() {
-        // The core follows only the lead pane of a session other than the selected one.
+    /** A session `u` other than the selected `s`, with one tab `w` whose lead runs [lead] and whose other panes [others]. */
+    private fun otherSession(lead: String, panes: Int, others: List<String?>): TabRow {
         val other = UiState(status = "connected", session = "s",
-            sessions = listOf(SessionInfo("s", tabs = emptyList()), SessionInfo("u", tabs = listOf(TabInfo("w", panes = 3, program = "claude")))))
-        val r = sessionGroups(other, true, emptySet(), false, "").flatMap { it.rows }.single()
+            sessions = listOf(SessionInfo("s", tabs = emptyList()),
+                SessionInfo("u", tabs = listOf(TabInfo("w", panes = panes, program = lead, others = others)))))
+        return sessionGroups(other, true, emptySet(), false, "").flatMap { it.rows }.single()
+    }
+
+    @Test fun aTabOfAnotherSessionStacksThePanesTheCoreNames() {
+        // The core names the other panes of a session other than the selected one by what they run (#226).
+        val r = otherSession("bash", 4, listOf("claude", "opencode", "codex"))
+        val tile = tabTile(r, TabActivity(r.icon, null, null, null))
+        assertEquals(listOf(c, o, x), tile.behind)
+        assertEquals("bash, 4 panes: 1 Claude Code, 1 OpenCode, 1 Codex, 1 bash", tabTileDescription(tile, r.icon))
+        // From five panes, the kinds rule, as in the selected session.
+        val many = otherSession("bash", 8, listOf("claude", "opencode", "claude", "codex", "claude", "opencode", "claude"))
+        assertEquals(listOf(c, o, x), tabTile(many, TabActivity(many.icon, null, null, null)).behind)
+    }
+
+    @Test fun aTabOfAnotherSessionDrawsItsUnknownPanesAsTools() {
+        // A pane the core has not heard from yet, or one that says only a version: the tool look.
+        val r = otherSession("claude", 3, listOf(null, "2.1.329"))
         val tile = tabTile(r, TabActivity(r.icon, null, null, null))
         assertEquals(listOf(t, t), tile.behind)
         assertEquals("Claude Code, 3 panes", tabTileDescription(tile, r.icon))
+        // A core from before #226 sends none.
+        assertEquals(listOf(t, t), otherSession("claude", 3, emptyList()).let { tabTile(it, TabActivity(it.icon, null, null, null)).behind })
     }
 
     @Test fun theLabelSaysTheMakeUpWhenThePanesRunMoreThanOneProgram() {

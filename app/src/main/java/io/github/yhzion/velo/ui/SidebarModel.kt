@@ -23,8 +23,8 @@ enum class CloseControl { X, Swipe }
  * run, how many is not known. [ownLabel] is the label the user gave ("" for the server's automatic
  * one). [shown] marks the one tab the panes show: of the active remote, its selected session.
  * [others] names the programs of the other panes it draws, as [icon] names the lead pane's, in the
- * tab's layout order (null for one not known); it is empty when they are not known, as for a tab
- * of a session other than the selected one, whose lead pane alone the core follows.
+ * tab's layout order (null for one not known). A tab of a session other than the selected one has
+ * them from the core, which asks those panes only what they run (#226).
  */
 data class TabRow(
     val session: String,
@@ -191,9 +191,12 @@ internal fun otherPanePrograms(state: UiState, w: WindowInfo, lead: String?): Li
     return blocks.filter { it != face }.map { b -> state.blocks[b]?.let { programHint(it.icon, it.program) } }
 }
 
-/** [TabRow.others] of the tab [tab] of [session]: known only in the selected session, whose windows the state holds. */
+/**
+ * [TabRow.others] of the tab [tab] of [session]: from the selected session's windows, which the state holds, else
+ * as the core names them in the tab (#226).
+ */
 private fun otherPanePrograms(state: UiState, session: String, tab: TabInfo): List<String?> =
-    if (session != state.session) emptyList()
+    if (session != state.session) tab.others.map { it?.let { hint -> programHint(hint, "") } }
     else state.windows.firstOrNull { it.id == tab.id }?.let { otherPanePrograms(state, it, tab.block) }.orEmpty()
 
 internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): TabRow {

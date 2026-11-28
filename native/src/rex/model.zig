@@ -465,7 +465,7 @@ pub fn leadBlock(w: *const Window) ?*const Block {
 /// The JSON Kotlin consumes (app/src/main/java/io/github/yhzion/velo/core/UiState.kt):
 /// {status, server, url, account, hosts:[{id,label,endpoints:[…],icon}], hostsHash,
 ///  forwards:[{block,host,port,localPort,connections}], sessions:[{id,label,tabs:[{id,label,icon?,panes,active,minimized,block,title,program,cwd,
-///  activity,since?,progress?,attention}]}], session, windows:[{id,label,icon?,
+///  activity,since?,progress?,attention,others?}]}], session, windows:[{id,label,icon?,
 ///  layout,zoomed,minimized, floating:[{block,x,y,w,h}]}], window, focused,
 ///  blocks:{id:{icon?,title,program,cwd,activity,since?,progress?,attention}}}
 /// `tabs` are the session's windows in order. It is left out while the windows are not
@@ -474,7 +474,8 @@ pub fn leadBlock(w: *const Window) ?*const Block {
 /// window, `minimized` is true when the tab has a block in a minimized layer (a program
 /// that runs unseen; the same value is in the tab's entry of `windows`), `block` is the
 /// tab's lead block (`leadBlock`; left out for a tab without blocks) and the fields
-/// after it describe that block as an entry of `blocks` does.
+/// after it describe that block as an entry of `blocks` does. `others` names the programs of
+/// its other panes, as `icon` names the lead's, in layout order (`writeOtherPanes`, #226).
 /// Both lists use the reported app, window hint, recognized executable, or program basename.
 /// layout node: {"block":id} or {"dir":"row"|"column","ratio":f,"first":node,"second":node}
 /// ("row" = side by side = Rex "horizontal"). `window` = active window, `focused` = its
@@ -631,6 +632,7 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
                     try writeString(jw, b.id);
                 }
                 try writeBlockInfo(jw, lead, info);
+                try writeOtherPanes(jw, state, w, lead);
                 try jw.endObject();
             }
             try jw.endArray();
@@ -738,17 +740,103 @@ fn blockInfo(state: UiState, id: Id) BlockInfo {
 }
 
 fn writeTabIcon(jw: *json.Stringify, icon: ?[]const u8, info: BlockInfo) std.Io.Writer.Error!void {
+    const hint = iconHint(icon, info);
+    if (hint.len == 0) return;
+    try jw.objectField("icon");
+    try writeString(jw, hint);
+}
+
+/// What names a block's program, as a tab's `icon`: "" when nothing does.
+fn iconHint(icon: ?[]const u8, info: BlockInfo) []const u8 {
     const report = info.tab_report;
     // A child can report activity for a conversation owned by another program.
-    const hint = if (report.app_from_child)
+    return if (report.app_from_child)
         @import("TabMetadata.zig").agent(icon orelse "") orelse info.agent orelse report.app
     else if (report.app.len > 0)
         report.app
     else
         icon orelse info.agent orelse std.fs.path.basenamePosix(info.program);
-    if (hint.len == 0) return;
-    try jw.objectField("icon");
-    try writeString(jw, hint);
+}
+
+/// A tab's `others`: the program of each pane it draws but `lead`, as `icon` names the lead's, in
+/// layout order (the tiled panes, then the floating ones), null for one not known (#226). Left out
+/// for a tab of one pane.
+fn writeOtherPanes(jw: *json.Stringify, state: UiState, w: *const Window, lead: ?*const Block) std.Io.Writer.Error!void {
+    if (w.blocks.len < 2) return;
+    const face = if (lead) |b| b.id else "";
+    try jw.objectField("others");
+    try jw.beginArray();
+    var it = LayoutOrder.init(w);
+    while (it.next()) |id| {
+        if (std.mem.eql(u8, id, face)) continue;
+        const block = for (w.blocks) |*b| {
+            if (std.mem.eql(u8, b.id, id)) break b;
+        } else continue;
+        const hint = if (block.terminal) iconHint(null, blockInfo(state, id)) else "";
+        if (hint.len == 0) try jw.write(null) else try writeString(jw, hint);
+    }
+    try jw.endArray();
+}
+
+/// The blocks a window draws in layout order: its tiled layout's leaves first to last, then its
+/// floating blocks, each once (as the app's `tabBlocks`), then any other block it lists.
+const LayoutOrder = struct {
+    w: *const Window,
+    stack: [max_layout_depth + 1]*const Layout = undefined,
+    depth: usize = 0,
+    floating: usize = 0,
+    rest: usize = 0,
+
+    fn init(w: *const Window) LayoutOrder {
+        var it: LayoutOrder = .{ .w = w };
+        if (w.layout) |l| {
+            it.stack[0] = l;
+            it.depth = 1;
+        }
+        return it;
+    }
+
+    fn next(it: *LayoutOrder) ?Id {
+        while (it.depth > 0) {
+            it.depth -= 1;
+            switch (it.stack[it.depth].*) {
+                .block => |id| return id,
+                .split => |s| {
+                    if (it.depth + 2 > it.stack.len) continue;
+                    it.stack[it.depth] = s.second;
+                    it.stack[it.depth + 1] = s.first;
+                    it.depth += 2;
+                },
+            }
+        }
+        while (it.floating < it.w.floating.len) {
+            const id = it.w.floating[it.floating].block;
+            it.floating += 1;
+            if (it.w.layout) |l| if (layoutContains(l, id)) continue;
+            if (floatingBefore(it.w, it.floating - 1, id)) continue;
+            return id;
+        }
+        while (it.rest < it.w.blocks.len) {
+            const id = it.w.blocks[it.rest].id;
+            it.rest += 1;
+            if (it.w.layout) |l| if (layoutContains(l, id)) continue;
+            if (floatingBefore(it.w, it.w.floating.len, id)) continue;
+            return id;
+        }
+        return null;
+    }
+};
+
+fn layoutContains(layout: *const Layout, id: Id) bool {
+    return switch (layout.*) {
+        .block => |b| std.mem.eql(u8, b, id),
+        .split => |s| layoutContains(s.first, id) or layoutContains(s.second, id),
+    };
+}
+
+fn floatingBefore(w: *const Window, index: usize, id: Id) bool {
+    for (w.floating[0..index]) |f| if (std.mem.eql(u8, f.block, id)) return true;
+    return false;
 }
 
 /// Write a block's display fields into an open object.
