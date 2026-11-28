@@ -636,7 +636,7 @@ fun KeyChoice(key: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
 }
 
 /** The keys the settings show as an icon ([KeyLegend]), as the boards draw their arrows; the others by name. */
-internal val IconKeys = setOf("Left", "Down", "Up", "Right", "Backspace")
+internal val IconKeys = setOf("Tab", "Enter", "Shift", "Left", "Down", "Up", "Right", "Space", "Backspace")
 
 /**
  * The round button that closes a sheet: glass with a light line along its top (the redesign's

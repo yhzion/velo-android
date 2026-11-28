@@ -57,8 +57,8 @@ class UiSizeTest {
             for (target in listOf(s.control, s.capsule, s.capsuleCell, s.row, s.sectionHeader, s.field, s.menuItem)) {
                 assertTrue("$size $target", target >= MinTouch)
             }
-            // A key's cap may be narrower (KeyBar board: 32); its cell takes the bar's room ([keyCaps]) and its height the taps.
-            assertTrue("$size keyHeight", s.keyHeight >= MinKey)
+            // A key's cap may be narrower (#218: 36); its cell takes the bar's room ([keyCaps]), and the cap is never lower than a key.
+            assertTrue("$size keyCap", s.keyCap >= MinKey)
         }
     }
 
@@ -67,7 +67,8 @@ class UiSizeTest {
             val s = veloSizes(size)
             // The Rail board: a control with 6 on each side at Medium.
             assertTrue("$size rail", s.rail.value >= s.control.value + mediumAt(size, 6.dp).value * 2 - 0.01f)
-            assertTrue("$size keyBar", s.keyBar > s.keyHeight)
+            // #218: the strip is a cap with a gap above and below it, 6 + 44 + 6 at Medium.
+            assertEquals("$size keyBar", (s.keyCap + s.keyGap * 2).value, s.keyBar.value, 0.01f)
         }
     }
 

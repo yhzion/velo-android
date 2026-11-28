@@ -65,10 +65,6 @@ class VeloRadii(
     val overlay: Dp = medium(32f),
     /** A card: on the sheet, the raised card; inside a dialog, a glass card (Tokens board "card"). */
     val card: Dp = medium(16f),
-    /** The key bar strip: a capsule (KeyBar board, 56 high, 28). */
-    val bar: Dp = medium(28f),
-    /** A key's cap on the key bar: a touch bar's key (#142, the mockup's 6). */
-    val key: Dp = medium(6f),
     /** A tab tile of 30 (Tokens board "tile": the tile's size times 0.27). */
     val tile: Dp = medium(8f),
     /** A small badge, such as a license name (Tokens board "badge"). */
@@ -135,20 +131,14 @@ class VeloSizes(
     val sidebar: Dp = medium(320f),
     /** The rail (Rail board: 60, a control and 6 on each side); the Duo's rail (109) is built around its camera. */
     val rail: Dp = medium(60f),
-    /** The key bar strip (KeyBar board: 56). */
+    /** The key bar strip in one row: a cap and a gap above and below it (#218: 6 + 44 + 6). */
     val keyBar: Dp = medium(56f),
-    /** The widest the key bar grows: in the middle of a wide pane column (WsOpenPanes board: 560). */
-    val keyBarMax: Dp = medium(560f),
-    /** The least width of a key's cap (KeyBar board: 32). Its touch target is the room the bar gives it ([io.github.yhzion.velo.ui.keyCaps]). */
-    val key: Dp = medium(32f),
-    /** A key's height in the strip, the height that takes its taps (KeyBar board: 48). */
-    val keyHeight: Dp = medium(48f),
-    /** A key's cap, a little lower than the strip: a touch bar's key (#142; the latched pill's 40). */
-    val keyCap: Dp = medium(40f),
-    /** Between two caps on the key bar (#142, the mockup's 5). */
-    val keyGap: Dp = medium(5f),
-    /** The least gap between two caps: a bar too narrow for its keys narrows the gap down to this before it scrolls (#142). */
-    val keyGapLeast: Dp = medium(2f),
+    /** The least width of a key's cap (#218: 36); narrower, and the bar takes two rows or scrolls ([io.github.yhzion.velo.ui.keyCaps]). */
+    val key: Dp = medium(36f),
+    /** A key's cap: the least key, [MinKey] (#218: 44). */
+    val keyCap: Dp = medium(44f),
+    /** Between two caps on the key bar, and between the caps and the strip's edge (#218: 6). */
+    val keyGap: Dp = medium(6f),
     /** Between panes, and between panes and the screen's edge (Tokens board: 8). */
     val gap: Dp = medium(8f),
     /** Between pane cards and adjacent chrome in Compact style. */
@@ -273,7 +263,7 @@ const val MinTextSp = 11f
 /**
  * The sizes at [size]. A size that sets how large a tap target is stays at [MinTouch] or
  * [MinKey]; a line, a focus edge, a blur and a shadow do not scale. The rail stays a control
- * and a gap on each side, and the key bar stays as much taller than its keys as it is at Large.
+ * and a gap on each side, and the key bar strip a key cap and a gap above and below it.
  */
 fun veloSizes(size: UiSize): VeloSizes {
     val base = VeloSizes()
@@ -282,7 +272,8 @@ fun veloSizes(size: UiSize): VeloSizes {
     fun Dp.at(least: Dp): Dp = maxOf(this * f, least)
     val control = base.control.at(MinTouch)
     val gap = base.gap.s()
-    val keyHeight = base.keyHeight.at(MinKey)
+    val keyCap = base.keyCap.at(MinKey)
+    val keyGap = base.keyGap.s()
     return VeloSizes(
         control = control,
         capsule = control + medium(2f) * (2 * f),
@@ -303,13 +294,11 @@ fun veloSizes(size: UiSize): VeloSizes {
         sidebar = base.sidebar.s(),
         // A control and the Rail board's 6 on each side, whatever the size.
         rail = maxOf(base.rail.s(), control + medium(6f) * (2 * f)),
-        keyBar = maxOf(base.keyBar.s(), keyHeight + (base.keyBar - base.keyHeight) * f),
-        keyBarMax = base.keyBarMax.s(),
+        // The strip is a cap and a gap above and below it, whatever the size.
+        keyBar = keyCap + keyGap * 2,
         key = base.key.s(),
-        keyHeight = keyHeight,
-        keyCap = minOf(base.keyCap.s(), keyHeight),
-        keyGap = base.keyGap.s(),
-        keyGapLeast = base.keyGapLeast.s(),
+        keyCap = keyCap,
+        keyGap = keyGap,
         gap = gap,
         gapCompact = base.gapCompact.s(),
         compactOuterPx = base.compactOuterPx,
@@ -478,7 +467,7 @@ fun veloRadii(size: UiSize): VeloRadii {
     val f = size.factor
     return VeloRadii(
         pane = base.pane * f, paneCompact = base.paneCompact * f, overlay = base.overlay * f,
-        card = base.card * f, bar = base.bar * f, key = base.key * f, tile = base.tile * f,
+        card = base.card * f, tile = base.tile * f,
         badge = base.badge * f, group = base.group * f, sheet = base.sheet * f, pill = base.pill * f, nav = base.nav * f,
     )
 }

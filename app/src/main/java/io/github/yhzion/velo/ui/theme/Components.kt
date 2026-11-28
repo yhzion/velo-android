@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -274,9 +275,9 @@ fun StatusMark(status: Status, contentDescription: String, modifier: Modifier = 
 /**
  * A key on the key bar (KeyBar board), as a touch bar draws it (#142). [label] names the key, not
  * the glyph drawn on it. The key takes the taps in all the room its bar gives it; its cap stands in
- * that room inside [capInsets]: a rounded rectangle of the glass, `sizes.keyCap` high, at least
- * `sizes.key` wide and as wide as its label with [KeyLegendPadding] on each side. On its own the
- * key is as wide as that cap. The cap is a step lighter while a finger holds it or while it has the
+ * that room inside [capInsets]: a rectangle of the glass rounded by [radius], `sizes.keyCap` high,
+ * at least `sizes.key` wide and as wide as its label with [KeyLegendPadding] on each side. On its
+ * own the key is as large as that cap and its insets. The cap is a step lighter while a finger holds it or while it has the
  * keyboard's focus, and filled with the accent while [armed] (a modifier the next key takes).
  * [capModifier] goes on the cap. A key that is not [enabled] keeps its glass, draws its label in
  * the disabled colour and takes no tap. With [holdRepeat], a hold sends [onClick] at the
@@ -288,6 +289,7 @@ fun KeyCap(
     armed: Boolean = false, contentDescription: String? = null, enabled: Boolean = true,
     holdRepeat: Boolean = false, onRepeat: () -> Unit = onClick,
     capInsets: PaddingValues = PaddingValues(), capModifier: Modifier = Modifier,
+    radius: Dp = keyCapRadius(VeloTheme.radii.pane),
 ) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
@@ -303,7 +305,7 @@ fun KeyCap(
     }
     val color = if (!enabled) c.disabled else if (lit) c.onAccent else c.onGlass
     Box(
-        modifier.width(IntrinsicSize.Max).height(s.keyHeight)
+        modifier.width(IntrinsicSize.Max)
             // The cap's change of colour shows the press, in place of a ripple.
             .clickable(presses, indication = null, enabled = enabled, role = Role.Button) { if (enabled) onClick() }
             .then(if (enabled && holdRepeat) repeatKeyPress(label, presses, onClick, onRepeat) else Modifier)
@@ -312,7 +314,7 @@ fun KeyCap(
     ) {
         Box(
             Modifier.padding(capInsets).then(capModifier).fillMaxWidth().widthIn(min = s.key).height(s.keyCap)
-                .clip(rounded(VeloTheme.radii.key)).background(fill),
+                .clip(rounded(radius)).background(fill),
             contentAlignment = Alignment.Center,
         ) {
             // A cap the bar narrowed below its label's room keeps the label whole: it takes the padding.
@@ -366,13 +368,21 @@ private fun repeatKeyPress(label: String, presses: MutableInteractionSource, onC
     }
 }
 
-/** The strip the keys sit on: chrome, with the bar's round ends. */
+/** A key's cap on a strip rounded by [strip]: one gap less, so that the cap's curve runs beside the strip's (#218). */
 @Composable
-fun KeyStrip(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+@ReadOnlyComposable
+fun keyCapRadius(strip: Dp): Dp = (strip - VeloTheme.sizes.keyGap).coerceAtLeast(0.dp)
+
+/**
+ * The strip the keys sit on: chrome, rounded by [radius], the pane card's (#218), and at least
+ * `sizes.keyBar` high. The keys bring their own room to its edges ([io.github.yhzion.velo.ui.KeyBar]).
+ */
+@Composable
+fun KeyStrip(modifier: Modifier = Modifier, radius: Dp = VeloTheme.radii.pane, content: @Composable RowScope.() -> Unit) {
     val chrome = VeloTheme.colors.chrome
     val s = VeloTheme.sizes
     VeloSurface(chrome) {
-        Row(modifier.fillMaxWidth().height(s.keyBar).clip(rounded(VeloTheme.radii.bar)).background(chrome.surface).padding(horizontal = s.rowGap / 2),
+        Row(modifier.fillMaxWidth().heightIn(min = s.keyBar).clip(rounded(radius)).background(chrome.surface),
             verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }

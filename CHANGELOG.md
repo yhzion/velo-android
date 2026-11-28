@@ -7,6 +7,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ### Added
 - Keyboard settings offer a Space key for the key bar among the Editing keys, so you can type a space, or Ctrl+Space, without the keyboard.
 
+### Changed
+- The key bar spans the pane column, rounds as the panes do, and shows Tab, Enter, Shift and Space as icons. On a narrow upright screen its keys wrap into two rows instead of shrinking.
+
 ## 2.15.1 - 2026-11-28
 
 ### Changed

@@ -67,71 +67,51 @@ class KeyBarTest {
     }
 
     @Test fun everyCapTakesTheSameShareOfTheBar() {
-        // WsOpenPanes, in dp: 32 for a key, CTRL 47; 548 inside the bar, 5 between two caps.
-        val need = listOf(32, 47, 32, 32, 32, 32, 32, 32, 32)
-        val caps = keyCaps(need, floor = 32, gap = 5, available = 548).widths
-        // 508 for nine caps: 56 each, and the 4 left over to the first four.
-        assertEquals(listOf(57, 57, 57, 57, 56, 56, 56, 56, 56), caps)
-        assertEquals(548, caps.sum() + 5 * 8)
+        // The unfolded Fold8 upright, in dp: a pane column of 753, 741 inside the strip's 6 on each side; 36 for a key, CTRL 39, 6 between two caps.
+        val need = listOf(36, 39, 36, 36, 36, 36, 36, 36, 36)
+        val caps = keyCaps(need, floor = 36, gap = 6, available = 741, upright = true)
+        // 693 for nine caps: 77 each, nothing left over, in one row.
+        assertEquals(KeyCaps(List(9) { 77 }, 6), caps)
+        // Pixels the share cannot split go to the first caps.
+        assertEquals(listOf(78, 78, 77, 77, 77, 77, 77, 77, 77), keyCaps(need, floor = 36, gap = 6, available = 743).widths)
         // One key takes the whole bar.
-        assertEquals(listOf(300), keyCaps(listOf(40), floor = 32, gap = 5, available = 300).widths)
-        assertTrue(keyCaps(emptyList(), floor = 32, gap = 5, available = 100).widths.isEmpty())
+        assertEquals(listOf(300), keyCaps(listOf(40), floor = 36, gap = 6, available = 300).widths)
+        assertTrue(keyCaps(emptyList(), floor = 36, gap = 6, available = 100).widths.isEmpty())
     }
 
-    @Test fun capsThatExactlyFitTheWidestLabelStillShareTheBar() {
-        // Three caps of CTRL's 47 and two gaps of 5: 151.
-        assertEquals(listOf(47, 47, 47), keyCaps(listOf(32, 47, 32), floor = 32, gap = 5, available = 151).widths)
-        // Without a label wider than the least, the least decides.
-        assertEquals(listOf(32, 32), keyCaps(listOf(20, 32), floor = 32, gap = 5, available = 69).widths)
+    @Test fun aCapOfTheLeastWidthStillTakesOneRow() {
+        val need = List(9) { 36 }
+        // Nine caps of 36 and eight gaps of 6: 372.
+        assertEquals(KeyCaps(List(9) { 36 }, 6), keyCaps(need, floor = 36, gap = 6, available = 372, upright = true))
+        // CTRL needs 47 with 4 on each side: it gives up the padding and keeps one row while its 39 fit, not a pixel less.
+        val ctrl = listOf(36, 47) + List(7) { 36 }
+        assertEquals(KeyCaps(List(9) { 39 }, 6), keyCaps(ctrl, floor = 36, gap = 6, available = 9 * 39 + 8 * 6, give = 8, upright = true))
+        assertEquals(2, keyCaps(ctrl, floor = 36, gap = 6, available = 9 * 39 + 8 * 6 - 1, give = 8, upright = true).rows)
     }
 
-    @Test fun aBarTooNarrowForTheWidestLabelScrollsWithEveryCapAtThatLabel() {
-        // One pixel short of three CTRLs: every cap at CTRL's width, wider together than the bar.
-        val caps = keyCaps(listOf(32, 47, 32), floor = 32, gap = 5, available = 150).widths
-        assertEquals(listOf(47, 47, 47), caps)
-        assertTrue(caps.sum() + 5 * 2 > 150)
-        // A need under the least still takes the least once the bar scrolls.
-        assertEquals(listOf(32, 32), keyCaps(listOf(20, 20), floor = 32, gap = 5, available = 44).widths)
+    @Test fun belowTheLeastCapAnUprightBarTakesTwoRows() {
+        // The bar phone upright (393 wide): the strip is 325, 313 inside it, under nine caps of 36.
+        val need = listOf(36, 39, 36, 36, 36, 36, 36, 36, 36)
+        val caps = keyCaps(need, floor = 36, gap = 6, available = 313, give = 8, upright = true)
+        // Five caps in the first row and four in the second, all of one width: 289 for five caps.
+        assertEquals(KeyCaps(List(4) { 58 } + 57, 6, rows = 2), caps)
+        assertEquals(5, caps.columns)
+        assertFalse(caps.scrolls)
+        // A pixel under nine caps of 36 is enough.
+        assertEquals(2, keyCaps(List(9) { 36 }, floor = 36, gap = 6, available = 371, upright = true).rows)
+        // Ten keys split five and five.
+        assertEquals(5, keyCaps(List(10) { 36 }, floor = 36, gap = 6, available = 371, upright = true).columns)
     }
 
-    @Test fun aLabelGivesUpItsPaddingBeforeTheBarScrolls() {
-        // The folded Fold8: CTRL needs 39 with 4 on each side; nine caps get 37 each, and CTRL keeps its 31.
-        val need = listOf(32, 39, 32, 32, 32, 32, 32, 32, 32)
-        assertEquals(List(9) { 37 }, keyCaps(need, floor = 32, gap = 5, available = 9 * 37 + 8 * 5, give = 8).widths)
-        // Short of nine labels without the padding: every cap at CTRL's whole need, and the bar scrolls.
-        assertEquals(List(9) { 39 }, keyCaps(need, floor = 32, gap = 5, available = 9 * 31 + 8 * 5 - 1, give = 8).widths)
-        // Without the padding to give, the same bar scrolls.
-        assertEquals(List(9) { 39 }, keyCaps(need, floor = 32, gap = 5, available = 9 * 37 + 8 * 5).widths)
-    }
-
-    @Test fun aNarrowBarNarrowsTheGapBeforeTheCapsGoBelowTheLeast() {
-        // CTRL's label is 31 without its padding: nine caps keep the least 32 at a gap of 3.
-        val need = listOf(32, 39, 32, 32, 32, 32, 32, 32, 32)
-        val caps = keyCaps(need, floor = 32, gap = 5, available = 9 * 32 + 8 * 3, give = 8, leastGap = 2)
-        assertEquals(KeyCaps(List(9) { 32 }, 3), caps)
-        // Room between two gaps: the widest gap that fits, and the pixels it leaves to the first caps.
-        assertEquals(KeyCaps(List(4) { 33 } + List(5) { 32 }, 3), keyCaps(need, floor = 32, gap = 5, available = 9 * 32 + 8 * 3 + 4, give = 8, leastGap = 2))
-        // With room for the whole gap, the gap stays.
-        assertEquals(5, keyCaps(need, floor = 32, gap = 5, available = 9 * 32 + 8 * 5, give = 8, leastGap = 2).gap)
-    }
-
-    @Test fun atTheLeastGapTheCapsGoBelowTheLeastDownToTheWidestLabel() {
-        val need = listOf(32, 39, 32, 32, 32, 32, 32, 32, 32)
-        // The bar phone: no room for nine caps of 32 at a gap of 2, so they share the bar at 31 each.
-        assertEquals(KeyCaps(List(9) { 31 }, 2), keyCaps(need, floor = 32, gap = 5, available = 9 * 31 + 8 * 2, give = 8, leastGap = 2))
-        val between = keyCaps(need, floor = 32, gap = 5, available = 9 * 32 + 8 * 2 - 1, give = 8, leastGap = 2)
-        assertEquals(2, between.gap)
-        assertEquals(9 * 32 + 8 * 2 - 1, between.widths.sum() + 8 * 2)
-        assertTrue(between.widths.all { it in 31..32 })
-    }
-
-    @Test fun onlyABarTooNarrowForTheLabelsAtTheLeastGapScrolls() {
-        val need = listOf(32, 39, 32, 32, 32, 32, 32, 32, 32)
-        // A pixel short of nine labels of 31 at the least gap: every cap takes CTRL's whole need, at the whole gap.
-        assertEquals(KeyCaps(List(9) { 39 }, 5), keyCaps(need, floor = 32, gap = 5, available = 9 * 31 + 8 * 2 - 1, give = 8, leastGap = 2))
-        // One key has no gap to give up and takes the whole bar while its label fits.
-        assertEquals(listOf(31), keyCaps(listOf(39), floor = 32, gap = 5, available = 31, give = 8, leastGap = 2).widths)
-        assertEquals(listOf(39), keyCaps(listOf(39), floor = 32, gap = 5, available = 30, give = 8, leastGap = 2).widths)
+    @Test fun belowTheLeastCapAWideBarScrollsWithEveryCapAtTheWidestNeed() {
+        val need = listOf(36, 39, 36, 36, 36, 36, 36, 36, 36)
+        val caps = keyCaps(need, floor = 36, gap = 6, available = 371, give = 8, upright = false)
+        assertEquals(KeyCaps(List(9) { 39 }, 6, scrolls = true), caps)
+        assertTrue(caps.widths.sum() + 6 * 8 > 371)
+        // Upright, but too narrow even for two rows: one row that scrolls.
+        assertTrue(keyCaps(need, floor = 36, gap = 6, available = 5 * 36 + 4 * 6 - 1, upright = true).scrolls)
+        // One key has no second row to go to.
+        assertEquals(KeyCaps(listOf(39), 6, scrolls = true), keyCaps(listOf(39), floor = 36, gap = 6, available = 30, upright = true))
     }
 
     @Test fun eachKeyIsNamedForTestsAsTheBoardNamesIt() {

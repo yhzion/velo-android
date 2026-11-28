@@ -1,6 +1,13 @@
 package io.github.yhzion.velo.ui
 
 import android.app.Application
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.unit.DpRect
+import io.github.yhzion.velo.ui.theme.keyCapRadius
+import io.github.yhzion.velo.ui.theme.veloSizes
+import org.junit.Assert.assertNotNull
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +47,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The key bar's caps (#142) drawn: one width across the bar, also the bar phone's, taps and holds sent as before, the
- * armed modifier selected and a paused bar taking no tap.
+ * The key bar's caps (#142, #218) drawn: one width across the bar, in two rows on the upright bar phone and scrolling
+ * when it lies on its side, the bar as wide as the pane column, TAB, ENTER, SHIFT and SPACE drawn as icons, taps and
+ * holds sent as before, the armed modifier selected and a paused bar taking no tap.
  */
 @RunWith(RobolectricTestRunner::class)
 // Native graphics: the labels measure as on a phone, which decides whether the caps fit.
@@ -56,15 +64,18 @@ class KeyBarCapsTest {
     private var enabled by mutableStateOf(true)
     private lateinit var inputMode: InputModeManager
 
-    private fun show(width: Dp, armed: Set<String> = emptySet()) {
+    private fun show(width: Dp, armed: Set<String> = emptySet(), upright: Boolean = true, keys: List<String> = this.keys) {
         compose.setContent {
             inputMode = LocalInputModeManager.current
             VeloTheme(UiSize.Medium) {
-                KeyBar(keys, armed, Modifier.width(width), enabled = enabled) { key, repeat -> sent += key to repeat }
+                KeyBar(keys, armed, Modifier.width(width), enabled = enabled, upright = upright) { key, repeat -> sent += key to repeat }
             }
         }
         compose.waitForIdle()
     }
+
+    private fun width(b: DpRect) = (b.right - b.left).value
+    private fun height(b: DpRect) = (b.bottom - b.top).value
 
     // The tag is on the cap, inside the key that takes the taps.
     private fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
@@ -80,19 +91,112 @@ class KeyBarCapsTest {
         for (w in widths) assertEquals(widths.first().value, w.value, 0.5f)
     }
 
-    @Test fun theBarPhoneBarHoldsEveryKeyAtOneWidth() {
-        // The bar phone (393 wide): the key bar is 308.6 wide, too narrow for nine caps of 32 and gaps of 5.
-        show(308.6.dp)
+    @Test fun oneRowIsAStripOf56WithTheCapsSixFromItsEdges() {
+        show(390.5.dp)
         val bar = bounds("key-bar")
         val caps = keys.map { bounds(keyTestTag(it)) }
-        assertTrue("${caps.last().right} > ${bar.right}", caps.last().right <= bar.right)
-        val widths = caps.map { it.right - it.left }
-        for (w in widths) assertEquals(widths.first().value, w.value, 0.5f)
-        // The caps give up the gap and go below 32, but every key still takes about 32 of the taps.
-        val cells = keys.map { key(it).getBoundsInRoot().let { b -> b.right - b.left } }
-        assertTrue("$cells", cells.all { it.value >= 31.5f })
-        // The keys reach the bar's ends: as far from the start as the last is from the end.
-        assertEquals(caps.first().left.value - bar.left.value, bar.right.value - caps.last().right.value, 0.5f)
+        // 6 + 44 + 6 (#218), to the pixel at 420 dpi.
+        assertEquals(56f, height(bar), 1f)
+        for (cap in caps) assertEquals(44f, height(cap), 0.5f)
+        assertEquals(6f, caps.first().top.value - bar.top.value, 0.5f)
+        assertEquals(6f, caps.first().left.value - bar.left.value, 0.5f)
+        assertEquals(6f, bar.right.value - caps.last().right.value, 0.5f)
+        // 6 between two caps.
+        assertEquals(6f, caps[1].left.value - caps[0].right.value, 0.5f)
+        // The first and the last key take the taps up to the strip's ends.
+        assertEquals(bar.left.value, key(keys.first()).getBoundsInRoot().left.value, 0.5f)
+        assertEquals(bar.right.value, key(keys.last()).getBoundsInRoot().right.value, 0.5f)
+    }
+
+    @Test fun theUprightBarPhoneBarTakesTwoRowsOfOneWidth() {
+        // The bar phone upright (393 wide): its pane column is 325, under nine caps of 36 (#218).
+        show(325.dp)
+        val bar = bounds("key-bar")
+        val caps = keys.map { bounds(keyTestTag(it)) }
+        // 6 + 44 + 6 + 44 + 6.
+        assertEquals(106f, height(bar), 1f)
+        for (cap in caps) assertEquals(width(caps.first()), width(cap), 0.5f)
+        // Five in the first row, four under them, each under the cap above it.
+        for (cap in caps.take(5)) assertEquals(caps.first().top.value, cap.top.value, 0.5f)
+        for ((i, cap) in caps.drop(5).withIndex()) {
+            assertEquals(caps.first().bottom.value + 6f, cap.top.value, 0.5f)
+            assertEquals(caps[i].left.value, cap.left.value, 0.5f)
+        }
+        assertEquals(6f, bar.right.value - caps[4].right.value, 0.5f)
+        assertEquals(6f, bar.bottom.value - caps.last().bottom.value, 0.5f)
+        // Nothing to scroll: the strip ends where the column does.
+        assertEquals(325f, width(bar), 0.5f)
+    }
+
+    @Test fun theBarPhoneBarOnItsSideScrollsInOneRow() {
+        show(325.dp, upright = false)
+        val bar = bounds("key-bar")
+        val caps = keys.map { bounds(keyTestTag(it)) }
+        assertEquals(56f, height(bar), 1f)
+        // Every cap at the widest need, wider together than the bar. The bounds are cut at the bar's end:
+        // the caps that show whole are of one width, and the last lies beyond the end, out of sight.
+        val whole = caps.filter { it.right > it.left && it.right < bar.right }
+        assertTrue("$whole", whole.size in 2 until keys.size)
+        for (cap in whole) assertEquals(caps.first().top.value, cap.top.value, 0.5f)
+        for (cap in whole) assertEquals(width(caps.first()), width(cap), 0.5f)
+        assertTrue("${width(caps.first())}", width(caps.first()) >= 36f - 0.5f)
+        assertEquals(0f, width(caps.last()), 0.01f)
+    }
+
+    @Test fun theBarIsAsWideAsThePaneColumn() {
+        // The unfolded Fold8 upright: a pane column of 753, wider than the old 560 the bar stopped at.
+        compose.setContent {
+            VeloTheme(UiSize.Medium) {
+                Column(Modifier.width(753.dp).testTag("column")) {
+                    KeyBar(keys, emptySet(), keyBarSlot(8.dp), upright = true) { _, _ -> }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val column = bounds("column")
+        val bar = bounds("key-bar")
+        assertEquals(column.left.value, bar.left.value, 0.5f)
+        assertEquals(column.right.value, bar.right.value, 0.5f)
+        val caps = keys.map { bounds(keyTestTag(it)) }
+        for (cap in caps) assertEquals(width(caps.first()), width(cap), 0.5f)
+        assertEquals(6f, bar.right.value - caps.last().right.value, 0.5f)
+    }
+
+    @Test fun tabEnterShiftAndSpaceAreDrawnAsIconsAndSaidInWords() {
+        val drawn = listOf("Tab", "Enter", "Shift", "Space")
+        for (key in drawn) assertNotNull(key, keyIcon(key))
+        // ALT stays a word: the ink of a word is wider than an icon's box.
+        val icon = veloSizes(UiSize.Medium).iconSmall.value
+        show(560.dp, keys = drawn + "Alt")
+        for (key in drawn) key(key).assertContentDescriptionEquals(key)
+        fun ink(key: String): Float {
+            val pixels = compose.onNodeWithTag(keyTestTag(key), useUnmergedTree = true).captureToImage().toPixelMap()
+            val glass = VeloPalettes.dark.chrome.glass
+            // The middle of the cap, clear of its rounded corners.
+            val xs = (pixels.height / 4 until pixels.height * 3 / 4).flatMap { y -> (0 until pixels.width).filter { pixels[it, y] != glass } }
+            return if (xs.isEmpty()) 0f else (xs.max() - xs.min() + 1) / compose.density.density
+        }
+        for (key in drawn) assertTrue("$key inks ${ink(key)} of $icon", ink(key) in 1f..icon + 0.5f)
+        assertTrue("ALT inks ${ink("Alt")}", ink("Alt") > icon + 0.5f)
+    }
+
+    @Test fun aCapRoundsOneGapLessThanTheStrip() {
+        val radii = mutableListOf<Dp>()
+        compose.setContent {
+            VeloTheme(UiSize.Medium) {
+                radii += keyCapRadius(VeloTheme.radii.pane)
+                radii += keyCapRadius(VeloTheme.radii.paneCompact)
+                radii += VeloTheme.radii.pane
+                radii += VeloTheme.sizes.keyGap
+            }
+        }
+        compose.waitForIdle()
+        val (cap, compactCap, pane, gap) = radii
+        assertEquals(16f, pane.value, 0.01f)
+        assertEquals(6f, gap.value, 0.01f)
+        assertEquals(10f, cap.value, 0.01f)
+        // The compact card's 12 at Large is 10.2 at Medium: its caps keep the same 6 to the strip.
+        assertEquals(10.2f - 6f, compactCap.value, 0.01f)
     }
 
     @Test fun aTapSendsTheKeyAndAHoldRepeatsIt() {
