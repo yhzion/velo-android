@@ -465,9 +465,9 @@ pub fn leadBlock(w: *const Window) ?*const Block {
 /// The JSON Kotlin consumes (app/src/main/java/io/github/yhzion/velo/core/UiState.kt):
 /// {status, server, url, account, hosts:[{id,label,endpoints:[…],icon}], hostsHash,
 ///  forwards:[{block,host,port,localPort,connections}], sessions:[{id,label,tabs:[{id,label,icon?,panes,active,minimized,block,title,program,cwd,
-///  activity,since?,attention}]}], session, windows:[{id,label,icon?,
+///  activity,since?,progress?,attention}]}], session, windows:[{id,label,icon?,
 ///  layout,zoomed,minimized, floating:[{block,x,y,w,h}]}], window, focused,
-///  blocks:{id:{icon?,title,program,cwd,activity,since?,attention}}}
+///  blocks:{id:{icon?,title,program,cwd,activity,since?,progress?,attention}}}
 /// `tabs` are the session's windows in order. It is left out while the windows are not
 /// known (`Session.view` null); `[]` is a session without windows. `panes` counts the
 /// tab's blocks (not those of minimized layers), `active` marks the session's active
@@ -767,6 +767,10 @@ fn writeBlockInfo(jw: *json.Stringify, block: ?*const Block, info: BlockInfo) st
     if (info.tab_report.reported_idle) {
         try jw.objectField("reportedIdle");
         try jw.write(true);
+    }
+    if (info.tab_report.progress) |progress| {
+        try jw.objectField("progress");
+        try jw.write(progress);
     }
     const title = info.title orelse if (block) |b| b.title else "";
     const label = if (block) |b| b.label else "";

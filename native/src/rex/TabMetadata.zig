@@ -47,6 +47,8 @@ pub const Details = struct {
     summary: []const u8 = "",
     kind: ?Kind = null,
     reported_idle: bool = false,
+    /// How far a working or blocked program says it is, 0 to 100; null when it did not say.
+    progress: ?u8 = null,
 
     /// The root names the conversation. A child can supply its own identity and
     /// reason for attention. The server resolves inherited identities in effective_app.
@@ -71,12 +73,14 @@ pub const Details = struct {
             .summary = first(string(selected, "msg"), string(root, "msg")),
             .kind = if (activity == .blocked) std.meta.stringToEnum(Kind, string(selected, "kind")) else null,
             .reported_idle = activity == .idle and selected != .null,
+            .progress = if (activity == .working or activity == .blocked) percent(model.get(selected, "progress")) else null,
         };
     }
 
     /// Entry and Lead own their strings independently of the response and each other.
     pub fn replace(self: *Details, gpa: std.mem.Allocator, next: Details) !bool {
         if (self.kind == next.kind and self.reported_idle == next.reported_idle and self.app_from_child == next.app_from_child and
+            self.progress == next.progress and
             std.mem.eql(u8, self.app, next.app) and std.mem.eql(u8, self.title, next.title) and
             std.mem.eql(u8, self.summary, next.summary)) return false;
         const app = try gpa.dupe(u8, next.app);
@@ -101,6 +105,12 @@ pub const Details = struct {
 
 fn string(record: std.json.Value, key: []const u8) []const u8 {
     return model.str(model.get(record, key)) orelse "";
+}
+
+/// The server allows up to 255 (OSC 7501 rev 0.4); a share past 100 is a whole one.
+fn percent(value: ?std.json.Value) ?u8 {
+    const n = model.int(value) orelse return null;
+    return if (n < 0) null else @intCast(@min(n, 100));
 }
 
 fn first(value: []const u8, fallback: []const u8) []const u8 {
@@ -148,4 +158,34 @@ test "the conversation title and the reason for attention can come from differen
     try std.testing.expectEqual(Kind.question, details.kind.?);
     try std.testing.expect(!details.reported_idle);
     try std.testing.expect(Details.read(response, .idle, null).reported_idle);
+}
+
+test "a working or blocked record's progress is a share of 100, and other states carry none" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    for ([_]struct { []const u8, model.Activity, ?u8 }{
+        .{ "{\"records\":[{\"state\":\"working\",\"progress\":30}]}", .working, 30 },
+        .{ "{\"records\":[{\"state\":\"blocked\",\"progress\":50}]}", .blocked, 50 },
+        .{ "{\"records\":[{\"state\":\"working\",\"progress\":0}]}", .working, 0 },
+        .{ "{\"records\":[{\"state\":\"working\",\"progress\":255}]}", .working, 100 },
+        .{ "{\"records\":[{\"state\":\"working\",\"progress\":null}]}", .working, null },
+        .{ "{\"records\":[{\"state\":\"working\"}]}", .working, null },
+        .{ "{\"records\":[{\"state\":\"done\",\"progress\":80}]}", .done, null },
+        // The record shown is the worst; a child at work does not lend its progress to a root that waits.
+        .{ "{\"records\":[{\"state\":\"blocked\"},{\"id\":\"build\",\"state\":\"working\",\"progress\":40}]}", .blocked, null },
+        .{ "{\"records\":[{\"state\":\"idle\"},{\"id\":\"build\",\"state\":\"working\",\"progress\":40}]}", .working, 40 },
+    }) |case| {
+        const response = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), case[0], .{});
+        try std.testing.expectEqual(case[2], Details.read(response, case[1], null).progress);
+    }
+}
+
+test "a new progress alone is a change" {
+    const gpa = std.testing.allocator;
+    var details: Details = .{};
+    defer details.deinit(gpa);
+    try std.testing.expect(try details.replace(gpa, .{ .progress = 30 }));
+    try std.testing.expect(!try details.replace(gpa, .{ .progress = 30 }));
+    try std.testing.expect(try details.replace(gpa, .{ .progress = 70 }));
+    try std.testing.expect(try details.replace(gpa, .{}));
 }

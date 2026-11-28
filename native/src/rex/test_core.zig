@@ -3645,6 +3645,29 @@ test "Core: selected and followed tab metadata from the Rex terminal methods" {
                 try testing.expectEqualStrings(summary, field(info, "statusSummary"));
             }
         }
+        // OSC 7501 progress reaches the tab and the pane while the program works, and leaves with the report (#250).
+        try blockEvent(core, session, block, "program_status_changed", "{}");
+        try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, target),
+            \\{"records":[{"state":"working","progress":30,"msg":"Indexing files"}]}
+        );
+        tab = (try tabsOf(&recorder, a, session))[0];
+        try testing.expectEqual(@as(i64, 30), model.int(model.get(tab, "progress")).?);
+        if (std.mem.eql(u8, session, "session:a")) {
+            const info = model.get(try recorder.lastValue(a, "blocks"), block).?;
+            try testing.expectEqual(@as(i64, 30), model.int(model.get(info, "progress")).?);
+        }
+        try blockEvent(core, session, block, "program_status_changed", "{}");
+        try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, target),
+            \\{"records":[{"state":"working","progress":70,"msg":"Indexing files"}]}
+        );
+        tab = (try tabsOf(&recorder, a, session))[0];
+        try testing.expectEqual(@as(i64, 70), model.int(model.get(tab, "progress")).?);
+        try blockEvent(core, session, block, "program_status_changed", "{}");
+        try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, target),
+            \\{"records":[{"state":"done","msg":"Indexed"}]}
+        );
+        tab = (try tabsOf(&recorder, a, session))[0];
+        try testing.expect(model.get(tab, "progress") == null);
         try blockEvent(core, session, block, "program_status_removed", "{}");
         try answer(core, try requestId(core, protocol.methods.terminalProgramStatus, target), "{\"records\":[]}");
         tab = (try tabsOf(&recorder, a, session))[0];

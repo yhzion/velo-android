@@ -10,6 +10,8 @@ test {
     _ = @import("rex/test_model.zig");
     _ = @import("rex/test_core.zig");
     _ = @import("rex/Download.zig");
+    // Its own tests: an import from Core.zig alone does not run them.
+    _ = @import("rex/TabMetadata.zig");
     // Its pure part only: the rest needs the Android library.
     _ = @import("sys/ssh.zig");
     // Its pure part only: the node needs the Android library.
