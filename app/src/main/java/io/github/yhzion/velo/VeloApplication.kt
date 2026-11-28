@@ -3,6 +3,8 @@ package io.github.yhzion.velo
 import android.app.Application
 import android.app.UiModeManager
 import android.os.Build
+import androidx.compose.ui.AndroidComposeUiFlags
+import androidx.compose.ui.ExperimentalComposeUiApi
 import java.util.Collections
 import java.util.IdentityHashMap
 
@@ -45,6 +47,11 @@ class VeloApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Compose UI 1.13.0, after each scroll with the screen not in touch mode (a keyboard in use), sends an
+        // accessibility-focused event for the node with input focus. TalkBack takes it as focus the app moved, so it
+        // leaves the item it was reading for that node, which may be far up the list (#199). Keep TalkBack's place.
+        @OptIn(ExperimentalComposeUiApi::class)
+        AndroidComposeUiFlags.isScrollAccessibilityFocusEventEnabled = false
         // Replace any per-app light override from an older install, never the device-wide mode.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             getSystemService(UiModeManager::class.java)?.setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
