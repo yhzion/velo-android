@@ -34,6 +34,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.github.yhzion.velo.core.LayoutNode
@@ -489,12 +490,16 @@ class ReadOnceTest {
         assertEquals(null, stateOf("tab-tile-watch"))
     }
 
-    /** A working row with a progress pie (#250): the tile says the percent, and the working dots give way to the pie. */
+    /** A working row with a progress pie (#250): the row's words say the percent (#251), and the working dots give way to the pie. */
     @Test fun aWorkingRowWithProgressSaysThePercentOnceAndDropsTheDots() {
         show { VeloTheme(UiSize.Medium) { ProgressSidebar() } }
         compose.waitForIdle()
-        assertEquals(listOf("Selected", "Claude Code", "30%", "Index the files", "Working · 4s since report · ~/src/api"), said("tab-row-index"))
-        assertEquals("30%", stateOf("tab-tile-index"))
+        // The percent is said with the second line, which the screen draws without it (#251); the tile has no state to
+        // say again at each new percent.
+        assertEquals(listOf("Selected", "Claude Code", "Index the files", "Working · 30% · 4s since report · ~/src/api"), said("tab-row-index"))
+        assertEquals(null, stateOf("tab-tile-index"))
+        // The screen draws the line without the percent.
+        compose.onNodeWithText("Working · 4s since report · ~/src/api", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("tab-tile-index-pie", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("tab-tile-index-logo", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("tab-working-index", useUnmergedTree = true).assertDoesNotExist()

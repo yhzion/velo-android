@@ -54,6 +54,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -126,7 +128,10 @@ internal fun ActivityRow(
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(entry.sessionLabel, Modifier.weight(1f).testTag("activity-session-$id"), style = type.caption.naturalLines(),
+                        // The group's title says it works; the percent of a pie is said with the session (#251).
+                        val sessionSaid = progressSaid(tile, entry.sessionLabel, afterFirst = false)
+                        Text(entry.sessionLabel, Modifier.weight(1f).testTag("activity-session-$id")
+                            .then(if (sessionSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(sessionSaid) } else Modifier), style = type.caption.naturalLines(),
                             color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         age?.let {
                             Text(it, Modifier.padding(start = 8.bd).testTag("activity-age-$id"), style = type.caption.naturalLines(),

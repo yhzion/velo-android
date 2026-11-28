@@ -8,6 +8,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - Keyboard settings offer a Space key for the key bar among the Editing keys, so you can type a space, or Ctrl+Space, without the keyboard.
 - The key bar can have Shift+Tab, Delete and Paste keys, chosen in Keyboard settings, and shows Page Up and Page Down as icons. Paste pastes as the pane menu's Paste does.
 - A working tab whose program reports how far it is (OSC 7501 progress) shows a green pie on its tile in place of the logo and the working dots, in the sidebar, the overview and under the panes.
+- A screen reader says a progress pie's percent with the row, "Working · 30% · …", when it reaches the row, and keeps quiet as the percent changes.
 
 ### Changed
 - The key bar spans the pane column, rounds as the panes do, and shows Tab, Enter, Shift and Space as icons. On a narrow upright screen its keys wrap into two rows instead of shrinking.

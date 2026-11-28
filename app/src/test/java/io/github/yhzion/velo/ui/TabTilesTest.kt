@@ -181,7 +181,18 @@ class TabTilesTest {
         assertNull(rowMark(TabIndicator.Working, pie))
         assertEquals(RowMark.Working, rowMark(TabIndicator.Working, logo))
         assertEquals(RowMark.Waiting, rowMark(TabIndicator.Question, pie))
-        // A screen reader hears the share the pie shows.
-        assertEquals(RowTileSpeech("Claude Code", "30%", true), tabRowTileSpeech(pie, null, "Index", null, TabIndicator.Working))
+        // The percent is no state of the tile, which a screen reader would say at each new percent (#251).
+        assertEquals(RowTileSpeech("Claude Code", null, true), tabRowTileSpeech(pie, null, "Index", null, TabIndicator.Working))
+    }
+
+    @Test fun aPiesPercentIsSaidWithTheRowsWordsNotDrawn() {
+        val pie = TabTileLook(TileBrand.Claude, 1, null, progress = 30)
+        val logo = TabTileLook(TileBrand.Claude, 1, null)
+        assertEquals("Working · 30% · 4s since report · ~/src", progressSaid(pie, "Working · 4s since report · ~/src", afterFirst = true))
+        assertEquals("Working · 30%", progressSaid(pie, "Working", afterFirst = true))
+        assertEquals("30% · T250", progressSaid(pie, "T250", afterFirst = false))
+        assertEquals("30%", progressSaid(pie, null, afterFirst = true))
+        // Without a pie the line says what it draws.
+        assertNull(progressSaid(logo, "Working · 4s since report", afterFirst = true))
     }
 }

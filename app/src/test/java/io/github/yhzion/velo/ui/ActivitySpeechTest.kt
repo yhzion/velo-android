@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -119,5 +120,12 @@ class ActivitySpeechTest {
         assertEquals(0, count("tab-working-$pie"))
         assertEquals(0, count("tab-tile-$plain-pie"))
         assertEquals(1, count("tab-working-$plain"))
+        // The percent is said with the session, not as the tile's state, so a new percent is not read out (#251).
+        fun words(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().config
+            .getOrNull(SemanticsProperties.Text)?.joinToString(" ")
+        assertEquals("30% · Build", words("activity-session-$pie"))
+        assertEquals("Build", words("activity-session-$plain"))
+        assertEquals(null, compose.onNodeWithTag("tab-tile-$pie", useUnmergedTree = true).fetchSemanticsNode().config
+            .getOrNull(SemanticsProperties.StateDescription))
     }
 }

@@ -64,6 +64,18 @@ internal fun rowMark(indicator: TabIndicator?): RowMark? = when (indicator) {
     else -> null
 }
 
+/**
+ * What a screen reader hears for a row's line of [words] when its [tile] draws a progress pie (#251): the percent after
+ * the line's first part, "Working · 30% · 2m since report · ~", or before [words] that have no state, as an Activity
+ * row's session ("30% · T250"). Null without a pie, when the line says only what it draws. The screen shows no percent,
+ * as Rex for Mac's does not, and the words are no state, so a new percent is heard when the row is reached, not as it comes.
+ */
+internal fun progressSaid(tile: TabTileLook, words: String?, afterFirst: Boolean): String? {
+    val percent = tile.progress?.let { "$it%" } ?: return null
+    val parts = words?.split(" · ").orEmpty().filter(String::isNotEmpty)
+    return (if (afterFirst && parts.isNotEmpty()) listOf(parts.first(), percent) + parts.drop(1) else listOf(percent) + parts).joinToString(" · ")
+}
+
 /** The mark at the end of a row whose [tile] is drawn: a tile with a progress pie already shows the work, so no dots (#250). */
 internal fun rowMark(indicator: TabIndicator?, tile: TabTileLook): RowMark? =
     rowMark(indicator).takeUnless { it == RowMark.Working && tile.progress != null }
@@ -111,12 +123,13 @@ internal data class RowTileSpeech(val description: String, val state: String?, v
  * ([tabTileDescription]); the row's [name] is said unless it is that program. The second line says
  * what the program does now ([mark]) and the folder ([tabRowSubtitle]), so the tile's state is only
  * a report not yet seen ([badge]): "Unread", with the report's words when the second line does not
- * say them; or, for a tile with a progress pie, the percent ("30%", #250).
+ * say them. A progress pie's percent is not the tile's state, which a screen reader would say again at each new
+ * percent: the row's words say it ([progressSaid], #251).
  */
 internal fun tabRowTileSpeech(tile: TabTileLook, hint: String?, name: String, badge: TabIndicator?, mark: TabIndicator?): RowTileSpeech =
     RowTileSpeech(
         tabTileDescription(tile, hint),
-        badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" } ?: tile.progress?.let { "$it%" },
+        badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" },
         nameSaid = name.trim().let { n ->
             // A tab without a name of its own is named by its command, such as nvim for Neovim. Every
             // unknown name maps to Terminal, so a Terminal tile's name is compared as it is.

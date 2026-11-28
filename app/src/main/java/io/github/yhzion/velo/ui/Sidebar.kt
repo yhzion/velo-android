@@ -612,7 +612,7 @@ private fun TabRowView(
                 if (swipes) revealFeel(shown, drag, drag + dx, threshold)?.let(feel)
                 drag += dx
             }
-        }, subtitle = subtitle, selected = row.shown, onLongClick = { menu = true }, id = id, titleSaid = said.nameSaid,
+        }, subtitle = subtitle, subtitleSaid = progressSaid(tile, subtitle, afterFirst = true), selected = row.shown, onLongClick = { menu = true }, id = id, titleSaid = said.nameSaid,
             titleContent = if (ticker != null) {
                 { TitleTicker(row.name, ticker, type.body.naturalLines(), VeloTheme.surface.text, motion) }
             } else null,

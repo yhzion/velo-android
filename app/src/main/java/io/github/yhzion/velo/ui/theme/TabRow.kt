@@ -49,7 +49,8 @@ fun tabRowFill(selected: Boolean): Color = if (selected) VeloTheme.surface.selec
  * [id] names the parts for tests as the board does: `tab-row-<id>`, `tab-title-<id>`,
  * `tab-status-<id>`. [titleContent] draws in the title's place (a waiting program's words that take
  * turns with the name); a screen reader still reads [title], unless [titleSaid] is false (a title
- * that only says again what the tile says, #150). The row keeps the outside room the
+ * that only says again what the tile says, #150). A screen reader reads [subtitleSaid] for the subtitle when it is
+ * given: words the line does not draw, such as a progress pie's percent (#251). The row keeps the outside room the
  * list gives it (the board's 8 from the sidebar's edge) in [modifier].
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -57,7 +58,7 @@ fun tabRowFill(selected: Boolean): Color = if (selected) VeloTheme.surface.selec
 fun TabListRow(
     title: String, onClick: () -> Unit, modifier: Modifier = Modifier, subtitle: String? = null, selected: Boolean = false,
     onLongClick: (() -> Unit)? = null, onLongClickLabel: String? = null, id: String? = null,
-    titleContent: (@Composable () -> Unit)? = null, titleSaid: Boolean = true,
+    titleContent: (@Composable () -> Unit)? = null, titleSaid: Boolean = true, subtitleSaid: String? = null,
     tile: @Composable () -> Unit,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
@@ -77,7 +78,8 @@ fun TabListRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(2.dp))) {
             if (titleContent != null) Box(Modifier.part("tab-title").fillMaxWidth().clearAndSetSemantics { if (titleSaid) text = AnnotatedString(title) }) { titleContent() }
             else Text(title, Modifier.part("tab-title").fillMaxWidth().then(if (titleSaid) Modifier else Modifier.semantics { hideFromAccessibility() }), style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle, Modifier.part("tab-status").fillMaxWidth(), style = type.caption.naturalLines(), color = c.secondary,
+            if (subtitle != null) Text(subtitle, Modifier.part("tab-status").fillMaxWidth()
+                .then(if (subtitleSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(subtitleSaid) } else Modifier), style = type.caption.naturalLines(), color = c.secondary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (trailing != null) trailing()
