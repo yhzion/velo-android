@@ -5,7 +5,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ## Unreleased
 
 ### Fixed
-- With a screen reader and a keyboard, focus no longer jumps back to a control higher up when a list scrolls, so Notifications settings can be read through to the Work started alerts.
+- With a keyboard in use, the screen reader no longer jumps back to a control higher up when a list scrolls, so Notifications settings can be read through to the Work started alerts.
 
 ## 2.15.0 - 2026-11-28
 
