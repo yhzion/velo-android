@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,8 +69,8 @@ import kotlinx.coroutines.delay
 /** A length the Sidebar board gives, at the current size ([VeloTheme.medium]). */
 private val Int.bd: Dp @Composable @ReadOnlyComposable get() = VeloTheme.medium(this.dp)
 
-/** How often a row's age is worked out again: often enough for "now" to become "1m" on time. */
-private const val AgeTickMs = 15_000L
+/** How long until the age of a time [atMs] next changes, at [nowMs]: its next whole minute ([shortAge]). */
+internal fun nextAgeChangeMs(atMs: Long, nowMs: Long): Long = 60_000 - Math.floorMod(nowMs - atMs, 60_000L)
 
 /**
  * A tab's row in Activity (#248), as Rex for Mac 2185 draws it (described, not copied). Its first line is its tile,
@@ -93,8 +94,9 @@ internal fun ActivityRow(
     val age by produceState(entry.enteredAt?.let { shortAge(it, System.currentTimeMillis()) }, entry.enteredAt) {
         val at = entry.enteredAt ?: run { value = null; return@produceState }
         while (true) {
-            value = shortAge(at, System.currentTimeMillis())
-            delay(AgeTickMs)
+            val now = System.currentTimeMillis()
+            value = shortAge(at, now)
+            delay(nextAgeChangeMs(at, now))
         }
     }
     val tile = tabTile(row, activity)
@@ -114,7 +116,9 @@ internal fun ActivityRow(
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.bd)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(row.name, Modifier.weight(1f).testTag("activity-title-$id"), style = type.body.naturalLines(), color = c.text,
+                        // A name that only says again what the tile says is not read twice (#150).
+                        Text(row.name, Modifier.weight(1f).testTag("activity-title-$id")
+                            .then(if (said.nameSaid) Modifier else Modifier.semantics { hideFromAccessibility() }), style = type.body.naturalLines(), color = c.text,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (rowMark(activity.indicator) == RowMark.Working) {
                             WorkingDots(5.bd, 4.bd, Modifier.padding(start = 8.bd).testTag("tab-working-$id"), description = null)

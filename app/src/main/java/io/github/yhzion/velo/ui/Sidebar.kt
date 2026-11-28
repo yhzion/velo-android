@@ -192,8 +192,6 @@ internal class SidebarState(collapsedSessions: Set<String> = emptySet()) {
     var collapsed by mutableStateOf(emptySet<String>())
     var collapsedSessions by mutableStateOf(collapsedSessions)
     var revealed by mutableStateOf<String?>(null)
-    /** When each tab came into its Activity group: the order of a group (#247). */
-    val entered = ActivityEntered()
 }
 
 /** A length the Sidebar board gives, at the current size ([VeloTheme.medium]). */
@@ -230,6 +228,12 @@ internal fun Sidebar(
     var headHeight by remember { mutableIntStateOf(-1) }
     val list = rememberLazyListState()
     val motion = rememberAnimatorScale()
+    // Activity's list shares no row with the remotes' but the head and the foot: it opens at its top, where Blocked is.
+    val toggled = remember { booleanArrayOf(activityOnly) }
+    if (toggled[0] != activityOnly) {
+        toggled[0] = activityOnly
+        list.requestScrollToItem(0)
+    }
     // The Filter's band: the field and the board's 12 around it. The notices go under it while the list keeps that much.
     SidebarColumn(searchFieldHeight + 24.bd, modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface), headHeight, head = { Column(
         Modifier.onSizeChanged { headHeight = it.height }) {
@@ -280,7 +284,7 @@ internal fun Sidebar(
             LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
                 if (folded) item(key = "head") { head() }
                 // Activity on: Rex for Mac lists every remote's reporting tabs in one list, by priority (#247).
-                if (activityOnly) activityList(hosts, query, state, motion, actions)
+                if (activityOnly) activityList(hosts, query, motion, actions)
                 else for (host in hosts) {
                     val remote = host.remote
                     // A remote's id is its row key: distinct for every row, the removed one included.
@@ -442,12 +446,12 @@ private enum class SidebarSlot { Head, Body }
  * keeps its key, so its row slides over the others to its new place on Rex for Mac's spring, and the rest close up on
  * the same curve; a new row fades in. Nothing moves while the system's animations are off ([motion]).
  */
-private fun LazyListScope.activityList(hosts: List<SidebarHost>, query: String, sidebar: SidebarState, motion: Float, actions: SidebarActions) {
+private fun LazyListScope.activityList(hosts: List<SidebarHost>, query: String, motion: Float, actions: SidebarActions) {
     val sources = hosts.filter { !it.removed && it.state.status == "connected" }.map { host ->
-        ActivitySource(host.remote.id, host.state, host.active) { host.readState.activity(it, true) }
+        ActivitySource(host.remote.id, host.state, host.active, host.readState.entered) { host.readState.activity(it, true) }
     }
     val byId = hosts.associateBy { it.remote.id }
-    val groups = activityGroups(sources, query, sidebar.entered, System.currentTimeMillis())
+    val groups = activityGroups(sources, query)
     // The list keeps its first row in view as rows come and go: this row stays first, so a group that appears above
     // the others shows at the top rather than above the view.
     item(key = "activity-top") { Spacer(Modifier.height(4.bd)) }
@@ -455,14 +459,14 @@ private fun LazyListScope.activityList(hosts: List<SidebarHost>, query: String, 
         item(key = "p:${group.priority}") { ActivityGroupHeader(group.priority, Modifier.activityItem(this, motion)) }
         for (entry in group.entries) item(key = "a:${entry.key}") {
             val remote = byId.getValue(entry.host).remote
-            ActivityRow(entry, motion, Modifier.zIndex(if (rememberLifted(entry.priority)) 1f else 0f).activityItem(this, motion),
+            ActivityRow(entry, motion, Modifier.zIndex(if (rememberLifted(entry.priority, motion)) 1f else 0f).activityItem(this, motion),
                 onSelect = { actions.selectTab(remote, entry.row) },
                 onRename = { actions.renameTab(remote, entry.row) },
                 onClose = { actions.closeTab(remote, entry.row) })
         }
     }
     if (groups.isEmpty()) item(key = "e:activity") {
-        Text("Nothing is working or waiting.", color = VeloTheme.surface.secondary, style = VeloTheme.type.caption,
+        Text(activityEmptyNote(query, sources.isNotEmpty()), color = VeloTheme.surface.secondary, style = VeloTheme.type.caption,
             modifier = Modifier.padding(start = 20.bd, top = VeloTheme.sizes.cellInset, bottom = VeloTheme.sizes.menuPadding))
     }
 }
@@ -482,19 +486,22 @@ private fun Modifier.activityItem(scope: LazyItemScope, motion: Float): Modifier
         placementSpec = spring(ActivityDamping, ActivityStiffness, IntOffset.VisibilityThreshold))
 }
 
-/** Whether a row that just moved to another group ([priority]) is still on its way: it passes over the rows between. */
+/**
+ * Whether a row that moved to another group ([priority]) is still on its way: it passes over the rows between. From the
+ * frame its group changes, for as long as the spring takes at the system's animation scale ([motion]).
+ */
 @Composable
-private fun rememberLifted(priority: ActivityPriority): Boolean {
+private fun rememberLifted(priority: ActivityPriority, motion: Float): Boolean {
     var last by remember { mutableStateOf(priority) }
     var lifted by remember { mutableStateOf(false) }
     LaunchedEffect(priority) {
         if (last == priority) return@LaunchedEffect
-        last = priority
         lifted = true
-        delay(ActivityLiftMs)
+        last = priority
+        if (animates(motion)) delay((ActivityLiftMs * motion).toLong())
         lifted = false
     }
-    return lifted
+    return lifted || last != priority
 }
 
 /** About as long as the spring takes to settle. */

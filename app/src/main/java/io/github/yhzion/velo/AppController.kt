@@ -329,6 +329,7 @@ class AppController(context: Context) {
                 if (report != null) {
                     val alerts = paneAlerts.receive(remote.id, report, labels[report.target])
                     conn.activityReadState.update(report.target, paneAlerts.records(remote.id, report.target))
+                    if (conn.state.status == "connected") conn.noteActivity()
                     deliver(alerts.map { it.copy(location = labels[it.subscription.target] ?: it.subscription.label) }, conn)
                 }
             },

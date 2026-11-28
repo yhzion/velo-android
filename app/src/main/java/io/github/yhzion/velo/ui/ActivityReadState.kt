@@ -24,6 +24,9 @@ internal class ActivityReadState(saved: String? = null, private val persist: (St
         }
     }
 
+    /** When each tab came into its Activity group ([observeActivity]): kept with the connection, not the sidebar (#247). */
+    val entered = ActivityEntered()
+
     private val views = mutableMapOf<Any, Set<PaneAddress>>()
     private val records = mutableStateMapOf<PaneAddress, Map<String, SeenReport>>()
     private val seen = mutableStateMapOf<Pair<PaneAddress, String?>, Receipt>()

@@ -688,6 +688,7 @@ class HostConnection(
         if (next.focused != state.focused || next.window != state.window || next.session != state.session) focusMoves++
         state = next
         if (connected) updateActivityTargets(this, next)
+        if (connected) noteActivity()
         failure = keptFailure(failure, next.status)
         if (connected) stoppedOn = stoppedAfter(stoppedOn, DialEvent.Connected)
         if (next.forwards.size != previousForwards) onForwardsChanged()
@@ -734,6 +735,9 @@ class HostConnection(
     internal val activityReadState = io.github.yhzion.velo.ui.ActivityReadState(env.store.activityReadReceipts(url)) {
         env.store.saveActivityReadReceipts(url, it)
     }
+    /** Notes which Activity group each tab is in now ([io.github.yhzion.velo.ui.observeActivity]): with every state and report. */
+    internal fun noteActivity() = io.github.yhzion.velo.ui.observeActivity(state, activityReadState, System.currentTimeMillis())
+
     internal var visibleActivityPanes: Set<PaneAddress> = emptySet()
     private var watchedPanes = emptySet<PaneAddress>()
 

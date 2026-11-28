@@ -114,7 +114,8 @@ private val VersionName = Regex("""v?\d+(?:\.\d+)+(?:[-+][\w.-]+)?""")
 private val TitleBreak = Regex("""[\p{Cc}\p{Zl}\p{Zp}]+""")
 private val BidiControl = Regex("""[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]""")
 
-private fun String.singleLine() = replace(TitleBreak, " ").replace(BidiControl, "").trim()
+/** [this] on one line: line breaks and controls as spaces, without the controls that turn text around. */
+internal fun String.singleLine() = replace(TitleBreak, " ").replace(BidiControl, "").trim()
 
 internal fun blockedIndicator(kind: String?) = when (kind) {
     "permission" -> TabIndicator.Permission

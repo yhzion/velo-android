@@ -12,9 +12,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 ### Changed
 - The key bar spans the pane column, rounds as the panes do, and shows Tab, Enter, Shift and Space as icons. On a narrow upright screen its keys wrap into two rows instead of shrinking.
 - The key bar's icons are a little larger, and in the Compact pane style the bar keeps a small gap above the keyboard instead of touching it.
-
-### Changed
-- With the eye on, the sidebar lists the busy and finished tabs of every remote in one list: Blocked, Failed, Working, Done. The newest in each comes first, and a tab that moves slides to its new group.
+- With the eye on, the sidebar lists the busy and finished tabs of every remote in one list: Blocked, Failed, Working, Done. The newest comes first, and a tab that moves slides to its new group.
 - In the eye's list a row shows its session and how long ago it changed state, such as now or 7m. A waiting or failed tab shows what it waits for and its program's message in a box under it.
 - In the eye's list a working tab shows its program's message in a capsule under it. New words roll up into place, and words too long for the row rest a moment, then scroll.
 
