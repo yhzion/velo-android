@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import android.app.Application
 import android.view.View
+import android.view.ViewGroup
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.getBoundsInRoot
@@ -13,6 +14,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.descendants
 import androidx.test.core.app.ApplicationProvider
 import io.github.yhzion.velo.AppController
 import io.github.yhzion.velo.HostConnection
@@ -43,6 +45,7 @@ import org.robolectric.annotation.GraphicsMode
  * the panes gives way, so that the pane card keeps more than a line or two, and the key bar stays. With the caption
  * the pane kept 16 dp (50.5 in the compact style). A screen reader finds no part of the hidden caption, and the
  * caption, its tab name with it, comes back with the keyboard down, or where a smaller keyboard leaves room for it.
+ * While it is hidden, the pane that takes the keys says its words after its own (#260); shown, the caption says them.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -55,7 +58,7 @@ class LandscapeKeyboardCaptionTest {
     private var conn: HostConnection? = null
     private var app: AppController? = null
 
-    private val state = UiState(status = "connected", server = "velo", session = "s",
+    private val state = UiState(status = "connected", server = "velo", session = "s", focused = "a",
         windows = listOf(WindowInfo("w1", label = "build", layout = LayoutNode(block = "a"))))
 
     @After fun destroy() {
@@ -100,6 +103,8 @@ class LandscapeKeyboardCaptionTest {
     private fun height(b: DpRect) = (b.bottom - b.top).value
     private fun pane() = height(compose.onNodeWithTag("pane-1").getBoundsInRoot())
     private fun captionShown() = compose.onAllNodesWithTag("pane-caption").fetchSemanticsNodes().isNotEmpty()
+    /** What a screen reader hears for the pane that takes the keys: its view's description. */
+    private fun paneSaid() = compose.runOnIdle { (view as ViewGroup).descendants.filterIsInstance<PaneSurfaceView>().single().contentDescription?.toString() }
 
     /** With Gboard up the pane keeps at least [least] dp, the caption is gone, to a screen reader too, and the key bar stays. */
     private fun theCaptionGivesWay(style: String, least: Float) {
@@ -111,9 +116,12 @@ class LandscapeKeyboardCaptionTest {
             assertTrue("a screen reader finds no $part", compose.onAllNodesWithTag(part, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         assertTrue("the pane keeps ${pane()} dp, at least $least", pane() >= least)
         assertEquals("the key bar stays, one row", 56f, height(compose.onNodeWithTag("key-bar").getBoundsInRoot()), 1f)
+        // The pane that takes the keys says what the caption said (#260).
+        assertEquals("Pane 1, input target, velo · build, Terminal", paneSaid())
         keyboard(0)
         assertTrue("the caption comes back with the keyboard down", captionShown())
         compose.onNodeWithTag("pane-caption-title", useUnmergedTree = true).assertTextEquals("velo · build")
+        assertEquals("the caption says it again, the pane no more", "Pane 1, input target", paneSaid())
     }
 
     // Comfortable: 16 dp with the caption; its 40 and the gap of 8 above it go to the pane.
@@ -130,9 +138,11 @@ class LandscapeKeyboardCaptionTest {
         keyboard(144)
         assertTrue("the caption stays", captionShown())
         assertEquals(121f, pane(), 1f)
+        assertEquals("shown, the caption is heard once, on its own", "Pane 1, input target", paneSaid())
         keyboard(147)
         assertFalse("the caption gives way", captionShown())
         assertEquals("the pane holds the caption's room", 118f + 48f, pane(), 1f)
+        assertEquals("Pane 1, input target, velo · build, Terminal", paneSaid())
     }
 
     /**
@@ -150,6 +160,7 @@ class LandscapeKeyboardCaptionTest {
         keyboard(130)
         assertTrue("with the margin, it comes back", captionShown())
         assertEquals(135f, pane(), 1f)
+        assertEquals("Pane 1, input target", paneSaid())
         repeat(5) { settle() }
         assertTrue("and stays", captionShown())
     }

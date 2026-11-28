@@ -4,8 +4,12 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- While the caption under the panes hides for the keyboard, a screen reader hears the tab's name and program with the pane that takes the keys.
+
 ### Fixed
 - After GitHub's hourly limit was reached, automatic Preview and Edge update checks resume as soon as a check reaches GitHub again, such as on another network, instead of waiting up to an hour.
+- Half-folded on its side with the keyboard up, the caption under the panes now hides where it would cut the key bar, so the key bar stays whole.
 
 ## 2.16.1 - 2026-11-28
 

@@ -329,6 +329,19 @@ internal fun Modifier.paneFrame(focused: Boolean, radius: Dp, focusMark: () -> F
 private tailrec fun LayoutNode.firstBlock(): String? = block ?: first?.firstBlock()
 private tailrec fun LayoutNode.lastBlock(): String? = block ?: second?.lastBlock()
 
+/**
+ * What the pane that takes the keys says after its name ([inputTargetSaid]): the caption's words while the caption
+ * under the panes gives way to them (#260), else null. Read by the pane's view as it is updated, so a new title
+ * reaches that view alone.
+ */
+internal val LocalCaptionSaid = staticCompositionLocalOf<() -> String?> { { null } }
+
+/**
+ * What a screen reader hears for a pane: its [label], and for the pane that takes the keys, the [caption]'s words after
+ * it (#260), so that the tab and its program are heard while the caption is hidden ("Pane, input target, velo · build, Terminal").
+ */
+internal fun inputTargetSaid(label: String, caption: String?): String = if (caption.isNullOrEmpty()) label else "$label, $caption"
+
 @Composable
 private fun PaneCard(
     conn: HostConnection, window: WindowInfo, block: String, focused: Boolean, radius: Dp, input: TerminalInputView,
@@ -337,6 +350,7 @@ private fun PaneCard(
 ) {
     val context = LocalContext.current
     val linkTaps = LocalLinkTaps.current
+    val captionSaid = LocalCaptionSaid.current
     var reading by remember(conn, block, preview) { mutableStateOf(false) }
     val label = (paneLabel(tabBlocks(window), block) ?: "Pane") + if (focused) ", input target" else ""
     if (reading && !preview) {
@@ -359,7 +373,8 @@ private fun PaneCard(
                 v.haptics = haptics
                 v.importantForAccessibility = if (preview) View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     else View.IMPORTANT_FOR_ACCESSIBILITY_YES
-                v.contentDescription = if (preview) null else label
+                // The caption's words are read here, in the view's update, so that they change it and compose nothing.
+                v.contentDescription = if (preview) null else if (focused) inputTargetSaid(label, captionSaid()) else label
                 v.onRead = { reading = true }
                 v.onFinger = {
                     input.forgetImeContext()

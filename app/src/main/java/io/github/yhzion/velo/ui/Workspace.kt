@@ -45,6 +45,7 @@ import io.github.yhzion.velo.HostConnection
 import io.github.yhzion.velo.PaneAddress
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.core.WindowInfo
+import io.github.yhzion.velo.core.UiState
 import io.github.yhzion.velo.ui.theme.ButtonKind
 import io.github.yhzion.velo.ui.theme.Feel
 import io.github.yhzion.velo.ui.theme.ToastSurface
@@ -721,13 +722,32 @@ internal fun Workspace(
             val keyBarBox = remember { mutableStateOf<Rect?>(null) }
             val keyBarShown = keyboard || s.keyBar.isNotEmpty() && focused != null
             // With the keyboard up on a short window the caption gives way to the panes, and the key bar stays (#232):
-            // [captionGivesWay], from the pane area's height and the room the caption took with its gap. On a
-            // half-folded screen the panes keep the upper half however the caption goes, so there it stays. A shown
+            // [captionGivesWay], from the pane area's height and the room the caption took with its gap. A shown
             // input method that takes no room (a hardware keyboard's) squeezes nothing: read where the panes are placed.
             val squeezed = keyboard && !fold.tabletop
             val squeezedNow by rememberUpdatedState(squeezed)
             var captionGaveWay by remember { mutableStateOf(false) }
             val captionRoom = remember { mutableIntStateOf(0) }
+            // On a half-folded screen the panes keep the upper half however the caption goes, and the caption and the
+            // key bar share what the keyboard leaves under them. Where that is too little for both, the caption gives
+            // way there too, so that the key bar stays whole (#261): [captionGivesWayUnderHinge], from what is left over.
+            // Hiding it gives the panes nothing: their height is the hinge's.
+            val hingeSqueezed = keyboard && fold.tabletop && fold.hingeTopPx > 0
+            val hingeSqueezedNow by rememberUpdatedState(hingeSqueezed)
+            var captionGaveWayUnderHinge by remember { mutableStateOf(false) }
+            // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
+            val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
+            val hostLabelNow by rememberUpdatedState(hostLabel)
+            // While the caption gives way, the pane that takes the keys says what it said (#260): the tab and its program.
+            // Read by that pane's view alone, so a new title composes neither the workspace nor the panes.
+            val captionSaid = remember(conn) {
+                derivedStateOf {
+                    if (squeezedNow && captionGaveWay || hingeSqueezedNow && captionGaveWayUnderHinge)
+                        conn.state.let { s -> captionWords(shownWindow(s), s, conn.activityReadState, conn.connected, hostLabelNow) }
+                    else null
+                }
+            }
+            val captionSaidNow = remember(captionSaid) { { captionSaid.value } }
             // The minimized floating windows, at the chosen corner. Not in the overview, which has no panes to bring one back to.
             // Their capsules are named by their titles: read only where there are some.
             val capsuleBlocks = if (window?.minimizedLayers.isNullOrEmpty()) state.blocks else conn.state.blocks
@@ -816,7 +836,7 @@ internal fun Workspace(
                                     open(tapped)
                                 }
                             }
-                            CompositionLocalProvider(LocalLinkTaps provides linkTaps) {
+                            CompositionLocalProvider(LocalLinkTaps provides linkTaps, LocalCaptionSaid provides captionSaidNow) {
                                 TabStage(conn, state, window, overview, focused, gap, radius, input, controls = !covered, haptics = s.haptics,
                                     grid = s.overviewLayout == OverviewLayout.Grid, fontSize = s.fontSize,
                                     handles = paneHandles.takeIf { showsMoveHandle(state.windows) && conn.connected }, strip = strip,
@@ -869,10 +889,12 @@ internal fun Workspace(
                             beforePaste = input::finishCompositionBeforePaste)
                     }
                 }
-                if (fold.tabletop) Spacer(Modifier.weight(1f))
-                // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
-                val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-                CaptionPlace({ squeezed && captionGaveWay }) {
+                // What the hinge-high panes leave over under them, once the caption and the key bar took theirs (#261).
+                if (fold.tabletop) Spacer(Modifier.weight(1f).onPlaced {
+                    captionGaveWayUnderHinge = captionGivesWayUnderHinge(hingeSqueezedNow && imeInsets.getBottom(density) > 0,
+                        captionGaveWayUnderHinge, it.size.height / density.density, captionRoom.intValue / density.density)
+                })
+                CaptionPlace({ squeezed && captionGaveWay || hingeSqueezed && captionGaveWayUnderHinge }) {
                     ShownCaption(conn, connected, host = hostLabel,
                         modifier = Modifier.onSizeChanged { captionRoom.intValue = it.height }.then(captionSlot(gap)),
                         compact = compactStyle, notification = notification)
@@ -1249,6 +1271,32 @@ internal const val CaptionComesBackMarginDp = 8f
  */
 internal fun captionGivesWay(squeezed: Boolean, gaveWay: Boolean, pane: Float, caption: Float): Boolean =
     squeezed && if (gaveWay) pane - caption < CaptionGivesWayBelowDp + CaptionComesBackMarginDp else pane < CaptionGivesWayBelowDp
+
+/**
+ * Whether the caption gives way on a half-folded screen (#261), where the panes keep the hinge's height and the
+ * caption and the key bar share what is under them: while [squeezed] (the keyboard up), when nothing is [left] over
+ * under the panes with it, so that the key bar, measured after it, may be cut. Hidden, it comes back where what is
+ * left over holds the [caption]'s room with its gap and [CaptionComesBackMarginDp] more, so that showing it leaves
+ * the key bar whole and a row of suggestions does not show and hide it each time. In dp.
+ */
+internal fun captionGivesWayUnderHinge(squeezed: Boolean, gaveWay: Boolean, left: Float, caption: Float): Boolean =
+    squeezed && if (gaveWay) left < caption + CaptionComesBackMarginDp else left < NothingLeftDp
+
+/** Less than this is nothing left over under the hinge-high panes: the weighted space under them is placed whole pixels. */
+private const val NothingLeftDp = 0.5f
+
+/**
+ * What the caption under the panes says to a screen reader (#260): the tab's title, which machine the keys go to and
+ * the tab's name ("velo · build"), then the program its tile names ("Terminal"), or null for nothing. The zoomed
+ * tab's tile draws one pane, as the caption's does. [window] is the shown tab of [state].
+ */
+internal fun captionWords(window: WindowInfo?, state: UiState, readState: ActivityReadState, connected: Boolean, host: String): String? {
+    val row = window?.row(state, state.session.orEmpty(), true)
+    val title = listOf(host, row?.name.orEmpty()).filter(String::isNotEmpty).joinToString(" · ")
+    val activity = row?.let { readState.activity(it, connected) }
+    val tile = if (row != null && activity != null) tabTile(row, activity).let { if (window?.zoomed != null) it.copy(panes = 1) else it } else null
+    return listOfNotNull(title.ifEmpty { null }, tile?.let { tabTileDescription(it, activity?.icon) }).joinToString(", ").ifEmpty { null }
+}
 
 /** The caption, unless it [gaveWay] to the panes ([captionGivesWay]): read here, so that a change composes this, not the workspace. */
 @Composable
