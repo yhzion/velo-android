@@ -122,12 +122,36 @@ class LandscapeKeyboardCaptionTest {
     // Compact: 50.5 dp with the caption; its line and the compact gap go to the pane.
     @Test fun compact() = theCaptionGivesWay("compact", 78f)
 
-    /** A keyboard that leaves the pane its least height under the caption leaves the caption where it is. */
-    @Test fun aSmallerKeyboardKeepsTheCaption() {
+    // Comfortable, with the caption: the pane keeps 393 − 8 − 8 − (8 + 40) − (8 + 56) less the keyboard, 265 − it.
+
+    /** On either side of the least height: a keyboard of 144 dp leaves the pane 121 dp under the caption, one of 147 dp 118. */
+    @Test fun theCaptionGoesUnderTheLeastHeight() {
         workspace("comfortable")
-        keyboard(120)
+        keyboard(144)
         assertTrue("the caption stays", captionShown())
-        assertTrue("the pane keeps ${pane()} dp", pane() >= CaptionGivesWayBelowDp)
+        assertEquals(121f, pane(), 1f)
+        keyboard(147)
+        assertFalse("the caption gives way", captionShown())
+        assertEquals("the pane holds the caption's room", 118f + 48f, pane(), 1f)
+    }
+
+    /**
+     * Hidden with the keyboard up, the caption comes back where a smaller keyboard leaves the pane the least height
+     * and the margin with it (130 dp: 135), and not short of the margin (140 dp: 125), however long it waits there.
+     */
+    @Test fun aSmallerKeyboardBringsTheCaptionBack() {
+        workspace("comfortable")
+        keyboard(249)
+        assertFalse(captionShown())
+        keyboard(140)
+        repeat(5) { settle() }
+        assertFalse("short of the margin, it stays hidden", captionShown())
+        assertEquals(125f + 48f, pane(), 1f)
+        keyboard(130)
+        assertTrue("with the margin, it comes back", captionShown())
+        assertEquals(135f, pane(), 1f)
+        repeat(5) { settle() }
+        assertTrue("and stays", captionShown())
     }
 
     @Test fun theRuleComesBackOnlyWhereTheCaptionFits() {
@@ -139,6 +163,8 @@ class LandscapeKeyboardCaptionTest {
         assertFalse(captionGivesWay(squeezed = true, gaveWay = false, pane = 120f, caption = 48f))
         // Hidden: the pane holds the caption's room; it comes back only where the pane keeps the least height with it.
         assertTrue(captionGivesWay(squeezed = true, gaveWay = true, pane = 150f, caption = 48f))
-        assertFalse(captionGivesWay(squeezed = true, gaveWay = true, pane = 168f, caption = 48f))
+        // And the margin over it.
+        assertTrue(captionGivesWay(squeezed = true, gaveWay = true, pane = 168f, caption = 48f))
+        assertFalse(captionGivesWay(squeezed = true, gaveWay = true, pane = 176f, caption = 48f))
     }
 }

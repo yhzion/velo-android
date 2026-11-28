@@ -722,7 +722,8 @@ internal fun Workspace(
             val keyBarShown = keyboard || s.keyBar.isNotEmpty() && focused != null
             // With the keyboard up on a short window the caption gives way to the panes, and the key bar stays (#232):
             // [captionGivesWay], from the pane area's height and the room the caption took with its gap. On a
-            // half-folded screen the panes keep the upper half however the caption goes, so there it stays.
+            // half-folded screen the panes keep the upper half however the caption goes, so there it stays. A shown
+            // input method that takes no room (a hardware keyboard's) squeezes nothing: read where the panes are placed.
             val squeezed = keyboard && !fold.tabletop
             val squeezedNow by rememberUpdatedState(squeezed)
             var captionGaveWay by remember { mutableStateOf(false) }
@@ -741,7 +742,7 @@ internal fun Workspace(
                 else Modifier.weight(1f).fillMaxWidth()
                 Box(paneMod.onPlaced {
                     paneBox.value = it.boundsInParent()
-                    captionGaveWay = captionGivesWay(squeezedNow, captionGaveWay, it.size.height / density.density,
+                    captionGaveWay = captionGivesWay(squeezedNow && imeInsets.getBottom(density) > 0, captionGaveWay, it.size.height / density.density,
                         captionRoom.intValue / density.density)
                 }) {
                     when {
@@ -871,9 +872,11 @@ internal fun Workspace(
                 if (fold.tabletop) Spacer(Modifier.weight(1f))
                 // Which machine the keys go to, then the tab (pane-caption), a gap under the panes.
                 val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
-                if (!(squeezed && captionGaveWay)) ShownCaption(conn, connected, host = hostLabel,
-                    modifier = Modifier.onSizeChanged { captionRoom.intValue = it.height }.then(captionSlot(gap)),
-                    compact = compactStyle, notification = notification)
+                CaptionPlace({ squeezed && captionGaveWay }) {
+                    ShownCaption(conn, connected, host = hostLabel,
+                        modifier = Modifier.onSizeChanged { captionRoom.intValue = it.height }.then(captionSlot(gap)),
+                        compact = compactStyle, notification = notification)
+                }
                 if (keyBarShown) {
                     KeyBar(s.keyBar, armed, keyBarSlot(gap, keyBarClearance(compactStyle, outerY, sizes.gapCompact)).onPlaced { keyBarBox.value = it.boundsInParent() },
                         enabled = !paused && activeSearch == null && pendingSearch == null, radius = radius) { k, repeated ->
@@ -1226,20 +1229,32 @@ internal fun RowScope.sidebarSlot(place: SidebarPlace): Modifier =
 internal fun RowScope.paneColumnSlot(): Modifier = Modifier.testTag("pane-area").weight(1f).fillMaxHeight()
 
 /**
- * The least height the panes keep under the caption with the keyboard up (#232). The bar phone's landscape board
- * (WsBar, its keyboard 180 dp) leaves the pane 122 dp under the caption, the shortest pane a board draws with one.
- * Gboard on that phone is about 249 dp, which left the pane 16 dp (50 in the compact style) with the caption.
+ * The least height the panes keep under the caption with the keyboard up (#232): the shortest pane a board draws
+ * with a caption, the bar phone's landscape board's 122 dp (WsBar, which takes the keyboard for 180 dp and the
+ * screen's margins for 4). The app's margins are wider, so on that phone even a 180 dp keyboard hides the caption.
+ * Gboard there is about 249 dp, which left the pane 16 dp (50 in the compact style) with the caption.
  */
 internal const val CaptionGivesWayBelowDp = 120f
+
+/** How much more than [CaptionGivesWayBelowDp] the panes keep with the caption for a hidden one to come back. */
+internal const val CaptionComesBackMarginDp = 8f
 
 /**
  * Whether the caption under the panes gives way to them (#232): while [squeezed] (the keyboard up), when the
  * panes would keep less than [CaptionGivesWayBelowDp] with it. [pane] is the pane area's height now, [caption] the
  * room the caption takes with its gap, both in dp. While it [gaveWay] the pane area holds that room too: the caption
- * comes back only where the panes keep the least height with it, so showing it does not hide it again.
+ * comes back only where the panes keep the least height with it, so showing it does not hide it again, and a few dp
+ * more ([CaptionComesBackMarginDp]), so that a keyboard a little taller or shorter (a row of suggestions) does not
+ * show and hide it each time.
  */
 internal fun captionGivesWay(squeezed: Boolean, gaveWay: Boolean, pane: Float, caption: Float): Boolean =
-    squeezed && (if (gaveWay) pane - caption else pane) < CaptionGivesWayBelowDp
+    squeezed && if (gaveWay) pane - caption < CaptionGivesWayBelowDp + CaptionComesBackMarginDp else pane < CaptionGivesWayBelowDp
+
+/** The caption, unless it [gaveWay] to the panes ([captionGivesWay]): read here, so that a change composes this, not the workspace. */
+@Composable
+private fun CaptionPlace(gaveWay: () -> Boolean, caption: @Composable () -> Unit) {
+    if (!gaveWay()) caption()
+}
 
 /** The caption's place: [gap] under the panes. */
 internal fun captionSlot(gap: Dp): Modifier = Modifier.padding(top = gap)
