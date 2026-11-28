@@ -411,9 +411,10 @@ class NoticeSpeechTest {
     }
 
     /**
-     * A sidebar whose body keeps the Filter's band but has no room for the notices under it (#195): a split screen, or
-     * a large display size. Focus on the Filter field at [from] dp, then the sidebar [to] dp tall: the field stays in
-     * the tree with the focus, and the notices lie over the list, not over the field.
+     * A sidebar whose head leaves no room for the Filter's band and the notices under it (#195): a split screen, or
+     * a large display size. Focus on the Filter field at 860 dp, then the sidebar [to] dp tall: the field stays in
+     * the tree with the focus. The head folds into the list (#209), so the notices go under the field, off the
+     * toolbar's buttons; before, they lay over the list just above the field, and over Toggle Sidebar.
      */
     private fun theFilterKeepsTheFocusInAShortSidebar(to: Int, uploading: Boolean) {
         val c = connection()
@@ -431,7 +432,11 @@ class NoticeSpeechTest {
         assertEquals("nothing read out again", emptyList<List<String>>(), readOut(from))
         val field = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
         val error = compose.onNodeWithTag("error").getBoundsInRoot()
-        assertTrue("the notice $error above the Filter field $field", error.bottom <= field.top)
+        assertTrue("the notice $error under the Filter field $field", error.top >= field.bottom)
+        val toggle = compose.onNodeWithTag("sidebar-toggle").getBoundsInRoot()
+        assertTrue("Toggle Sidebar $toggle clear of the notices from $error", toggle.bottom <= field.top)
+        val toggleId = compose.onNodeWithTag("sidebar-toggle").fetchSemanticsNode().id
+        assertTrue("Toggle Sidebar in the tree", compose.runOnIdle { view.accessibilityNodeProvider.createAccessibilityNodeInfo(toggleId) } != null)
     }
 
     @Test fun theFilterKeepsTheFocusInAShortSidebarWithOneNotice() = theFilterKeepsTheFocusInAShortSidebar(241, uploading = false)
