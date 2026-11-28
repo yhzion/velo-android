@@ -129,6 +129,23 @@ class NoticePlaceTest {
     private val notices = 220
 
     @Test
+    fun aSidebarFoldsItsHeadWhereTheHeadAndTheNoticesLeaveTheBodyLessThanTheBand() {
+        // Upright, with or without the keyboard: the head stays above the list.
+        assertFalse(sidebarFoldsHead(2400, head, notices, band))
+        assertFalse(sidebarFoldsHead(1400, head, 0, band))
+        // Just room for the band beside the notices: it stays; one px less, and it folds (#209).
+        assertFalse(sidebarFoldsHead(head + band + notices, head, notices, band))
+        assertTrue(sidebarFoldsHead(head + band + notices - 1, head, notices, band))
+        // Landscape with the keyboard up (358 px, 130 dp): it folds, with or without notices.
+        assertTrue(sidebarFoldsHead(358, head, 0, band))
+        assertTrue(sidebarFoldsHead(358, head, notices, band))
+        // Folded, the notices go under the band where the column has room for both.
+        assertEquals(358, sidebarBodyHeight(358, 0, 0, band))
+        assertEquals(800 - notices, sidebarBodyHeight(800, 0, notices, band))
+        assertEquals(800 - notices, sidebarNoticesTop(800, 0, notices, band))
+    }
+
+    @Test
     fun aTallSidebarGivesItsNoticesRoomUnderTheFilterField() {
         // Upright without the keyboard (2400 px) and with it (1400): the list grows shorter by the notices.
         assertEquals(2400 - head - notices, sidebarBodyHeight(height = 2400, head = head, notices = notices, least = band))

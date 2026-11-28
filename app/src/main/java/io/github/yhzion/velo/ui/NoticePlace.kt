@@ -284,12 +284,22 @@ private var noticeAge = 0L
 private fun nextNoticeAge(): Long = ++noticeAge
 
 /**
+ * Whether the sidebar folds its head (the toolbar and This Device) into its list (#209): its column is [height] px
+ * tall, the head [head] px, the notices it holds [notices] px with their padding, and the Filter's band [least] px.
+ * It folds when the head and the notices leave the body less than the band: landscape with the keyboard up, where the
+ * Filter field would get no room and leave what a screen reader sees, or a short sidebar whose notices would lie over
+ * the toolbar's buttons. Folded, the head scrolls with the list, and the band and the notices share the whole height.
+ */
+internal fun sidebarFoldsHead(height: Int, head: Int, notices: Int, least: Int): Boolean = height - head - notices < least
+
+/**
  * The height of the sidebar's body (the list, with the Filter field at its foot) when the sidebar that covers the
  * panes holds notices [notices] px tall with their padding (#165, #195): its column is [height] px tall and its head
  * (the toolbar and This Device) [head] px. The notices go under the body, which grows shorter, while it keeps [least]
  * px beside them (the Filter's band, whole). Else the body keeps all the height under the head and the notices lie
  * over it, above its band where it has one ([sidebarNoticesTop]). Either way they stay the column's children, so the
- * keyboard only places them again and never composes them elsewhere ([HeardNotices]).
+ * keyboard only places them again and never composes them elsewhere ([HeardNotices]). A sidebar that folds its head
+ * ([sidebarFoldsHead]) asks with a [head] of 0.
  */
 internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int): Int {
     val left = (height - head).coerceAtLeast(0)
@@ -301,8 +311,9 @@ internal fun sidebarBodyHeight(height: Int, head: Int, notices: Int, least: Int)
  * Under the body when it makes room for them. Else, while the body keeps the Filter's band ([least]), they end just
  * above the band, over the list, or over the head where the list above the band is shorter than them (even the
  * toolbar's buttons): over the field, Compose would leave it out of what a screen reader sees and take its focus away. They start at the column's top when they are taller than the room above the band. Only when the body
- * has no room for the band, where the field has none of its own (landscape with the keyboard up, #209), do they lie
- * at the column's foot.
+ * has no room for the band, where the field has none of its own, do they lie at the column's foot. The sidebar folds
+ * its head before either can happen ([sidebarFoldsHead], #209), and asks with a [head] of 0: then only notices taller
+ * than the room above the band lie over the list, and only a column shorter than the band has them at its foot.
  */
 internal fun sidebarNoticesTop(height: Int, head: Int, notices: Int, least: Int): Int {
     val left = (height - head).coerceAtLeast(0)

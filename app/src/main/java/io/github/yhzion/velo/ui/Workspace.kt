@@ -703,8 +703,8 @@ internal fun Workspace(
                 // Without the panes there is no pane area to hold the notices: the sidebar that covers them does, under
                 // its Filter field, so that they lie over neither the field nor the rail (#165). With the keyboard
                 // up too: they stay where they are, so the keyboard neither covers the Filter field with them nor makes
-                // a screen reader read them again (#195). A sidebar too short for them lays them above the Filter band,
-                // over the list or the head (the toolbar's buttons included).
+                // a screen reader read them again (#195). A sidebar too short for its head beside them folds the head into
+                // its list (#209), so they stay off the Filter field and the toolbar's buttons.
                 notices = if (panesHidden && anyNotice) {
                     {
                         UploadToast(conn, heard)

@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.AddToPhotos
@@ -31,7 +32,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -212,8 +214,14 @@ internal fun Sidebar(
     var collapsedSessions by state::collapsedSessions
     var revealed by state::revealed
 
+    // The head's height in px wherever it was last laid out, above the list or folded into it, -1 before that: the
+    // column folds it by this (#209). Read here, not where the column measures: a node being measured does not measure
+    // again for a change made while it measures.
+    var headHeight by remember { mutableIntStateOf(-1) }
+    val list = rememberLazyListState()
     // The Filter's band: the field and the board's 12 around it. The notices go under it while the list keeps that much.
-    SidebarColumn(searchFieldHeight + 24.bd, modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface), head = { Column {
+    SidebarColumn(searchFieldHeight + 24.bd, modifier.testTag("sidebar").clip(rounded(28.bd)).background(c.surface), headHeight, head = { Column(
+        Modifier.onSizeChanged { headHeight = it.height }) {
         // Rex for Mac lights the eye's dot only while some tab's row draws its unread dot (a
         // finished, failed or waiting report not yet seen); seeing the last one puts it out.
         val anyUnread = hosts.any { host ->
@@ -250,9 +258,16 @@ internal fun Sidebar(
         }
 
         DeviceHeader(device, actions.openDevice)
-    } }, body = {
+    } }, body = { head, folded ->
+        // A list shown from its top shows the head from its top as the head folds into it, not the first remote.
+        val seen = remember { booleanArrayOf(folded) }
+        if (seen[0] != folded) {
+            if (folded && list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0) list.requestScrollToItem(0)
+            seen[0] = folded
+        }
         Box {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
+            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
+                if (folded) item(key = "head") { head() }
                 for (host in hosts) {
                     val remote = host.remote
                     // A remote's id is its row key: distinct for every row, the removed one included.
@@ -348,36 +363,48 @@ internal fun Sidebar(
 /**
  * The sidebar's column: its [head] (the toolbar and This Device), then its [body] (the list, the Filter field at its
  * foot) in the height left, and the [notices] at its foot, which the body makes room for while it keeps [least] beside
- * them ([sidebarBodyHeight]); else they lie just above the Filter's band, over the list or, where it is shorter
- * than them, over the head ([sidebarNoticesTop]). They
- * are the same children whichever way they lie, so a keyboard that opens from the Filter field only places them again
- * (#195): they are not composed elsewhere, which a screen reader would read again, nor over the field, which Compose
- * then leaves out of what a screen reader sees, taking the field's focus away. Only a body too short for the band,
- * where the field has no room of its own (#209), or notices taller than the room above it, has them over the band.
- * The notices keep their own height: only the body is cut.
+ * them ([sidebarBodyHeight]). Where the head would leave the body less than that, the body gets the head to show as
+ * its list's first row, folded (#209, [sidebarFoldsHead]): the band then keeps its row in landscape with the keyboard
+ * up, and the notices, which lie just above the band where they do not fit under it ([sidebarNoticesTop]), stay off
+ * the toolbar's buttons. [headHeight] is the head's height in px wherever it was last laid out, -1 before that: the
+ * first pass of a short sidebar lays the head out above the list, and the next folds it.
+ *
+ * The notices are the same children whichever way they lie, so a keyboard that opens from the Filter field only places
+ * them again (#195): they are not composed elsewhere, which a screen reader would read again, nor over the field, which
+ * Compose then leaves out of what a screen reader sees, taking the field's focus away. The Filter field stays where it
+ * is in the body as the head folds, so it keeps its focus too. Only a column shorter than the band, or notices taller
+ * than the room above it, has them over the band. The notices keep their own height: only the body is cut.
  */
 @Composable
-private fun SidebarColumn(least: Dp, modifier: Modifier, head: @Composable () -> Unit, body: @Composable () -> Unit,
-                          notices: (@Composable () -> Unit)?) {
-    Layout(listOf(head, body, notices ?: {}), modifier) { (heads, bodies, notes), constraints ->
+private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: @Composable () -> Unit,
+                          body: @Composable (head: @Composable () -> Unit, folded: Boolean) -> Unit, notices: (@Composable () -> Unit)?) {
+    SubcomposeLayout(modifier) { constraints ->
         val width = constraints.maxWidth
-        val top = heads.map { it.measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight)) }
-        val topHeight = top.sumOf { it.height }
-        val stack = notes.map { it.measure(Constraints(maxWidth = width)) }
+        val band = least.roundToPx()
+        val stack = subcompose(SidebarSlot.Notices, notices ?: {}).map { it.measure(Constraints(maxWidth = width)) }
         val stackHeight = stack.sumOf { it.height }
-        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else topHeight + least.roundToPx() + stackHeight
-        val bodyHeight = sidebarBodyHeight(height, topHeight, stackHeight, least.roundToPx())
-        val inside = bodies.map { it.measure(Constraints(maxWidth = width, minHeight = bodyHeight, maxHeight = bodyHeight)) }
+        // Read so that a head first laid out above the list, where it should fold, is folded in the pass after (below).
+        val folded = constraints.hasBoundedHeight && headHeight >= 0 && sidebarFoldsHead(constraints.maxHeight, headHeight, stackHeight, band)
+        val top = subcompose(SidebarSlot.Head) { if (!folded) head() }
+            .map { it.measure(Constraints(maxWidth = width, maxHeight = constraints.maxHeight)) }
+        val topHeight = top.sumOf { it.height }
+        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else topHeight + band + stackHeight
+        val bodyHeight = sidebarBodyHeight(height, topHeight, stackHeight, band)
+        val inside = subcompose(SidebarSlot.Body) { body(head, folded) }
+            .map { it.measure(Constraints(maxWidth = width, minHeight = bodyHeight, maxHeight = bodyHeight)) }
         val all = top + inside + stack
         layout(constraints.constrainWidth(all.maxOfOrNull { it.width } ?: 0), constraints.constrainHeight(height)) {
             var y = 0
             (top + inside).forEach { it.placeRelative(0, y); y += it.height }
             // Placed last, so over the body when it keeps the height under them.
-            var at = sidebarNoticesTop(height, topHeight, stackHeight, least.roundToPx())
+            var at = sidebarNoticesTop(height, topHeight, stackHeight, band)
             stack.forEach { it.placeRelative(0, at); at += it.height }
         }
     }
 }
+
+/** The parts of [SidebarColumn], each composed where the column measures it. */
+private enum class SidebarSlot { Notices, Head, Body }
 
 /** The heading of one of Activity's groups (Blocked, Failed, Working, Done), as a session's header reads. */
 @Composable
