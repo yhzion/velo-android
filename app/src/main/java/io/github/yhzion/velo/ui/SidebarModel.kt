@@ -217,9 +217,9 @@ private fun BlockInfo?.asPane(tab: String, block: String?): TabInfo =
 
 /**
  * What a pane whose block is [info] is called on its own, by one rule wherever one pane is named (#208): its row's
- * name ([paneRow]), with no label of its tab's. That is the label the user gave it, else what its program reports,
- * else its program; a label the server makes from an ID ("Block 9ac42573", [ownTabLabel]) is not a name, and a pane
- * whose program is not reported is "Terminal" (#181, #198). The minimap's picker, its covered panes' row, the
+ * name ([paneRow]), with no label of its tab's. That is what its program reports (its title or its status), else the
+ * agent's or the program's name, else its block's label, but not one the server makes from an ID ("Block 9ac42573",
+ * [ownTabLabel]), else "Terminal" (#181, #198). It needs the live block, with its title: not the steady state's. The minimap's picker, its covered panes' row, the
  * palette, the hardware keys' pane picker, the close question, a move's ghost and a minimized pane's capsule say it.
  */
 internal fun paneName(info: BlockInfo?): String = info.asPane("", null).row("", shown = false, pane = true).name

@@ -606,7 +606,7 @@ internal fun PaneMoveOverlay(
         // No strip stands over the grid in a move's overview: its room hides the cards scrolled under the capsule, and
         // their places, as the strip does outside a move.
         if (stage.grid != null && stage.stripRoom > 0f) StripBackdrop(overview, Modifier.align(Alignment.TopCenter))
-        if (!move.pick) Ghost(conn, state, overview, move, stage, name)
+        if (!move.pick) Ghost(conn, overview, move, stage, name)
         // Read as the place under the finger and whether it is on the Cancel button, which change as the finger comes over
         // another place or onto and off the button, not as the finger, which moves on each frame (#373).
         val place = moves.shownPlace()
@@ -787,14 +787,15 @@ private fun PickNodes(
 
 /** The ghost of the pane being dragged, above the finger: its place and its name ([paneName]), then its first lines, on a raised surface. */
 @Composable
-private fun BoxScope.Ghost(conn: HostConnection, state: UiState, overview: OverviewState, move: PaneMoveSession, stage: Stage, name: (String) -> String) {
+private fun BoxScope.Ghost(conn: HostConnection, overview: OverviewState, move: PaneMoveSession, stage: Stage, name: (String) -> String) {
     val overlay = VeloTheme.colors.overlay
     val sizes = VeloTheme.sizes
     val shape = rounded(VeloTheme.radii.card)
     val lines = remember(move) {
         conn.viewportText(move.block).lines().map(String::trimEnd).filter(String::isNotEmpty).take(GhostLines)
     }
-    val header = ghostHeader(name(move.block), state.blocks[move.block])
+    // Named from the live state, as every other place names a pane (#208): the overlay's state is the steady one, without titles.
+    val header = remember(move) { ghostHeader(name(move.block), conn.state.blocks[move.block]) }
     Column(
         Modifier.align(AbsoluteAlignment.TopLeft)
             .layout { measurable, constraints ->

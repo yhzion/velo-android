@@ -16,7 +16,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader says the value of Sound volume and Font size once, on the slider, instead of first on its own and then again with the slider.
 - A screen reader says a remote's connection in the sidebar once, such as connection failed, instead of saying it again for the dot beside the name.
 - A screen reader reaches the program icon in the caption under the panes where it is on the screen, before the tab's name, instead of last after the key bar.
-- A pane is named the same way everywhere: closing it, the hardware keys' pane picker, a moved pane and a minimized pane's capsule say zsh or Terminal instead of Block 9ac42573.
+- A pane is named the same way everywhere: closing it, the hardware keys' pane picker and a minimized pane's capsule say zsh or Terminal instead of Block 9ac42573, and a moved pane shows its name.
 
 ## 2.15.0 - 2026-11-28
 
