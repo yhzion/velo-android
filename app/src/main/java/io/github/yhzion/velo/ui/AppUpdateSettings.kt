@@ -187,7 +187,7 @@ private fun ChannelRelease(host: SettingsHost, channel: UpdateChannel, installed
             lastCheck = UpdateSettings.lastCheck(ctx)
         } catch (e: CancellationException) { throw e }
         catch (limited: RateLimitedException) {
-            UpdateSettings.limitReached(ctx, limited.resetAt)
+            // The feed stored the limit as the API told it ([UpdateSettings.apiSeen]).
             problem = rateLimitText(limited.resetAt)
         }
         catch (_: Exception) { problem = "Couldn’t check for updates. Try again later." }

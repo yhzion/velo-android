@@ -38,19 +38,16 @@ internal object AutoUpdateCheck {
         lastAttempt = now
         val channel = UpdateSettings.channel(app)
         scope.launch {
-            var blockedUntil = 0L
             try {
-                blockedUntil = UpdateSettings.apiBlockedUntil(app)
+                val blockedUntil = UpdateSettings.apiBlockedUntil(app)
                 val release = runInterruptible(Dispatchers.IO) {
-                    ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil) { UpdateSettings.apiAnswered(app) }
+                    ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil, UpdateSettings.apiLimit(app, now))
                 }
                 UpdateSettings.record(app, channel, now, release)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (limited: RateLimitedException) {
-                // The stored limit itself, rethrown without asking the API: storing it again could
-                // undo another check that saw the API answer meanwhile (#264).
-                if (limited.resetAt != blockedUntil) UpdateSettings.limitReached(app, limited.resetAt)
+                // The feed stored the limit as the API told it ([UpdateSettings.apiSeen]).
                 Log.w("UpdateCheck", "Foreground update check waits for GitHub's limit to reset")
             } catch (failure: Exception) {
                 Log.w("UpdateCheck", "Foreground update check failed", failure)

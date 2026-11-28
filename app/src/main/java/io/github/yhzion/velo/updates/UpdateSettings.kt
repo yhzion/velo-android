@@ -23,6 +23,8 @@ internal object UpdateSettings {
     private const val SEEN = "seen"
     // Until when GitHub's API limit for this network is used up; it is shared by every channel.
     private const val API_BLOCKED_UNTIL = "apiBlockedUntil"
+    // The start time of the check whose answer from the API set that, or 0 (#274).
+    private const val API_SEEN_BY = "apiSeenBy"
 
     private fun prefs(context: Context) = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
 
@@ -100,15 +102,21 @@ internal object UpdateSettings {
     /** Until when automatic checks leave the API alone ([ReleaseFeed.update]); 0 when no limit was reported. */
     fun apiBlockedUntil(context: Context): Long = prefs(context).getLong(API_BLOCKED_UNTIL, 0L)
 
-    /** A check was told GitHub's limit is used up until [resetAt] ([RateLimitedException]). */
-    fun limitReached(context: Context, resetAt: Long) {
-        prefs(context).edit().putLong(API_BLOCKED_UNTIL, resetAt).apply()
-    }
+    /** Where the check that started at [startedAt] tells what the API said of its limit ([ReleaseFeed.check]). */
+    fun apiLimit(context: Context, startedAt: Long) = ApiLimit { blockedUntil -> apiSeen(context, startedAt, blockedUntil) }
 
-    /** The API returned a page ([ReleaseFeed.check]): a limit stored before no longer holds (#264). */
-    fun apiAnswered(context: Context) {
+    /**
+     * The check that started at [startedAt] had an answer from the API: its limit is used up until [blockedUntil]
+     * (a refusal, or a 200 with no request left), or 0 when it is not (#264). The latest check's word stands (#274):
+     * a slow check that started before it, perhaps on another network, neither stores a limit over its clearing
+     * nor clears its limit.
+     */
+    @Synchronized fun apiSeen(context: Context, startedAt: Long, blockedUntil: Long) {
         val prefs = prefs(context)
-        if (prefs.contains(API_BLOCKED_UNTIL)) prefs.edit().remove(API_BLOCKED_UNTIL).apply()
+        if (!replacesStoredCheck(startedAt, prefs.getLong(API_SEEN_BY, 0L), System.currentTimeMillis())) return
+        val edit = prefs.edit().putLong(API_SEEN_BY, startedAt)
+        if (blockedUntil > 0) edit.putLong(API_BLOCKED_UNTIL, blockedUntil) else edit.remove(API_BLOCKED_UNTIL)
+        edit.apply()
     }
 
     /**

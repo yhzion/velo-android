@@ -14,10 +14,21 @@ import kotlinx.serialization.json.longOrNull
 /** GitHub refused the API request: its hourly limit for this network is used up until [resetAt] (epoch ms). */
 class RateLimitedException(val resetAt: Long) : IOException("GitHub's request limit is reached.")
 
+/**
+ * What checks learn of GitHub's API limit for this network, told for each answer the API gives (#264, #274):
+ * [blockedUntil] (epoch ms) when it refused a request or answered the last one it allows until then, else 0.
+ */
+fun interface ApiLimit {
+    fun seen(blockedUntil: Long)
+}
+
+/** A page of the API's release list, and until when its headers say no request is left (0: some are). */
+internal class ApiPage(val text: String, val usedUpUntil: Long = 0L)
+
 /** Where the feed reads from; [ReleaseFeed]'s network by default, a fake in tests. */
 internal interface FeedSource {
     /** Page [page] (from 1) of the API's release list. */
-    fun page(page: Int): String
+    fun page(page: Int): ApiPage
 
     /** The latest release's update manifest, and the tag the download redirect named as the latest. */
     fun manifest(): Pair<String, String>
@@ -66,35 +77,43 @@ object ReleaseFeed {
      * Blocking I/O. Eligible releases newer than [installedCode], newest first; the first of them is
      * the update. Every one when the API answered; on the stable channel, the manifest's release alone
      * when the API failed or saw no newer one ([check]). Empty means no eligible update, not a failed check.
-     * [onApiAnswered] runs once the API returns a page: a limit stored before no longer holds.
+     * [limit] is told what each of the API's answers says of its limit.
      */
-    fun newer(channel: UpdateChannel, installedCode: Long, onApiAnswered: () -> Unit): List<AppRelease> =
-        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network, onApiAnswered = onApiAnswered)
+    fun newer(channel: UpdateChannel, installedCode: Long, limit: ApiLimit): List<AppRelease> =
+        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network, limit = limit)
 
     /**
      * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
      * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
      */
-    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, onApiAnswered: () -> Unit): AppRelease? =
-        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network, onApiAnswered = onApiAnswered).firstOrNull()
+    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, limit: ApiLimit): AppRelease? =
+        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network, limit = limit).firstOrNull()
 
     /**
      * Stable checks read the latest release's update manifest first: a release download, so not under
      * the API's 60-an-hour limit that every device behind one router shares. Any doubt about it, or
      * another channel, asks the API, unless a limit it reported ([apiBlockedUntil]) has not passed.
      * [everyRelease] also asks the API for every newer release's notes when the manifest found one,
-     * and keeps the manifest's release if the API fails or disagrees. [onApiAnswered] runs once, when
-     * the API first returns a page (#264): a limit stored before, perhaps on another network, is over.
-     * A refusal stored while the API was not asked is rethrown with that same [apiBlockedUntil].
+     * and keeps the manifest's release if the API fails or disagrees. [limit] is told of each answer
+     * of the API as it comes (#264, #274): a page ends a limit stored before, perhaps on another network,
+     * unless its headers say it was the last request allowed; a refusal stores one, also when the
+     * manifest's release is kept despite it. A refusal stored while the API was not asked is rethrown
+     * with that same [apiBlockedUntil], and [limit] is not told of it.
      */
     internal fun check(
         channel: UpdateChannel, installedCode: Long, everyRelease: Boolean, apiBlockedUntil: Long, source: FeedSource,
-        now: Long = System.currentTimeMillis(), onApiAnswered: () -> Unit = {},
+        now: Long = System.currentTimeMillis(), limit: ApiLimit = ApiLimit {},
     ): List<AppRelease> {
         val blocked = apiBlockedUntil > now && apiBlockedUntil - now <= RATE_LIMIT_WAIT.last
-        var answered = false
         val readPage = { page: Int ->
-            source.page(page).also { if (!answered) { answered = true; onApiAnswered() } }
+            val answer = try {
+                source.page(page)
+            } catch (refused: RateLimitedException) {
+                limit.seen(refused.resetAt)
+                throw refused
+            }
+            limit.seen(answer.usedUpUntil)
+            answer.text
         }
         if (channel == UpdateChannel.Stable) {
             val found = try {
@@ -245,10 +264,19 @@ object ReleaseFeed {
      * minute, at most an hour.
      */
     internal fun rateLimit(status: Int, remaining: String?, reset: String?, serverDate: Long, now: Long): RateLimitedException? {
-        if (status != 403 && status != 429 || remaining?.trim() != "0") return null
+        if (status != 403 && status != 429) return null
+        return usedUpUntil(remaining, reset, serverDate, now).takeIf { it > 0 }?.let(::RateLimitedException)
+    }
+
+    /**
+     * Until when the API allows no more requests, by an answer's headers, or 0 when [remaining] is not 0: a 200
+     * can carry the hour's last request (#274), and is then a limit as a refusal is ([rateLimit]).
+     */
+    internal fun usedUpUntil(remaining: String?, reset: String?, serverDate: Long, now: Long): Long {
+        if (remaining?.trim() != "0") return 0L
         val resetAt = reset?.trim()?.toLongOrNull()?.times(1000)
         val wait = if (resetAt == null) RATE_LIMIT_WAIT.last else resetAt - (if (serverDate > 0) serverDate else now)
-        return RateLimitedException(now + wait.coerceIn(RATE_LIMIT_WAIT))
+        return now + wait.coerceIn(RATE_LIMIT_WAIT)
     }
 
     private fun JsonArray.uploaded(name: String, url: String): JsonObject? {
@@ -261,24 +289,27 @@ object ReleaseFeed {
     private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     private object Network : FeedSource {
-        override fun page(page: Int) =
-            fetch("$API?per_page=$PER_PAGE&page=$page", MAX_PAGE_BYTES, api = true).first
+        override fun page(page: Int) = fetch("$API?per_page=$PER_PAGE&page=$page", MAX_PAGE_BYTES, api = true)
+            .let { ApiPage(it.text, it.usedUpUntil) }
 
         override fun manifest(): Pair<String, String> {
-            val (text, via) = fetch("$REPOSITORY/releases/latest/download/$MANIFEST", MAX_MANIFEST_BYTES, api = false)
+            val fetched = fetch("$REPOSITORY/releases/latest/download/$MANIFEST", MAX_MANIFEST_BYTES, api = false)
             // The first redirect names the release "latest" stands for.
-            val tag = via.firstOrNull()?.let(::latestTag) ?: throw IOException("The latest release was not named.")
-            return tag to text
+            val tag = fetched.via.firstOrNull()?.let(::latestTag) ?: throw IOException("The latest release was not named.")
+            return tag to fetched.text
         }
 
-        override fun asset(tag: String, name: String) = fetch(downloadUrl(tag, name), MAX_CHECKSUM_BYTES, api = false).first
+        override fun asset(tag: String, name: String) = fetch(downloadUrl(tag, name), MAX_CHECKSUM_BYTES, api = false).text
     }
+
+    /** What [fetch] read: the text, the redirects followed to it, and for the API until when no request is left (0: some are). */
+    private class Fetched(val text: String, val via: List<String>, val usedUpUntil: Long)
 
     /**
      * The text at [address] and the redirects followed to it. The API is read without redirects; a
      * download follows a few, as [downloadRedirect] allows.
      */
-    private fun fetch(address: String, maxBytes: Int, api: Boolean): Pair<String, List<String>> {
+    private fun fetch(address: String, maxBytes: Int, api: Boolean): Fetched {
         var uri = URI(address)
         val via = mutableListOf<String>()
         for (hop in 0..MAX_REDIRECTS) {
@@ -293,7 +324,11 @@ object ReleaseFeed {
                     connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
                 }
                 val status = connection.responseCode
-                if (status == HttpURLConnection.HTTP_OK) return read(connection, maxBytes) to via
+                if (status == HttpURLConnection.HTTP_OK) {
+                    val usedUp = if (!api) 0L else usedUpUntil(connection.getHeaderField("X-RateLimit-Remaining"),
+                        connection.getHeaderField("X-RateLimit-Reset"), connection.date, System.currentTimeMillis())
+                    return Fetched(read(connection, maxBytes), via, usedUp)
+                }
                 if (!api && status in setOf(301, 302, 303, 307, 308)) {
                     val location = connection.getHeaderField("Location") ?: throw IOException("Redirect without a location.")
                     uri = downloadRedirect(uri, location)

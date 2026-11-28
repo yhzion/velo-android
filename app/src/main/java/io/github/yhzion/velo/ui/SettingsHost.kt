@@ -130,7 +130,7 @@ internal class AppSettingsHost(private val app: AppController, context: Context)
     override fun setTailnetName(name: String) = app.setTailnetName(name)
     override fun logoutTailnet() = app.logoutTailnet()
     override val sshSecrets get() = app.sshSecrets
-    override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed) { UpdateSettings.apiAnswered(appContext) }
+    override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed, UpdateSettings.apiLimit(appContext, System.currentTimeMillis()))
     override val installsReleases get() = "arm64-v8a" in android.os.Build.SUPPORTED_ABIS
     override fun readNotice(asset: String) = readNotice(asset, appContext.assets::open)
 }

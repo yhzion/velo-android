@@ -37,9 +37,11 @@ class UpdateManifestTest {
         val text: String = manifest(),
         val checksum: (String) -> String = { tag -> "${sha.lowercase()}  velo-$tag-arm64-v8a.apk\n" },
         val api: (Int) -> String = { throw AssertionError("The API was asked") },
+        /** Until when each page's headers say no request is left: 0 while some are. */
+        val usedUp: (Int) -> Long = { 0L },
     ) : FeedSource {
         var apiCalls = 0
-        override fun page(page: Int): String { apiCalls++; return api(page) }
+        override fun page(page: Int): ApiPage { apiCalls++; return ApiPage(api(page), usedUp(page)) }
         override fun manifest(): Pair<String, String> = (latest ?: throw IOException("404")) to text
         override fun asset(tag: String, name: String): String {
             assertEquals("velo-$tag-arm64-v8a.apk.sha256", name)
@@ -131,32 +133,66 @@ class UpdateManifestTest {
         assertEquals(0, noManifest.apiCalls + preview.apiCalls)
     }
 
-    /** #264: a page from the API, on any channel, ends a stored limit; a refusal or a skipped API does not. */
-    @Test fun theApiAnsweringOnceEndsAStoredLimit() {
-        fun answers(source: FeedSource, channel: UpdateChannel = UpdateChannel.Stable, installed: Long = 3000051,
-            everyRelease: Boolean = true, blockedUntil: Long = 0): Int {
-            var count = 0
-            try {
-                ReleaseFeed.check(channel, installed, everyRelease, blockedUntil, source, now) { count++ }
-            } catch (_: IOException) {}
-            return count
-        }
+    /** What the feed tells of the API's limit in one check: each answer's blockedUntil, 0 for a page with requests left. */
+    private fun seen(source: FeedSource, channel: UpdateChannel = UpdateChannel.Stable, installed: Long = 3000051,
+        everyRelease: Boolean = true, blockedUntil: Long = 0): List<Long> {
+        val told = mutableListOf<Long>()
+        try {
+            ReleaseFeed.check(channel, installed, everyRelease, blockedUntil, source, now) { told += it }
+        } catch (_: IOException) {}
+        return told
+    }
+
+    /** #264: a page from the API, on any channel, ends a stored limit; a refusal stores one; a skipped API tells nothing. */
+    @Test fun eachAnswerOfTheApiTellsItsLimit() {
         val page = { _: Int -> "[${apiEntry("v2.16.1", 3000053)}]" }
-        assertEquals(1, answers(Fake(api = page)))
-        assertEquals(1, answers(Fake(latest = null, api = page), everyRelease = false))
-        assertEquals(1, answers(Fake(api = { "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }), UpdateChannel.Edge, everyRelease = false))
-        // Once for a list of several pages.
+        assertEquals(listOf(0L), seen(Fake(api = page)))
+        assertEquals(listOf(0L), seen(Fake(latest = null, api = page), everyRelease = false))
+        assertEquals(listOf(0L), seen(Fake(api = { "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }), UpdateChannel.Edge, everyRelease = false))
+        // Each page of a list of several.
         val full = (1..100).joinToString(",", "[", "]") { apiEntry("v2.15.$it", 3000000L + it) }
         val twoPages = Fake(api = { if (it == 1) full else "[]" })
-        assertEquals(1, answers(twoPages, installed = 2_000_000))
+        assertEquals(listOf(0L, 0L), seen(twoPages, installed = 2_000_000))
         assertEquals(2, twoPages.apiCalls)
         // A list that does not parse still came back with 200: the limit is not used up.
-        assertEquals(1, answers(Fake(latest = null, api = { "not json" }), everyRelease = false))
-        assertEquals(0, answers(Fake(api = { throw RateLimitedException(now + 60_000) })))
-        assertEquals(0, answers(Fake(latest = null, api = { throw IOException("offline") }), everyRelease = false))
-        assertEquals(0, answers(Fake(), installed = 3000053)) // nothing newer: the API is not asked
-        assertEquals(0, answers(Fake(), everyRelease = false)) // an automatic stable check: the manifest alone
-        assertEquals(0, answers(Fake(), UpdateChannel.Preview, blockedUntil = now + 60_000))
+        assertEquals(listOf(0L), seen(Fake(latest = null, api = { "not json" }), everyRelease = false))
+        assertEquals(listOf(now + 60_000), seen(Fake(api = { throw RateLimitedException(now + 60_000) })))
+        assertEquals(listOf(now + 60_000), seen(Fake(latest = null, api = { throw RateLimitedException(now + 60_000) }), everyRelease = false))
+        assertEquals(emptyList<Long>(), seen(Fake(latest = null, api = { throw IOException("offline") }), everyRelease = false))
+        assertEquals(emptyList<Long>(), seen(Fake(), installed = 3000053)) // nothing newer: the API is not asked
+        assertEquals(emptyList<Long>(), seen(Fake(), everyRelease = false)) // an automatic stable check: the manifest alone
+        // The stored limit rethrown without asking the API: not told again.
+        assertEquals(emptyList<Long>(), seen(Fake(), UpdateChannel.Preview, blockedUntil = now + 60_000))
+    }
+
+    /**
+     * #274, case 1: a manual stable check keeps the manifest's release when the API refuses a later page, and the
+     * refusal is still told after the first page's 200, so the limit is stored.
+     */
+    @Test fun aRefusalOfALaterPageIsToldThoughTheManifestsReleaseIsKept() {
+        val full = (1..100).joinToString(",", "[", "]") { apiEntry("v2.15.$it", 3000000L + it) }
+        val refused = Fake(api = { if (it == 1) full else throw RateLimitedException(now + 20 * 60_000) })
+        val told = mutableListOf<Long>()
+        val found = ReleaseFeed.check(UpdateChannel.Stable, 2_000_000, everyRelease = true, apiBlockedUntil = 0, refused, now) { told += it }
+        assertEquals(listOf("v2.16.1"), found.map { it.tag })
+        assertEquals(listOf(0L, now + 20 * 60_000), told)
+    }
+
+    /** #274, case 2: a 200 with no request left tells the limit, not its end, so the next automatic check waits. */
+    @Test fun aPageWithNoRequestLeftTellsTheLimit() {
+        val page = { _: Int -> "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }
+        val last = Fake(latest = null, api = page, usedUp = { now + 30 * 60_000 })
+        assertEquals(listOf(now + 30 * 60_000), seen(last, UpdateChannel.Edge, everyRelease = false))
+        // Its release is still found.
+        assertEquals(listOf("v2.16.1-edge.1"), check(Fake(latest = null, api = page, usedUp = { now + 30 * 60_000 }), UpdateChannel.Edge).map { it.tag })
+    }
+
+    /** The headers of a 200: a limit only when no request is left, by the server's clock as for a refusal. */
+    @Test fun aPagesHeadersSayWhetherARequestIsLeft() {
+        val server = now - 5 * 60_000
+        assertEquals(now + 20 * 60_000, ReleaseFeed.usedUpUntil("0", ((server + 20 * 60_000) / 1000).toString(), server, now))
+        assertEquals(0L, ReleaseFeed.usedUpUntil("1", "1800000000", server, now))
+        assertEquals(0L, ReleaseFeed.usedUpUntil(null, null, server, now))
     }
 
     @Test fun aPassedOrImplausibleLimitDoesNotHoldTheApi() {

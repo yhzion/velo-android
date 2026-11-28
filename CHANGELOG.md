@@ -19,6 +19,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader now finds every pane the keyboard squeezes to a line, the pane that takes the keys among them, instead of skipping them under the resize handles.
 - A split tab of a session other than the one shown now stacks its panes' programs, such as Claude Code, behind its sidebar tile, and its screen reader label names them.
 - A screen reader also finds a pane while a split beside it is dragged or its new size is on its way, instead of losing it under the handle for a moment.
+- After GitHub's hourly limit, Velo keeps it even when the last request of the hour succeeds or a later page is refused, and a slow check no longer brings back a limit a newer check cleared.
 
 ## 2.16.1 - 2026-11-28
 
