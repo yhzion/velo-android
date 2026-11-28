@@ -6,8 +6,8 @@
 # Maven Central answered 429 more than six times, and a manual rerun passed each time. A compile error, a failing test, a missing library or any other failure
 # ends the run at once; the one exception is a plugin version that does not exist (see below).
 #
-# Robolectric downloads its android-all jar itself, inside the test JVM and not through Gradle;
-# a 429 there ends as a failing test and is not retried.
+# Robolectric's android-all jar is resolved by Gradle too (app/build.gradle.kts, #214), so a 429
+# on it is retried like any other download; Robolectric itself runs offline inside the tests.
 #
 # Maven Central's 429 can last longer than a few minutes (#221: on PR #216 three runs over
 # 3.5 minutes all got it), so the waits add up to 12 minutes: 60, 120, 240 and 300 seconds.
