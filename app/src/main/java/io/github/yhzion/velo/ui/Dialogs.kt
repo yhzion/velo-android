@@ -31,6 +31,7 @@ import io.github.yhzion.velo.ui.theme.VeloSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * An open close dialog: what it would close ([target], ids only) and the connection that is on.
@@ -87,20 +88,35 @@ internal fun RenameDialog(title: String, initial: String, allowEmpty: Boolean, o
  * [ErrorNotice] so the time does not start over when the notice moves between the pane area and the
  * sidebar that covers the panes. A person who needs more time to read gets it from the accessibility
  * setting; 4 seconds is the time without one.
+ *
+ * The time counts only while the notice is on screen (#280): where it waits behind a newer notice in the pane column or
+ * the sidebar ([NoticeWait], #192, #240), as behind an upload's toast that came after it, [heard] knows, and the time
+ * stops until it shows again. Else an upload longer than its time would end it unseen.
  */
 @Composable
-internal fun ErrorNoticeTimer(conn: HostConnection) {
+internal fun ErrorNoticeTimer(conn: HostConnection, heard: HeardNotices? = null) {
     val accessibility = LocalAccessibilityManager.current
     conn.error?.let { msg ->
         // A renewal starts the time again although the text stays (the user's Reconnect, #277).
         val reports = conn.errorReports
-        LaunchedEffect(conn, msg, reports) {
-            delay(accessibility?.calculateRecommendedTimeoutMillis(4000L, containsText = true) ?: 4000L)
+        LaunchedEffect(conn, msg, reports, heard) {
+            // Any showing of this renewal: its words can change while it shows, as an SSH login's answer does.
+            val mine = { key: Any -> key is ErrorNoticeKey && key.reports == reports }
+            var left = accessibility?.calculateRecommendedTimeoutMillis(4000L, containsText = true) ?: 4000L
+            while (left > 0) {
+                if (heard != null) snapshotFlow { heard.offScreen(mine) }.first { !it }
+                val step = minOf(left, ErrorNoticeStepMs)
+                delay(step)
+                left -= step
+            }
             // Not a notice that came in as this one ended, before the effect was replaced.
             conn.expireError(msg, reports)
         }
     }
 }
+
+/** How often [ErrorNoticeTimer] looks whether its notice waits: a step that starts on screen counts whole. */
+private const val ErrorNoticeStepMs = 100L
 
 /**
  * The notice for [HostConnection.error]. The caller places it with [modifier] inside a box that is

@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -228,7 +229,7 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
  * this one is on screen.
  */
 @Stable
-internal class NoticeWait(private val heard: HeardNotices?, private val key: Any) {
+internal class NoticeWait(private val heard: HeardNotices?, internal val key: Any) {
     private val made = nextNoticeAge()
     // What [PaneNotices] last said, read there without observing the states below.
     private var onScreenNow = true
@@ -266,7 +267,14 @@ internal class NoticeWait(private val heard: HeardNotices?, private val key: Any
 
 /** The [NoticeWait] of the notice [key] that [heard] knows: a new one for new words, which are a new showing. */
 @Composable
-internal fun rememberNoticeWait(heard: HeardNotices?, key: Any): NoticeWait = remember(heard, key) { NoticeWait(heard, key) }
+internal fun rememberNoticeWait(heard: HeardNotices?, key: Any): NoticeWait {
+    val wait = remember(heard, key) { NoticeWait(heard, key) }
+    if (heard != null) DisposableEffect(heard, wait) {
+        heard.waits += wait
+        onDispose { heard.waits -= wait }
+    }
+    return wait
+}
 
 /**
  * Lets the notice wait in [PaneNotices] or the sidebar as [wait] says ([NoticeWait]), and leaves it out of what a
@@ -347,6 +355,17 @@ internal class HeardNotices {
     // new one is remembered, keeps the age.
     private val held = mutableMapOf<Any, Int>()
     private val ages = mutableMapOf<Any, Long>()
+
+    /** The nodes made for the notices that wait where they do not fit ([rememberNoticeWait]), in the pane column and the sidebar. */
+    internal val waits = mutableStateListOf<NoticeWait>()
+
+    /**
+     * Whether the notice whose key [matches] waits off the screen wherever it is drawn (#280): it has a node that waits,
+     * and none of its nodes is on screen. [ErrorNoticeTimer] stops the error's time then, so that it is seen for all of
+     * it once it shows.
+     */
+    fun offScreen(matches: (Any) -> Boolean): Boolean =
+        waits.filter { matches(it.key) }.let { it.isNotEmpty() && it.all(NoticeWait::waiting) }
 
     /** Whether a node made now for the notice [key] reads it out: no node shows it yet. */
     fun isNew(key: Any): Boolean = key !in showing

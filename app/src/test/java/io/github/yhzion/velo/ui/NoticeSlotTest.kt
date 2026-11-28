@@ -31,7 +31,10 @@ import io.github.yhzion.velo.ui.theme.ToastSurface
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
@@ -660,6 +663,71 @@ class NoticeSlotTest {
         realSidebarNotices(600, upload = false, error = longerError)
         val error = bounds("error")
         assertTrue("two lines: $error", error.bottom - error.top >= 67.5.dp)
+    }
+
+    // #280: an error that waits behind a newer upload's toast keeps its time until it shows, in the pane column and the
+    // sidebar alike, and a screen reader, which heard it before it waited, does not hear it again when it is back.
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun anErrorWaitingBehindTheUploadInThePaneColumnKeepsItsTime() = assertTheErrorKeepsItsTimeBehindTheUpload(sidebar = false)
+
+    @Test fun anErrorWaitingBehindTheUploadInTheSidebarKeepsItsTime() = assertTheErrorKeepsItsTimeBehindTheUpload(sidebar = true)
+
+    /**
+     * The error shows for a second, then an upload starts and its newer toast takes the room: in the pane column of
+     * [realNotices] at font scale 2, or in the sidebar 130 dp tall of [realSidebarNotices]. The upload lasts 10 s,
+     * more than the error's 4. The error then shows for the rest of its time, no live region, and goes.
+     */
+    private fun assertTheErrorKeepsItsTimeBehindTheUpload(sidebar: Boolean) {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, if (sidebar) 1f else 2f)) {
+                VeloTheme {
+                    val heard = remember { HeardNotices() }
+                    val notices = @Composable {
+                        UploadToast(c, heard, waits = true, Modifier.testTag("upload"))
+                        ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
+                    }
+                    if (sidebar) Box(Modifier.width(800.dp).height(130.dp)) {
+                        Sidebar(DeviceRow("velo-phone", "Running", "Running", TailnetChip("Connected", Status.Ok)), emptyList(),
+                            Modifier.fillMaxSize(), actions(), notices = notices)
+                    } else Box(Modifier.width(velvetColumn.dp).height(137.dp)) {
+                        val px = LocalDensity.current.density
+                        PaneNotices({ Rect(0f, 0f, velvetColumn * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, velvetColumn * px, 120 * px) },
+                            padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize(), content = notices)
+                    }
+                    ErrorNoticeTimer(c, heard)
+                }
+            }
+        }
+        // After the fake core's state is applied: a connected state clears the error notice.
+        compose.waitForIdle()
+        // From here the error's time runs only as the test moves the clock; waiting for idle only delivers each change.
+        compose.mainClock.autoAdvance = false
+        fun live() = compose.onNodeWithTag("error").fetchSemanticsNode().config.getOrNull(SemanticsProperties.LiveRegion)
+        c.error = errorText
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        assertTrue("the error shows", placed("error"))
+        assertEquals("read out as it shows", LiveRegionMode.Polite, live())
+        c.uploading = "Uploading $uploadName…"
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(200)
+        assertTrue("the newer toast shows", placed("upload"))
+        assertTrue("the error waits", !placed("error"))
+        compose.mainClock.advanceTimeBy(10_000)
+        assertEquals("the error is still to be seen", errorText, c.error)
+        c.uploading = null
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(200)
+        assertTrue("the error is back", placed("error"))
+        assertEquals("heard before it waited, it is not read again (#195)", null, live())
+        // At most 1.4 s counted so far: shown 1 s, the steps as the upload came, and these 0.2 s.
+        compose.mainClock.advanceTimeBy(2_000)
+        assertEquals("the error keeps the rest of its time", errorText, c.error)
+        compose.mainClock.advanceTimeBy(1_500)
+        assertEquals("and goes at its end", null, c.error)
     }
 
     private fun actions() = SidebarActions(

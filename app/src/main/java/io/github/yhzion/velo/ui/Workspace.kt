@@ -1188,7 +1188,7 @@ internal fun Workspace(
         if (remote != null) SshDetailsPanel(app, remote, onDismiss = { sshDetailsFor = null })
         else LaunchedEffect(asked) { sshDetailsFor = null }
     }
-    ErrorNoticeTimer(conn)
+    ErrorNoticeTimer(conn, heard)
 }
 
 /**
