@@ -79,7 +79,10 @@ class ScrollFocusEventTest {
         assertEquals(0, events.count { it == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED })
     }
 
-    /** With Compose's default, the same scroll sends it: the scene shows the jump, so the test above can fail. */
+    /**
+     * With Compose's default, the same scroll sends it: the scene shows the jump, so the test above can fail. When a
+     * Compose update makes this fail, Compose has changed what the flag does: decide again if the app turns it off.
+     */
     @Test fun `with Compose's default the scroll sends one`() {
         AndroidComposeUiFlags.isScrollAccessibilityFocusEventEnabled = true
         val events = scrollWithFocusUp()
