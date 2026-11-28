@@ -48,7 +48,7 @@ internal fun keyIcon(key: String): ImageVector? = keyIcons[key]
 internal fun KeyLegend(key: String, color: Color, modifier: Modifier = Modifier) {
     val icon = keyIcon(key)
     if (icon != null) {
-        Icon(icon, contentDescription = null, modifier = modifier.size(VeloTheme.sizes.iconSmall), tint = color)
+        Icon(icon, contentDescription = null, modifier = modifier.size(VeloTheme.sizes.keyIcon), tint = color)
     } else {
         Text(keyName(key), modifier.clearAndSetSemantics {}, style = VeloTheme.type.key, color = color, maxLines = 1, softWrap = false)
     }

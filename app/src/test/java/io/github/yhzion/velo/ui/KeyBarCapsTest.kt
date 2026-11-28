@@ -128,6 +128,39 @@ class KeyBarCapsTest {
         assertEquals(325f, width(bar), 0.5f)
     }
 
+    @Test fun theLastKeyOfAShortSecondRowTakesTheTapsToTheStripsEnd() {
+        // Eleven keys on the upright bar phone: six over five, the sixth place of the second row empty.
+        val eleven = keys + listOf("Enter", "Shift")
+        show(325.dp, keys = eleven)
+        val bar = bounds("key-bar")
+        val caps = eleven.map { bounds(keyTestTag(it)) }
+        assertEquals(106f, height(bar), 1f)
+        for (cap in caps) assertEquals(width(caps.first()), width(cap), 0.5f)
+        // The last cap stands under the fifth, not stretched over the empty place.
+        assertEquals(caps[4].right.value, caps.last().right.value, 0.5f)
+        // Its key takes the taps over the empty place, up to the strip's end, as the last key of the first row does.
+        assertEquals(bar.right.value, key(eleven[5]).getBoundsInRoot().right.value, 0.5f)
+        assertEquals(bar.right.value, key(eleven.last()).getBoundsInRoot().right.value, 0.5f)
+        assertEquals(bar.bottom.value, key(eleven.last()).getBoundsInRoot().bottom.value, 0.5f)
+    }
+
+    @Test fun inCompactStyleTheBarKeepsAGapToTheKeyboardUnderIt() {
+        // The workspace's outer margin in Compact style is 4 pixels; under the key bar it is made up to gapCompact.
+        val outer = (4 / compose.density.density).dp
+        val clearance = keyBarClearance(compact = true, outer = outer, gapCompact = 4.dp)
+        compose.setContent {
+            VeloTheme(UiSize.Medium) {
+                Column(Modifier.width(325.dp).testTag("column")) {
+                    KeyBar(keys, emptySet(), keyBarSlot(4.dp, clearance), upright = true) { _, _ -> }
+                }
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(4f, (bounds("column").bottom - bounds("key-bar").bottom).value + outer.value, 0.5f)
+        // The other style's margin is a whole gap already, and nothing is added.
+        assertEquals(0.dp, keyBarClearance(compact = false, outer = 8.dp, gapCompact = 4.dp))
+    }
+
     @Test fun theBarPhoneBarOnItsSideScrollsInOneRow() {
         show(325.dp, upright = false)
         val bar = bounds("key-bar")
@@ -165,8 +198,9 @@ class KeyBarCapsTest {
     @Test fun tabEnterShiftAndSpaceAreDrawnAsIconsAndSaidInWords() {
         val drawn = listOf("Tab", "Enter", "Shift", "Space")
         for (key in drawn) assertNotNull(key, keyIcon(key))
-        // ALT stays a word: the ink of a word is wider than an icon's box.
-        val icon = veloSizes(UiSize.Medium).iconSmall.value
+        // Drawn at 20 at Medium, as the canvas draws them on a key. ALT stays a word: its ink is wider than an icon's box.
+        val icon = veloSizes(UiSize.Medium).keyIcon.value
+        assertEquals(20f, icon, 0.01f)
         show(560.dp, keys = drawn + "Alt")
         for (key in drawn) key(key).assertContentDescriptionEquals(key)
         fun ink(key: String): Float {
