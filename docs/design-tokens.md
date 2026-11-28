@@ -314,7 +314,7 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `keyCap` | 44 at Medium, kept at 44 (`MinKey`) | A key's cap inside the strip (#218). |
 | `keyGap` | 6 at Medium | Between two caps on the key bar, and between the caps and the strip's edge on every side (#218). |
 | `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
-| `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style, and under the key bar, over the keyboard or the screen's edge (#218: the outer margin of 4 pixels is made up to it there, `keyBarClearance`). |
+| `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style, and under the key bar, over the keyboard or the screen's edge (#218: the outer margin of 4 pixels is made up to it there, `keyBarClearance`, so 3.4 dp at Medium). |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |
 | `menuItem` | 48 | A menu item. derived: M03 45.7 and AK 44.8, raised to Android's least touch target. |
 | `menuWidth` | 285 | The widest a menu grows (M03 284.8). |
