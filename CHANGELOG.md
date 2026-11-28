@@ -16,6 +16,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - A screen reader says a remote's name and connection, and a tab's name and status, in the sidebar even when the Filter field covers part of the row.
 - A screen reader's focus stays on the sidebar's toolbar or This Device as a notice comes and goes in a short sidebar, such as a split screen.
 - In landscape with the keyboard up, the sidebar shows the newer of the upload and error notices and keeps them off the Filter field; a long error alone there shows one line, read whole.
+- A screen reader now finds every pane the keyboard squeezes to a line, the pane that takes the keys among them, instead of skipping them under the resize handles.
 
 ## 2.16.1 - 2026-11-28
 

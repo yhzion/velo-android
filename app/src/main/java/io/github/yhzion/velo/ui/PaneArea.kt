@@ -258,14 +258,26 @@ private fun LayoutTree(
             val currentCommit by rememberUpdatedState(commit)
             val bounds = if (column) Modifier.offset(y = start).fillMaxWidth().height(hit)
                 else Modifier.offset(x = start).width(hit).fillMaxHeight()
-            Box(bounds.semantics {
+            val handleSays: SemanticsPropertyReceiver.() -> Unit = {
                 contentDescription = if (column) "Resize panes above and below" else "Resize panes left and right"
                 progressBarRangeInfo = ProgressBarRangeInfo(r, 0.05f..0.95f)
                 setProgress { value ->
                     currentCommit(value.coerceIn(0.05f, 0.95f))
                     true
                 }
-            }.pointerInput(before, after, column, pixels, sign) {
+            }
+            // A screen reader finds the handle on its hit area, or on the gap alone where that area could cover a pane
+            // beside it (#272): Compose leaves out of the accessibility tree a node the nodes above it cover, and the hit
+            // area reaches into each pane beside the gap, so a pane the keyboard squeezed to a line between two handles,
+            // the input target among them, was in no part uncovered. The touch area and the grip stay as they were.
+            val reach = (hit - gap).coerceAtLeast(0.dp) / 2
+            val gapOnly = handleOnGapOnly(reach, a.edgePaneExtent(column, end = true, space * r, gap),
+                b.edgePaneExtent(column, end = false, space * (1f - r), gap))
+            // A pixel in from each side of the gap, so that the panes' rounding to pixels puts no part of it on a pane.
+            val inset = with(LocalDensity.current) { 1.toDp() }.coerceAtMost(gap / 4)
+            val gapAt = (space * r - start).coerceIn(0.dp, (hit - gap).coerceAtLeast(0.dp)) + inset
+            val across = gap - inset * 2
+            Box(bounds.then(if (gapOnly) Modifier else Modifier.semantics(properties = handleSays)).pointerInput(before, after, column, pixels, sign) {
                 try {
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -301,6 +313,9 @@ private fun LayoutTree(
                 val grip = if (column) Modifier.size(32.dp, 3.dp) else Modifier.size(3.dp, 32.dp)
                 Spacer(grip.background(VeloTheme.paneFocus.copy(alpha = if (dragged == null) 0.5f else 1f),
                     androidx.compose.foundation.shape.CircleShape))
+                // The handle's name and action on the gap alone, where its hit area would cover a squeezed pane.
+                if (gapOnly) Spacer((if (column) Modifier.align(Alignment.TopStart).offset(y = gapAt).fillMaxWidth().height(across)
+                    else Modifier.align(Alignment.TopStart).offset(x = gapAt).width(across).fillMaxHeight()).semantics(properties = handleSays))
             }
         }
     }
@@ -324,6 +339,28 @@ internal fun Modifier.paneFrame(focused: Boolean, radius: Dp, focusMark: () -> F
         drawRoundRect(color, Offset(width / 2, width / 2), Size(size.width - width, size.height - width),
             CornerRadius(radius.toPx() - width / 2), Stroke(width))
     }
+}
+
+/**
+ * Whether a handle says its name on the gap alone (#272): where its hit area, reaching [reach] into each side, could
+ * cover a pane beside the gap whole, with another handle's from the pane's other side, so [before] or [after], the
+ * least of the panes that touch the gap on each side ([edgePaneExtent]), is no more than two reaches.
+ */
+internal fun handleOnGapOnly(reach: Dp, before: Dp, after: Dp): Boolean = minOf(before, after) <= reach * 2
+
+/**
+ * The least length, along a split's axis ([column]: heights, else widths), of the panes of this node that touch its
+ * [end] edge (else its start edge): the node [extent] long, its panes [gap] apart, as [LayoutTree] lays them out.
+ */
+internal fun LayoutNode.edgePaneExtent(column: Boolean, end: Boolean, extent: Dp, gap: Dp): Dp {
+    if (block != null) return extent
+    val a = first
+    val b = second
+    if (a == null || b == null) return (a ?: b)?.edgePaneExtent(column, end, extent, gap) ?: extent
+    if ((dir == "column") != column) return minOf(a.edgePaneExtent(column, end, extent, gap), b.edgePaneExtent(column, end, extent, gap))
+    val r = ratio.coerceIn(0.05f, 0.95f)
+    val space = (extent - gap).coerceAtLeast(0.dp)
+    return if (end) b.edgePaneExtent(column, end, space * (1f - r), gap) else a.edgePaneExtent(column, end, space * r, gap)
 }
 
 private tailrec fun LayoutNode.firstBlock(): String? = block ?: first?.firstBlock()
