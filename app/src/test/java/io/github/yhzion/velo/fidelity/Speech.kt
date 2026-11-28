@@ -20,10 +20,11 @@ internal object Speech {
 
     /**
      * What a service says for a node: its description, or its text, then its state description (#167);
-     * nothing for a node it skips.
+     * nothing for a node it skips, as one not visible to the user: Compose marks so each node under a merging node
+     * hidden from accessibility (#235).
      */
     fun words(i: AccessibilityNodeInfo): List<String> =
-        if (!i.isImportantForAccessibility) emptyList()
+        if (!i.isImportantForAccessibility || !i.isVisibleToUser) emptyList()
         else listOfNotNull(i.contentDescription ?: i.text, i.stateDescription).map { it.toString() }.filter { it.isNotBlank() }
 
     /** The node of the semantics node [id] (a virtual view id) in [view]. */

@@ -239,7 +239,9 @@ private fun SplashMark(frame: SplashFrame, size: SplashSize) {
     val unit = minOf(size.mark / MarkUnitsW, size.markHeight / MarkUnitsH)
     val left = (size.mark - MarkUnitsW * unit) / 2
     val top = (size.markHeight - MarkUnitsH * unit) / 2
-    Box(Modifier.size(size.mark.dp, size.markHeight.dp).testTag("splash-mark").semantics {
+    // One picture, a stop in its place: its parts' tags make them nodes, and without merging them Compose would leave
+    // the mark out of a screen reader's order (#235).
+    Box(Modifier.size(size.mark.dp, size.markHeight.dp).testTag("splash-mark").semantics(mergeDescendants = true) {
         contentDescription = "Velo"
         role = Role.Image
     }) {

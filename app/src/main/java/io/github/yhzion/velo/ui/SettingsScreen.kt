@@ -403,8 +403,9 @@ private fun CategoryList(nav: NavState, chevrons: Boolean, modifier: Modifier) {
     val c = VeloTheme.surface
     val sizes = VeloTheme.sizes
     val type = VeloTheme.type
+    // No description: the rows are the stops, and a container's own words had no place in a screen reader's order (#235).
     Column(
-        modifier.testTag("settings-nav").semantics { contentDescription = "Settings categories" }
+        modifier.testTag("settings-nav")
             .then(if (chevrons) Modifier else Modifier.padding(VeloTheme.space.s8)),
         verticalArrangement = Arrangement.spacedBy(if (chevrons) VeloTheme.space.s8 else VeloTheme.space.s4),
     ) {

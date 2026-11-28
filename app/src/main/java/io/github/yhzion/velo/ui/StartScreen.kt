@@ -566,19 +566,21 @@ private val StepDoneFill = Color(0xFF1E3A2A)
 
 /**
  * The three steps, one under another, with their hints: where the user is and what comes next. TalkBack reads the
- * list as one description, announced as it changes, so its labels are not read (or tapped) as controls.
+ * list as one description, announced as it changes, so its labels are not read (or tapped) as controls. The list takes
+ * its parts in, so it is a stop in its place (their tags make them nodes, and Compose would leave it out of the order,
+ * #235); each step's row hides all it holds, which only a merging node does.
  */
 @Composable
 private fun StartStepList(current: Int) {
     val c = VeloTheme.surface
-    CssColumn(VeloTheme.medium(4.dp), Modifier.fillMaxWidth().testTag("start-steps").semantics {
+    CssColumn(VeloTheme.medium(4.dp), Modifier.fillMaxWidth().testTag("start-steps").semantics(mergeDescendants = true) {
         contentDescription = startStepsDescription(current)
         liveRegion = LiveRegionMode.Polite
     }) {
         StartSteps.forEachIndexed { i, (title, hint) ->
             val number = i + 1
             val marker = stepMarker(number, current)
-            Row(Modifier.fillMaxWidth().testTag("start-step-$number").semantics { hideFromAccessibility() }.padding(vertical = VeloTheme.medium(6.dp)),
+            Row(Modifier.fillMaxWidth().testTag("start-step-$number").semantics(mergeDescendants = true) { hideFromAccessibility() }.padding(vertical = VeloTheme.medium(6.dp)),
                 horizontalArrangement = Arrangement.spacedBy(VeloTheme.medium(14.dp))) {
                 StepDisc(number, marker, Modifier.testTag("start-step-$number-marker"))
                 // As wide as the longer of its two lines, as the board's column is.

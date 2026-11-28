@@ -137,7 +137,8 @@ private fun HighlightPreview(colour: Color) {
     Row(
         Modifier.fillMaxWidth().testTag("appearance-highlight-preview").height(VeloTheme.medium(108.dp)).clip(rounded(VeloTheme.radii.group))
             .background(palette.backdrop.surface).padding(VeloTheme.medium(10.dp))
-            .semantics { contentDescription = "Preview of the focused pane's edge" },
+            // One picture, a stop in its place: its panes' tags make them nodes, so it merges them (#235).
+            .semantics(mergeDescendants = true) { contentDescription = "Preview of the focused pane's edge" },
         horizontalArrangement = Arrangement.spacedBy(space.s8),
     ) {
         @Composable
