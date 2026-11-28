@@ -63,6 +63,8 @@ import org.robolectric.annotation.GraphicsMode
  * chip of the overview's session strip, and a zoomed tab's minimap (its picker). The scenes are drawn over an overlay layer, so a menu opens
  * in the same window and its nodes are read.
  *
+ * A menu that scrolls is scanned at each page it scrolls to ([ScrollSweep], #276).
+ *
  * Each test runs at each [ScanWidth] (#175); its name says which. Unfolded, the scenes draw their wide
  * layouts, with openers of their own ([OnlyUnfolded]); a scene that draws a menu open there draws it
  * shut here ([LocalMenusShut]), and the menu is opened by its button as at the phone's width. The
@@ -243,12 +245,19 @@ class MenuSpeechTest(private val width: ScanWidth) {
                     compose.waitForIdle()
                     val label = opener.label(button.fetchSemanticsNode().config.getOrNull(SemanticsProperties.TestTag))
                     val before = compose.runOnIdle { Speech.focusableNodes(view).map { Speech.virtualId(it.first) }.toSet() }
+                    val listsBefore = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
+                        .fetchSemanticsNodes(atLeastOneRootRequired = false).map { it.id }.toSet()
                     if (!opener.open(button)) continue
                     compose.waitForIdle()
-                    // A node new since the tap is the menu's: a row's words may change meanwhile ("2s since report").
-                    val added = compose.runOnIdle { Speech.focusableNodes(view) }
-                        .filter { Speech.virtualId(it.first) !in before && it.second.isNotEmpty() }.map { it.second }
-                    opened += Opened(name, label, if (label.startsWith(opener.name)) label else "$label (${opener.name})", added)
+                    // A node new since the tap is the menu's: a row's words may change meanwhile ("2s since report"), so each
+                    // node is heard once, as first heard. A menu longer than its window is heard at each page it scrolls to
+                    // (#276); the scene's lists under it stay as they are.
+                    val added = linkedMapOf<Int, List<String>>()
+                    ScrollSweep(compose, view) { it !in listsBefore }.sweep {
+                        for ((info, words) in Speech.focusableNodes(view))
+                            if (Speech.virtualId(info) !in before && words.isNotEmpty()) added.putIfAbsent(Speech.virtualId(info), words)
+                    }
+                    opened += Opened(name, label, if (label.startsWith(opener.name)) label else "$label (${opener.name})", added.values.toList())
                 }
             }
         }

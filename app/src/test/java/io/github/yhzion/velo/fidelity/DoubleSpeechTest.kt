@@ -68,8 +68,12 @@ class DoubleSpeechTest(private val width: ScanWidth) {
 
     @Before fun drawAtTheWidth() = width.apply()
 
-    /** What one focusable node says: its own words first, then its descendants'. */
-    private class Said(val node: String, val parts: List<String>, val actions: Int = 0) {
+    /**
+     * What one focusable node says: its own words first, then its descendants'. The node is named by its tag, or by where
+     * it is on the screen, which a scroll changes, so [key] tells one node's words from another's by its virtual view id.
+     */
+    private class Said(val id: Int, val node: String, val parts: List<String>, val actions: Int = 0) {
+        val key get() = id to parts
         override fun toString() = "$node: \"${parts.joinToString(" | ")}\""
     }
 
@@ -93,8 +97,8 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         compose.waitForIdle()
         assertEquals("The scenes are drawn at $width", width.w to width.h, drawn)
         assertEquals("The window is $width", (width.w * density).toInt() to (width.h * density).toInt(), window)
-        // A finding is named once, though the sweep sees its node at several scroll steps.
-        val twiceSaid = linkedSetOf<String>()
+        // A finding is named once, by its nodes' ids and words, though the sweep sees them at several pages and places.
+        val twiceSaid = linkedMapOf<Any, String>()
         val heard = mutableMapOf<String, List<Said>>()
         val drumTags = mutableListOf<String>()
         for (name in names) {
@@ -107,18 +111,18 @@ class DoubleSpeechTest(private val width: ScanWidth) {
                 compose.waitForIdle()
             }
             // Each place the scene's lists scroll to (#276): a node below the fold is heard too.
-            val said = mutableListOf<Said>()
+            val said = linkedMapOf<Any, Said>()
             ScrollSweep(compose, view).sweep {
                 val step = utterances(view)
-                said += step
-                for (s in step.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $s"
-                for ((a, b) in step.zipWithNext()) if (Speech.repeatsNeighbour(a.parts, b.parts)) twiceSaid += "$name, $a, then $b"
+                for (s in step) said.putIfAbsent(s.key, s)
+                for (s in step.filter { Speech.saysTwice(it.parts) }) twiceSaid.putIfAbsent(name to s.key, "$name, $s")
+                for ((a, b) in step.zipWithNext()) if (Speech.repeatsNeighbour(a.parts, b.parts)) twiceSaid.putIfAbsent(name to (a.key to b.key), "$name, $a, then $b")
             }
-            heard[name] = said
+            heard[name] = said.values.toList()
             // The drum's cards say nothing, so their names' tags, kept in the unmerged tree, show the drum was drawn.
             if (name == "workspace-drum") drumTags += compose.taggedNodes().map { it.tag }
         }
-        assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
+        assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.values.joinToString("\n"), twiceSaid.isEmpty())
         // The screens no board draws were drawn and heard (#174), so the scan is not empty by a screen that did not draw.
         // Each one missed is named, so a scan that misses several says them all at once.
         val missed = Heard.filter { must -> heard[must.scene].orEmpty().any(must.test) != must.heard }.map { must ->
@@ -175,7 +179,7 @@ class DoubleSpeechTest(private val width: ScanWidth) {
 
     /** Each focusable node that says something, with the words it says. */
     private fun utterances(view: View): List<Said> =
-        Speech.focusableNodes(view).filter { it.second.isNotEmpty() }.map { (info, said) -> Said(nodeName(info), said, customActions(info)) }
+        Speech.focusableNodes(view).filter { it.second.isNotEmpty() }.map { (info, said) -> Said(Speech.virtualId(info), nodeName(info), said, customActions(info)) }
 
     /**
      * How many custom actions [info] offers. Their ids are the app's resource ids; the standard actions' are bits, or
