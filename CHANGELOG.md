@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- On a short screen, such as a phone on its side, the caption under the panes hides while the keyboard is up, so the panes keep more than a line or two. The key bar stays.
+
 ### Fixed
 - A long error notice shows two lines and ends with an ellipsis, so at a large text size it no longer covers the key bar with the keyboard up. A screen reader still reads the whole error.
 

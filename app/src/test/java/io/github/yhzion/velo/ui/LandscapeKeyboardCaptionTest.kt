@@ -1,0 +1,144 @@
+package io.github.yhzion.velo.ui
+
+import android.app.Application
+import android.view.View
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.DpRect
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.core.app.ApplicationProvider
+import io.github.yhzion.velo.AppController
+import io.github.yhzion.velo.HostConnection
+import io.github.yhzion.velo.PaneNotificationLaunches
+import io.github.yhzion.velo.core.LayoutNode
+import io.github.yhzion.velo.core.UiState
+import io.github.yhzion.velo.core.WindowInfo
+import io.github.yhzion.velo.fidelity.CorePackage
+import io.github.yhzion.velo.fidelity.HostActivityRule
+import io.github.yhzion.velo.fidelity.ShadowVeloCore
+import io.github.yhzion.velo.fidelity.fakeConnection
+import io.github.yhzion.velo.ui.theme.UiSize
+import io.github.yhzion.velo.ui.theme.VeloTheme
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * The bar phone on its side (Velvet, 895×393 dp at 440 dpi) with Gboard up, about 249 dp (#232): the caption under
+ * the panes gives way, so that the pane card keeps more than a line or two, and the key bar stays. With the caption
+ * the pane kept 16 dp (50.5 in the compact style). A screen reader finds no part of the hidden caption, and the
+ * caption, its tab name with it, comes back with the keyboard down, or where a smaller keyboard leaves room for it.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], application = Application::class, qualifiers = "w895dp-h393dp-land-440dpi",
+    shadows = [ShadowVeloCore::class], instrumentedPackages = [CorePackage])
+class LandscapeKeyboardCaptionTest {
+    private val compose = createComposeRule()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
+    private lateinit var view: View
+    private var conn: HostConnection? = null
+    private var app: AppController? = null
+
+    private val state = UiState(status = "connected", server = "velo", session = "s",
+        windows = listOf(WindowInfo("w1", label = "build", layout = LayoutNode(block = "a"))))
+
+    @After fun destroy() {
+        conn?.destroy()
+        app?.destroy()
+    }
+
+    private fun settle() {
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
+
+    /** The workspace at the app's default size, Medium, in the pane [style], the bar's keys the default ones. */
+    private fun workspace(style: String) {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), state).also { conn = it }
+        val app = AppController(ApplicationProvider.getApplicationContext()).also { this.app = it }
+        app.settings.savePaneStyle(style)
+        compose.setContent {
+            view = LocalView.current
+            VeloTheme(UiSize.Medium) {
+                Workspace(app, c, remember { TerminalInputView(view.context) }, FoldInfo(), null, remember { PaneNotificationLaunches() },
+                    settingsOpen = false, onSettings = {}, onTailscale = {})
+            }
+        }
+        settle()
+    }
+
+    /** The keyboard [height] dp tall, as the window tells the view: the input method's inset; 0 is the keyboard down. */
+    private fun keyboard(height: Int) {
+        compose.runOnIdle {
+            val px = (height * view.resources.displayMetrics.density).toInt()
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, px))
+                .setVisible(WindowInsetsCompat.Type.ime(), height > 0)
+                .build()
+            ViewCompat.dispatchApplyWindowInsets(view, insets)
+        }
+        settle()
+    }
+
+    private fun height(b: DpRect) = (b.bottom - b.top).value
+    private fun pane() = height(compose.onNodeWithTag("pane-1").getBoundsInRoot())
+    private fun captionShown() = compose.onAllNodesWithTag("pane-caption").fetchSemanticsNodes().isNotEmpty()
+
+    /** With Gboard up the pane keeps at least [least] dp, the caption is gone, to a screen reader too, and the key bar stays. */
+    private fun theCaptionGivesWay(style: String, least: Float) {
+        workspace(style)
+        assertTrue("the caption shows with the keyboard down", captionShown())
+        keyboard(249)
+        assertFalse("the caption gives way", captionShown())
+        for (part in listOf("pane-caption-title", "caption-tab-tile"))
+            assertTrue("a screen reader finds no $part", compose.onAllNodesWithTag(part, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        assertTrue("the pane keeps ${pane()} dp, at least $least", pane() >= least)
+        assertEquals("the key bar stays, one row", 56f, height(compose.onNodeWithTag("key-bar").getBoundsInRoot()), 1f)
+        keyboard(0)
+        assertTrue("the caption comes back with the keyboard down", captionShown())
+        compose.onNodeWithTag("pane-caption-title", useUnmergedTree = true).assertTextEquals("velo · build")
+    }
+
+    // Comfortable: 16 dp with the caption; its 40 and the gap of 8 above it go to the pane.
+    @Test fun comfortable() = theCaptionGivesWay("comfortable", 63f)
+
+    // Compact: 50.5 dp with the caption; its line and the compact gap go to the pane.
+    @Test fun compact() = theCaptionGivesWay("compact", 78f)
+
+    /** A keyboard that leaves the pane its least height under the caption leaves the caption where it is. */
+    @Test fun aSmallerKeyboardKeepsTheCaption() {
+        workspace("comfortable")
+        keyboard(120)
+        assertTrue("the caption stays", captionShown())
+        assertTrue("the pane keeps ${pane()} dp", pane() >= CaptionGivesWayBelowDp)
+    }
+
+    @Test fun theRuleComesBackOnlyWhereTheCaptionFits() {
+        // Not with the keyboard down, however short the panes.
+        assertFalse(captionGivesWay(squeezed = false, gaveWay = false, pane = 16f, caption = 48f))
+        assertFalse(captionGivesWay(squeezed = false, gaveWay = true, pane = 64f, caption = 48f))
+        // Shown: it goes under the least height, and stays at it.
+        assertTrue(captionGivesWay(squeezed = true, gaveWay = false, pane = 16f, caption = 48f))
+        assertFalse(captionGivesWay(squeezed = true, gaveWay = false, pane = 120f, caption = 48f))
+        // Hidden: the pane holds the caption's room; it comes back only where the pane keeps the least height with it.
+        assertTrue(captionGivesWay(squeezed = true, gaveWay = true, pane = 150f, caption = 48f))
+        assertFalse(captionGivesWay(squeezed = true, gaveWay = true, pane = 168f, caption = 48f))
+    }
+}
