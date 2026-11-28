@@ -270,14 +270,17 @@ private fun LayoutTree(
             // beside it (#272): Compose leaves out of the accessibility tree a node the nodes above it cover, and the hit
             // area reaches into each pane beside the gap, so a pane the keyboard squeezed to a line between two handles,
             // the input target among them, was in no part uncovered. The touch area and the grip stay as they were.
+            // A pixel more on each side for the panes' rounding to pixels: a pane a pixel past two reaches, its share
+            // under each handle rounded up, was still covered whole.
+            val onePx = with(LocalDensity.current) { 1.toDp() }
             val reach = (hit - gap).coerceAtLeast(0.dp) / 2
-            val gapOnly = handleOnGapOnly(reach, a.edgePaneExtent(column, end = true, space * r, gap),
+            val gapOnly = handleOnGapOnly(reach + onePx, a.edgePaneExtent(column, end = true, space * r, gap),
                 b.edgePaneExtent(column, end = false, space * (1f - r), gap))
-            // A pixel in from each side of the gap, so that the panes' rounding to pixels puts no part of it on a pane.
-            val inset = with(LocalDensity.current) { 1.toDp() }.coerceAtMost(gap / 4)
-            val gapAt = (space * r - start).coerceIn(0.dp, (hit - gap).coerceAtLeast(0.dp)) + inset
-            val across = gap - inset * 2
-            Box(bounds.then(if (gapOnly) Modifier else Modifier.semantics(properties = handleSays)).pointerInput(before, after, column, pixels, sign) {
+            // On the gap: a pixel in from each side of it, so that the panes' rounding puts no part of it on a pane.
+            val inset = onePx.coerceAtMost(gap / 4)
+            val saidAt = if (gapOnly) (space * r - start).coerceIn(0.dp, (hit - gap).coerceAtLeast(0.dp)) + inset else 0.dp
+            val saidAcross = if (gapOnly) gap - inset * 2 else hit
+            Box(bounds.pointerInput(before, after, column, pixels, sign) {
                 try {
                     awaitEachGesture {
                         val down = awaitFirstDown()
@@ -310,12 +313,19 @@ private fun LayoutTree(
                     dragged = null
                 }
             }, contentAlignment = Alignment.Center) {
-                val grip = if (column) Modifier.size(32.dp, 3.dp) else Modifier.size(3.dp, 32.dp)
-                Spacer(grip.background(VeloTheme.paneFocus.copy(alpha = if (dragged == null) 0.5f else 1f),
-                    androidx.compose.foundation.shape.CircleShape))
-                // The handle's name and action on the gap alone, where its hit area would cover a squeezed pane.
-                if (gapOnly) Spacer((if (column) Modifier.align(Alignment.TopStart).offset(y = gapAt).fillMaxWidth().height(across)
-                    else Modifier.align(Alignment.TopStart).offset(x = gapAt).width(across).fillMaxHeight()).semantics(properties = handleSays))
+                val grip = @Composable {
+                    Spacer((if (column) Modifier.size(32.dp, 3.dp) else Modifier.size(3.dp, 32.dp))
+                        .background(VeloTheme.paneFocus.copy(alpha = if (dragged == null) 0.5f else 1f), androidx.compose.foundation.shape.CircleShape))
+                }
+                // One node says the handle's name and takes its action: on the whole hit area with the grip in it, as
+                // before, or on the gap alone. So a screen reader's focus on it stays as the panes beside it are squeezed
+                // or given room. The grip is drawn where it was either way.
+                Box((if (column) Modifier.offset(y = saidAt).fillMaxWidth().height(saidAcross)
+                    else Modifier.offset(x = saidAt).width(saidAcross).fillMaxHeight()).align(Alignment.TopStart).semantics(properties = handleSays),
+                    contentAlignment = Alignment.Center) {
+                    if (!gapOnly) grip()
+                }
+                if (gapOnly) grip()
             }
         }
     }

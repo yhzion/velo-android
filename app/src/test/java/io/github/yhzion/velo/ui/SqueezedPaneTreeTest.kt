@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import android.app.Application
 import android.graphics.Rect
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
@@ -10,6 +11,7 @@ import android.view.accessibility.AccessibilityNodeProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -25,13 +27,14 @@ import io.github.yhzion.velo.fidelity.CorePackage
 import io.github.yhzion.velo.fidelity.HostActivityRule
 import io.github.yhzion.velo.fidelity.ShadowVeloCore
 import io.github.yhzion.velo.fidelity.fakeConnection
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
-import androidx.compose.ui.unit.dp
+import io.github.yhzion.velo.fidelity.Speech
 import io.github.yhzion.velo.ui.theme.UiSize
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -79,8 +82,8 @@ class SqueezedPaneTreeTest {
         windows = listOf(WindowInfo("w1", label = "build", layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"),
             second = stack(listOf("b", "c", "d", "e", "f", "g"))))))
 
-    private fun workspace(size: UiSize, style: String, focused: String) {
-        val c = fakeConnection(ApplicationProvider.getApplicationContext(), state(focused)).also { conn = it }
+    private fun workspace(size: UiSize, style: String, focused: String, state: UiState = state(focused)) {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), state).also { conn = it }
         val app = AppController(ApplicationProvider.getApplicationContext()).also { this.app = it }
         app.settings.savePaneStyle(style)
         compose.setContent {
@@ -93,12 +96,14 @@ class SqueezedPaneTreeTest {
         settle()
     }
 
-    private fun keyboard(height: Int) {
+    /** The keyboard [height] dp tall, as the window tells the view; 0 is the keyboard down. */
+    private fun keyboard(height: Int) = keyboardPx((height * view.resources.displayMetrics.density).toInt())
+
+    private fun keyboardPx(px: Int) {
         compose.runOnIdle {
-            val px = (height * view.resources.displayMetrics.density).toInt()
             val insets = WindowInsetsCompat.Builder()
                 .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, px))
-                .setVisible(WindowInsetsCompat.Type.ime(), height > 0)
+                .setVisible(WindowInsetsCompat.Type.ime(), px > 0)
                 .build()
             ViewCompat.dispatchApplyWindowInsets(view, insets)
         }
@@ -150,7 +155,10 @@ class SqueezedPaneTreeTest {
         assertEquals("the keyboard up", all.map { if (it == "Pane 4, input target") "$it, $caption" else it }, panesFound())
     }
 
-    /** At Medium the input target keeps 16 px under the keyboard, and the panes at the foot none: a pane of no size is not found (#278). */
+    /**
+     * At Medium the input target keeps 16 px under the keyboard, and the panes at the foot none: a pane of no size is not
+     * found. That is #278; the check of the panes of no size changes with it.
+     */
     @Test fun theInputTargetStaysAtMedium() {
         workspace(UiSize.Medium, "comfortable", "d")
         keyboard(249)
@@ -191,6 +199,66 @@ class SqueezedPaneTreeTest {
             val along = if (said.endsWith("left and right")) bounds.width() else bounds.height()
             assertEquals("$said on $bounds", px(32f), along.toFloat(), 1f)
             assertTrue("$said can be set", info.actionList.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS))
+            // The node as before: the grip in it, a child of no words, so not a stop of its own.
+            assertEquals("$said holds the grip", 1, info.childCount)
+            assertFalse("$said as before", info.isScreenReaderFocusable)
+        }
+    }
+
+    /**
+     * A pane a pixel past two reaches: each handle's share of it rounds up, and with the hit areas whole it was covered
+     * whole (Small, 70 px under a keyboard of 178 px). The handles count a pixel more for the rounding.
+     */
+    @Test fun aPaneJustPastTwoReachesStaysInTheTree() {
+        workspace(UiSize.Small, "comfortable", "d")
+        for (px in 177..179) {
+            keyboardPx(px)
+            assertTrue("keyboard $px px, panes ${paneHeights()}: ${panesFound()}", panesFound().all { it != null })
+        }
+    }
+
+    /** A screen reader's focus on a handle: the node it is on, with the handle's name, or null. */
+    private fun focusedHandle() = compose.runOnIdle {
+        view.accessibilityNodeProvider.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+            ?.takeIf { it.contentDescription?.startsWith("Resize panes") == true }?.let(Speech::virtualId)
+    }
+
+    private fun focusOn(id: Int) = compose.runOnIdle {
+        shadowOf(view.context.getSystemService(AccessibilityManager::class.java)).apply { setEnabled(true); setTouchExplorationEnabled(true) }
+        assertTrue(view.accessibilityNodeProvider.performAction(id, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null))
+    }
+
+    /** The keyboard comes up under a screen reader's focus on a handle: the handle moves onto the gap, and the focus stays on it. */
+    @Test fun theFocusStaysOnAHandleAsTheKeyboardComes() {
+        workspace(UiSize.Small, "comfortable", "d")
+        val id = Speech.virtualId(handles()[2].third)
+        focusOn(id)
+        keyboard(249)
+        assertEquals(id, focusedHandle())
+        assertTrue("on the gap", handles().first { Speech.virtualId(it.third) == id }.second.height() < px(32f) - 1)
+        keyboard(0)
+        assertEquals(id, focusedHandle())
+    }
+
+    /** A screen reader sets a handle so that a pane beside it grows small: the focus stays on the handle it set. */
+    @Test fun theFocusStaysOnAHandleItSets() {
+        val three = UiState(status = "connected", server = "velo", session = "s", focused = "c",
+            windows = listOf(WindowInfo("w1", label = "build", layout = LayoutNode(dir = "row", first = LayoutNode(block = "a"),
+                second = stack(listOf("b", "c", "d"))))))
+        workspace(UiSize.Small, "comfortable", "c", three)
+        val lowest = handles().filter { it.first.endsWith("above and below") }.maxBy { it.second.top }
+        val id = Speech.virtualId(lowest.third)
+        focusOn(id)
+        for (value in listOf(0.3f, 0.1f, 0.05f)) {
+            compose.runOnIdle {
+                view.accessibilityNodeProvider.performAction(id, AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                    Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, value) })
+            }
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(200)
+            compose.waitForIdle()
+            assertNotNull("set to $value, panes ${paneHeights()}", compose.runOnIdle { view.accessibilityNodeProvider.createAccessibilityNodeInfo(id) })
+            assertEquals("set to $value", id, focusedHandle())
         }
     }
 
