@@ -105,6 +105,12 @@ internal object UpdateSettings {
         prefs(context).edit().putLong(API_BLOCKED_UNTIL, resetAt).apply()
     }
 
+    /** The API returned a page ([ReleaseFeed.check]): a limit stored before no longer holds (#264). */
+    fun apiAnswered(context: Context) {
+        val prefs = prefs(context)
+        if (prefs.contains(API_BLOCKED_UNTIL)) prefs.edit().remove(API_BLOCKED_UNTIL).apply()
+    }
+
     /**
      * Store a successful check of [channel] that started at [startedAt] and found [release] (null:
      * none). A check of a channel no longer selected stores nothing.

@@ -66,29 +66,35 @@ object ReleaseFeed {
      * Blocking I/O. Eligible releases newer than [installedCode], newest first; the first of them is
      * the update. Every one when the API answered; on the stable channel, the manifest's release alone
      * when the API failed or saw no newer one ([check]). Empty means no eligible update, not a failed check.
+     * [onApiAnswered] runs once the API returns a page: its limit is not used up.
      */
-    fun newer(channel: UpdateChannel, installedCode: Long): List<AppRelease> =
-        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network)
+    fun newer(channel: UpdateChannel, installedCode: Long, onApiAnswered: () -> Unit = {}): List<AppRelease> =
+        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network, onApiAnswered = onApiAnswered)
 
     /**
      * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
      * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
      */
-    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long): AppRelease? =
-        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network).firstOrNull()
+    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, onApiAnswered: () -> Unit = {}): AppRelease? =
+        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network, onApiAnswered = onApiAnswered).firstOrNull()
 
     /**
      * Stable checks read the latest release's update manifest first: a release download, so not under
      * the API's 60-an-hour limit that every device behind one router shares. Any doubt about it, or
      * another channel, asks the API, unless a limit it reported ([apiBlockedUntil]) has not passed.
      * [everyRelease] also asks the API for every newer release's notes when the manifest found one,
-     * and keeps the manifest's release if the API fails or disagrees.
+     * and keeps the manifest's release if the API fails or disagrees. [onApiAnswered] runs once, when
+     * the API first returns a page (#264): a limit stored before, perhaps on another network, is over.
      */
     internal fun check(
         channel: UpdateChannel, installedCode: Long, everyRelease: Boolean, apiBlockedUntil: Long, source: FeedSource,
-        now: Long = System.currentTimeMillis(),
+        now: Long = System.currentTimeMillis(), onApiAnswered: () -> Unit = {},
     ): List<AppRelease> {
         val blocked = apiBlockedUntil > now && apiBlockedUntil - now <= RATE_LIMIT_WAIT.last
+        var answered = false
+        val readPage = { page: Int ->
+            source.page(page).also { if (!answered) { answered = true; onApiAnswered() } }
+        }
         if (channel == UpdateChannel.Stable) {
             val found = try {
                 listOfNotNull(fromManifest(installedCode, source))
@@ -97,7 +103,7 @@ object ReleaseFeed {
             }
             if (found != null) {
                 if (found.isEmpty() || !everyRelease || blocked) return found
-                val all = try { newer(channel, installedCode, source::page) } catch (e: IOException) { null }
+                val all = try { fromApi(channel, installedCode, readPage) } catch (e: IOException) { null }
                 // The API's list, checked in full, when it has the manifest's release with the same digest or a newer one.
                 val first = all?.firstOrNull() ?: return found
                 val agrees = first.versionCode > found[0].versionCode ||
@@ -106,13 +112,13 @@ object ReleaseFeed {
             }
         }
         if (blocked) throw RateLimitedException(apiBlockedUntil)
-        return newer(channel, installedCode, source::page)
+        return fromApi(channel, installedCode, readPage)
     }
 
     internal fun latest(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): AppRelease? =
-        newer(channel, installedCode, readPage).firstOrNull()
+        fromApi(channel, installedCode, readPage).firstOrNull()
 
-    internal fun newer(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): List<AppRelease> {
+    internal fun fromApi(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): List<AppRelease> {
         val found = mutableListOf<AppRelease>()
         for (page in 1..MAX_PAGES) {
             val text = readPage(page)

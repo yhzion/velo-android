@@ -1,6 +1,6 @@
 package io.github.yhzion.velo.ui
 
-import android.content.res.AssetManager
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntSize
@@ -21,6 +21,7 @@ import io.github.yhzion.velo.readNotice
 import io.github.yhzion.velo.updates.AppRelease
 import io.github.yhzion.velo.updates.ReleaseFeed
 import io.github.yhzion.velo.updates.UpdateChannel
+import io.github.yhzion.velo.updates.UpdateSettings
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
 
@@ -97,8 +98,9 @@ internal interface SettingsHost {
     fun readNotice(asset: String): String
 }
 
-/** The settings of the app's own [AppController]. */
-internal class AppSettingsHost(private val app: AppController, private val assets: AssetManager) : SettingsHost {
+/** The settings of the app's own [AppController]. It keeps [context]'s application context, never an activity. */
+internal class AppSettingsHost(private val app: AppController, context: Context) : SettingsHost {
+    private val appContext: Context = context.applicationContext
     override val settings get() = app.settings
     override val io: CoroutineContext = Dispatchers.IO
     override val rasterizer get() = app.rasterizer
@@ -128,7 +130,7 @@ internal class AppSettingsHost(private val app: AppController, private val asset
     override fun setTailnetName(name: String) = app.setTailnetName(name)
     override fun logoutTailnet() = app.logoutTailnet()
     override val sshSecrets get() = app.sshSecrets
-    override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed)
+    override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed) { UpdateSettings.apiAnswered(appContext) }
     override val installsReleases get() = "arm64-v8a" in android.os.Build.SUPPORTED_ABIS
-    override fun readNotice(asset: String) = readNotice(asset, assets::open)
+    override fun readNotice(asset: String) = readNotice(asset, appContext.assets::open)
 }

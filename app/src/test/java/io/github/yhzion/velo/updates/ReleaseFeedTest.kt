@@ -38,7 +38,7 @@ class ReleaseFeedTest {
     }
 
     private fun newer(vararg entries: String, channel: UpdateChannel = UpdateChannel.Edge, installed: Long = 0) =
-        ReleaseFeed.newer(channel, installed) { entries.joinToString(prefix = "[", postfix = "]") }
+        ReleaseFeed.fromApi(channel, installed) { entries.joinToString(prefix = "[", postfix = "]") }
 
     private fun code(code: Long) = marker.replace("3000100", "$code")
 

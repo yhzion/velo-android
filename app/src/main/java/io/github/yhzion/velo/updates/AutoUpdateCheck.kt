@@ -40,7 +40,9 @@ internal object AutoUpdateCheck {
         scope.launch {
             try {
                 val blockedUntil = UpdateSettings.apiBlockedUntil(app)
-                val release = runInterruptible(Dispatchers.IO) { ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil) }
+                val release = runInterruptible(Dispatchers.IO) {
+                    ReleaseFeed.update(channel, installedVersionCode(app), blockedUntil) { UpdateSettings.apiAnswered(app) }
+                }
                 UpdateSettings.record(app, channel, now, release)
             } catch (cancelled: CancellationException) {
                 throw cancelled

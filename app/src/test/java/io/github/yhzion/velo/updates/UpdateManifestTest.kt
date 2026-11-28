@@ -119,6 +119,32 @@ class UpdateManifestTest {
         assertEquals(0, noManifest.apiCalls + preview.apiCalls)
     }
 
+    /** #264: a page from the API, on any channel, ends a stored limit; a refusal or a skipped API does not. */
+    @Test fun theApiAnsweringOnceEndsAStoredLimit() {
+        fun answers(source: FeedSource, channel: UpdateChannel = UpdateChannel.Stable, installed: Long = 3000051,
+            everyRelease: Boolean = true, blockedUntil: Long = 0): Int {
+            var count = 0
+            try {
+                ReleaseFeed.check(channel, installed, everyRelease, blockedUntil, source, now) { count++ }
+            } catch (_: IOException) {}
+            return count
+        }
+        val page = { _: Int -> "[${apiEntry("v2.16.1", 3000053)}]" }
+        assertEquals(1, answers(Fake(api = page)))
+        assertEquals(1, answers(Fake(latest = null, api = page), everyRelease = false))
+        assertEquals(1, answers(Fake(api = { "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }), UpdateChannel.Edge, everyRelease = false))
+        // Once for a list of several pages.
+        val full = (1..100).joinToString(",", "[", "]") { apiEntry("v2.15.$it", 3000000L + it) }
+        assertEquals(1, answers(Fake(api = { if (it == 1) full else "[]" }), installed = 2_000_000))
+        // A list that does not parse still came back with 200: the limit is not used up.
+        assertEquals(1, answers(Fake(latest = null, api = { "not json" }), everyRelease = false))
+        assertEquals(0, answers(Fake(api = { throw RateLimitedException(now + 60_000) })))
+        assertEquals(0, answers(Fake(latest = null, api = { throw IOException("offline") }), everyRelease = false))
+        assertEquals(0, answers(Fake(), installed = 3000053)) // nothing newer: the API is not asked
+        assertEquals(0, answers(Fake(), everyRelease = false)) // an automatic stable check: the manifest alone
+        assertEquals(0, answers(Fake(), UpdateChannel.Preview, blockedUntil = now + 60_000))
+    }
+
     @Test fun aPassedOrImplausibleLimitDoesNotHoldTheApi() {
         val api = { _: Int -> "[${apiEntry("v2.16.1-edge.1", 3000054)}]" }
         assertEquals(1, check(Fake(api = api), UpdateChannel.Edge, blockedUntil = now).size)

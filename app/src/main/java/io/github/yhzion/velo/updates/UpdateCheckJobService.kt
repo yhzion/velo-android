@@ -28,7 +28,8 @@ class UpdateCheckJobService : JobService() {
                 val release = runInterruptible(Dispatchers.IO) {
                     @Suppress("DEPRECATION")
                     val installed = packageManager.getPackageInfo(packageName, 0).longVersionCode
-                    ReleaseFeed.update(channel, installed, UpdateSettings.apiBlockedUntil(this@UpdateCheckJobService))
+                    val service = this@UpdateCheckJobService
+                    ReleaseFeed.update(channel, installed, UpdateSettings.apiBlockedUntil(service)) { UpdateSettings.apiAnswered(service) }
                 }
                 UpdateSettings.finish(this@UpdateCheckJobService, generation, startedAt, release)
             } catch (cancelled: CancellationException) {

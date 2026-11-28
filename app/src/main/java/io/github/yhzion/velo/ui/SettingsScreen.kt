@@ -71,8 +71,8 @@ import io.github.yhzion.velo.ui.theme.rounded
  */
 @Composable
 fun TailscaleScreen(app: AppController, onBack: () -> Unit) {
-    val assets = LocalContext.current.assets
-    TailscaleScreen(remember(app) { AppSettingsHost(app, assets) }, onBack)
+    val context = LocalContext.current.applicationContext
+    TailscaleScreen(remember(app) { AppSettingsHost(app, context) }, onBack)
 }
 
 @Composable
@@ -149,8 +149,8 @@ internal val LocalSettingsOpen = staticCompositionLocalOf { SettingsOpen() }
  */
 @Composable
 fun SettingsSheet(app: AppController, onClose: () -> Unit) {
-    val assets = LocalContext.current.assets
-    SettingsSheet(remember(app) { AppSettingsHost(app, assets) }, onClose)
+    val context = LocalContext.current.applicationContext
+    SettingsSheet(remember(app) { AppSettingsHost(app, context) }, onClose)
 }
 
 @Composable

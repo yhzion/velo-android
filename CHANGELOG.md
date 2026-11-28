@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- After GitHub's hourly limit was reached, automatic Preview and Edge update checks resume as soon as a check reaches GitHub again, such as on another network, instead of waiting up to an hour.
+
 ## 2.16.1 - 2026-11-28
 
 ### Changed
