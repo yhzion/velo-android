@@ -488,4 +488,19 @@ class ReadOnceTest {
         assertEquals(listOf("htop, 5 panes", "Watch the logs", "Disconnected · ~/var/log"), said("tab-row-watch"))
         assertEquals(null, stateOf("tab-tile-watch"))
     }
+
+    /** A working row with a progress pie (#250): the tile says the percent, and the working dots give way to the pie. */
+    @Test fun aWorkingRowWithProgressSaysThePercentOnceAndDropsTheDots() {
+        show { VeloTheme(UiSize.Medium) { ProgressSidebar() } }
+        compose.waitForIdle()
+        assertEquals(listOf("Selected", "Claude Code", "30%", "Index the files", "Working · 4s since report · ~/src/api"), said("tab-row-index"))
+        assertEquals("30%", stateOf("tab-tile-index"))
+        compose.onNodeWithTag("tab-tile-index-pie", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("tab-tile-index-logo", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("tab-working-index", useUnmergedTree = true).assertDoesNotExist()
+        // Without a progress, the logo and the dots stay.
+        compose.onNodeWithTag("tab-tile-plain-logo", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("tab-working-plain", useUnmergedTree = true).assertExists()
+        assertEquals(null, stateOf("tab-tile-plain"))
+    }
 }

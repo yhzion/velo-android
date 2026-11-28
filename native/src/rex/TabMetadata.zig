@@ -55,9 +55,13 @@ pub const Details = struct {
     pub fn read(result: std.json.Value, activity: model.Activity, since: ?i64) Details {
         var root: std.json.Value = .null;
         var selected: std.json.Value = .null;
+        // The first progress of a record in the shown state, the root's first: the record selected is the one
+        // reported longest ago, which a record that reports its progress seldom is.
+        var shared_progress: ?u8 = null;
         for (model.items(model.get(result, "records"))) |r| {
             const state = std.meta.stringToEnum(model.Activity, string(r, "state")) orelse continue;
             if (string(r, "id").len == 0) root = r;
+            if (state == activity and shared_progress == null) shared_progress = percent(model.get(r, "progress"));
             if (state != activity or selected != .null) continue;
             if (since) |ms| {
                 if (model.parseRfc3339Ms(string(r, "updated_at")) != ms) continue;
@@ -73,7 +77,10 @@ pub const Details = struct {
             .summary = first(string(selected, "msg"), string(root, "msg")),
             .kind = if (activity == .blocked) std.meta.stringToEnum(Kind, string(selected, "kind")) else null,
             .reported_idle = activity == .idle and selected != .null,
-            .progress = if (activity == .working or activity == .blocked) percent(model.get(selected, "progress")) else null,
+            .progress = if (activity == .working or activity == .blocked)
+                percent(model.get(selected, "progress")) orelse shared_progress
+            else
+                null,
         };
     }
 
@@ -178,6 +185,28 @@ test "a working or blocked record's progress is a share of 100, and other states
         const response = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), case[0], .{});
         try std.testing.expectEqual(case[2], Details.read(response, case[1], null).progress);
     }
+}
+
+test "a working root without progress lends the selection to a working child's progress, whichever reported first" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const t1 = "2026-11-28T04:00:01Z";
+    const t2 = "2026-11-28T04:00:02Z";
+    // The core selects the record reported longest ago (its `since`). Whether that is the root or the child, the pie
+    // shows the child's progress, so it does not come and go as each reports in turn.
+    for ([_][2][]const u8{ .{ t1, t2 }, .{ t2, t1 } }) |times| {
+        const text = try std.fmt.allocPrint(arena.allocator(),
+            \\{{"records":[{{"state":"working","msg":"Thinking","updated_at":"{s}"}},{{"id":"build","state":"working","progress":40,"updated_at":"{s}"}}]}}
+        , .{ times[0], times[1] });
+        const response = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+        const since = @min(model.parseRfc3339Ms(times[0]).?, model.parseRfc3339Ms(times[1]).?);
+        try std.testing.expectEqual(@as(?u8, 40), Details.read(response, .working, since).progress);
+    }
+    // A child's own progress beats the root's when the child is the one selected.
+    const both = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(),
+        \\{"records":[{"state":"working","progress":10,"updated_at":"2026-11-28T04:00:02Z"},{"id":"build","state":"working","progress":40,"updated_at":"2026-11-28T04:00:01Z"}]}
+    , .{});
+    try std.testing.expectEqual(@as(?u8, 40), Details.read(both, .working, model.parseRfc3339Ms(t1).?).progress);
 }
 
 test "a new progress alone is a change" {

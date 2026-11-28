@@ -495,6 +495,26 @@ internal fun RowCasesSidebar() {
 }
 
 /**
+ * Two working tabs of one remote (#250): one whose program reports 30% shows the pie and no working dots, the other
+ * reports none and keeps its logo and dots.
+ */
+@Composable
+internal fun ProgressSidebar() {
+    val now = remember { System.currentTimeMillis() }
+    val tabs = listOf(
+        TabInfo("index", label = "Index the files", program = "claude", cwd = "~/src/api", activity = "working", since = now - 4_000,
+            block = "block:index", active = true, progress = 30),
+        TabInfo("plain", label = "Plan the move", program = "claude", cwd = "~/src/api", activity = "working", since = now - 4_000, block = "block:plain"),
+    )
+    val host = SidebarHost(Remote("remote:live", "live", "https://live.example.ts.net"),
+        UiState(status = "connected", server = "live", sessions = listOf(SessionInfo("session:live", "live", tabs)), session = "session:live", window = "index"),
+        ActivityReadState(), active = true, removed = false)
+    Row(Modifier.fillMaxSize()) {
+        Sidebar(deviceRow(TailnetState.Running("velo-phone", listOf("100.101.12.7")), paused = false), listOf(host), sidebarSlot(SidebarPlace.Covers), NoActions)
+    }
+}
+
+/**
  * Remote rows in each state a note says (#201): a connection that failed, one that reconnects, one
  * that is offline, one that connects, and an SSH login that waits for an answer while it connects, beside a connected one.
  */
