@@ -56,7 +56,7 @@ import org.robolectric.annotation.GraphicsMode
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
  * and the SSH key actions (#149), SSH details' Forget, the sidebar's tab rows (#150), and Compose's
- * draft (#174) and the highlight swatches' places (#204). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * draft (#174), the highlight swatches' places (#204) and the slider rows (#200). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -235,6 +235,33 @@ class ReadOnceTest {
             assertEquals("$name is ${place + 1} of ${swatches.size}", listOf(0, place), listOf(item.rowIndex, item.columnIndex))
             assertTrue("$name is named, said $said", name in said)
         }
+    }
+
+    // #200: a slider row says its name and its value on the slider alone: the words beside it are no stops.
+
+    @Test fun theSoundVolumeRowSaysItsValueOnce() {
+        scene("settings-notif")
+        assertSliderRowSaysItsValueOnce("notifications-volume", "Sound volume", listOf("Activity sound volume", "100%"))
+    }
+
+    @Test fun theFontSizeRowSaysItsValueOnce() {
+        scene("settings-appearance")
+        assertSliderRowSaysItsValueOnce("appearance-font-size", "Font size", listOf("Font size", "13"))
+    }
+
+    /**
+     * The slider tagged `<tag>-slider` says [said], its name and its value, and is still a slider. The row's [label] and
+     * its shown value are no stops, so the stop before the slider is something else and the value is heard once.
+     */
+    private fun assertSliderRowSaysItsValueOnce(tag: String, label: String, said: List<String>) {
+        assertEquals(said, said("$tag-slider"))
+        val slider = compose.onNodeWithTag("$tag-slider").fetchSemanticsNode().id
+        assertTrue("$tag-slider is still a slider", compose.runOnIdle { Speech.node(view, slider).rangeInfo != null })
+        val stops = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        val value = said.last()
+        assertFalse("$label is no stop of its own, among $stops", listOf(label) in stops)
+        assertFalse("$value is no stop of its own, among $stops", listOf(value) in stops)
+        assertEquals("$value is said once, among $stops", 1, stops.count { value in it })
     }
 
     // #167: About's Updates row says the release by its text, and no state says it again.

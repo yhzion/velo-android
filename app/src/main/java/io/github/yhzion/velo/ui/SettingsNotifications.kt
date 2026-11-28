@@ -113,7 +113,10 @@ internal fun NotificationSettings(host: SettingsHost) {
     }
 }
 
-/** The activity sounds' volume: its value beside its name, and a slider as wide as the row's words under them. */
+/**
+ * The activity sounds' volume: its value beside its name, and a slider as wide as the row's words under them.
+ * The slider says the name and the value, so a screen reader stops on it alone and hears them once (#200).
+ */
 @Composable
 private fun VolumeSetting(volume: Float, onChange: (Float) -> Unit) {
     val space = VeloTheme.space
@@ -122,18 +125,21 @@ private fun VolumeSetting(volume: Float, onChange: (Float) -> Unit) {
         Modifier.groupBleed().testTag("notifications-volume-row").fillMaxWidth().groupInset().padding(end = space.s4, top = VeloTheme.medium(14.dp)),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Sound volume", Modifier.testTag("notifications-volume-label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
-        Text(value, Modifier.testTag("notifications-volume-value"), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
+        Text("Sound volume", Modifier.testTag("notifications-volume-label").saidBy(VolumeName), style = VeloTheme.type.body, color = VeloTheme.surface.text)
+        Text(value, Modifier.testTag("notifications-volume-value").saidBy(value), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
     }
     VeloSlider(
         volume, onChange,
         Modifier.fillMaxWidth().padding(end = space.s4, bottom = space.s4).testTag("notifications-volume-slider").semantics {
-            contentDescription = "Activity sound volume"
+            contentDescription = VolumeName
             stateDescription = value
         },
         valueRange = 0f..2f,
     )
 }
+
+/** What the volume slider is called: the label's "Sound volume", of the activity sounds. */
+private const val VolumeName = "Activity sound volume"
 
 /**
  * One kind of alert: its name with its colour, whether it posts a notification in the background,

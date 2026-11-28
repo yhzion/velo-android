@@ -26,6 +26,7 @@ import io.github.yhzion.velo.ui.theme.VeloSlider
 import io.github.yhzion.velo.ui.theme.VeloTheme
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.saidBy
 import kotlin.math.roundToInt
 
 private val PaneStyles = listOf("comfortable", "compact")
@@ -70,7 +71,10 @@ internal fun AppearanceSettings(host: SettingsHost, openFont: () -> Unit) {
     }
 }
 
-/** The terminal's font size: its value beside its name, a slider under them that has the row's width, and the sample. */
+/**
+ * The terminal's font size: its value beside its name, a slider under them that has the row's width, and the sample.
+ * The slider says the name and the value, so a screen reader stops on it alone and hears them once (#200).
+ */
 @Composable
 private fun FontSizeSetting(host: SettingsHost) {
     val s = host.settings
@@ -80,17 +84,15 @@ private fun FontSizeSetting(host: SettingsHost) {
         Modifier.groupBleed().testTag("appearance-font-size-row").fillMaxWidth().groupInset().padding(end = space.s4, top = VeloTheme.medium(14.dp)),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Font size", Modifier.testTag("appearance-font-size-label"), style = VeloTheme.type.body, color = VeloTheme.surface.text)
-        Text(value, Modifier.testTag("appearance-font-size-value"), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
+        Text("Font size", Modifier.testTag("appearance-font-size-label").saidBy(FontSizeName), style = VeloTheme.type.body, color = VeloTheme.surface.text)
+        Text(value, Modifier.testTag("appearance-font-size-value").saidBy(value), style = VeloTheme.type.value, color = VeloTheme.surface.secondary)
     }
     // The slider and the sample keep 16 from both sides of the group, as the label does.
     Column(Modifier.fillMaxWidth().padding(end = space.s4, bottom = space.s16)) {
-        run {
-        }
         VeloSlider(
             s.fontSize, { s.saveFontSize(it.roundToInt().toFloat()) },
             Modifier.fillMaxWidth().testTag("appearance-font-size-slider").semantics {
-                contentDescription = "Font size"
+                contentDescription = FontSizeName
                 stateDescription = value
             },
             valueRange = 8f..24f, steps = 15,
@@ -99,6 +101,9 @@ private fun FontSizeSetting(host: SettingsHost) {
         FontSizePreview(host)
     }
 }
+
+/** What the font size slider is called, by a screen reader as on the row. */
+private const val FontSizeName = "Font size"
 
 /** The font size as a whole number: the text beside the slider and the slider's own state say it alike. */
 fun fontSizeValue(size: Float): String = size.roundToInt().toString()
