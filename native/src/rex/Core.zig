@@ -4489,7 +4489,7 @@ pub const Core = struct {
         }
     }
 
-    /// A lead of `block` of `session` in `map` (`leads` or `stashed`).
+    /// A lead of `block` of `session` in `map` (`leads`, `stashed` or `beside`).
     fn createLead(self: *Core, map: *std.StringHashMapUnmanaged(*Lead), session: []const u8, block: []const u8) ?*Lead {
         const gpa = self.gpa;
         const lead = gpa.create(Lead) catch return null;
@@ -4514,13 +4514,16 @@ pub const Core = struct {
         const full = map != &self.beside;
         // The pane of a session shown until now knows its block already.
         if (self.entries.get(block)) |entry| {
-            if (entry.title) |title| _ = self.setTitle(&lead.title, title);
             self.setText(&lead.program, entry.program);
             self.setText(&lead.cwd, entry.cwd);
             lead.agent = entry.agent;
-            _ = lead.tab_report.replace(gpa, entry.tab_report) catch false;
-            lead.activity = entry.activity;
-            lead.since = entry.since;
+            // A block beside a lead keeps no report or title: nothing would keep them current.
+            if (full) {
+                if (entry.title) |title| _ = self.setTitle(&lead.title, title);
+                _ = lead.tab_report.replace(gpa, entry.tab_report) catch false;
+                lead.activity = entry.activity;
+                lead.since = entry.since;
+            }
             lead.asked = self.ready and entry.program.len > 0;
             // Outstanding pane requests still address the old serial after handover.
             if (lead.asked) {
@@ -4530,7 +4533,7 @@ pub const Core = struct {
                     if (full and request == .entry_title and request.entry_title.revision == entry.title_revision) self.requestLeadTitle(lead);
                 }
             }
-        } else if ((if (full) self.beside.get(block) else self.leads.get(block))) |was| {
+        } else if (if (map == &self.leads) self.beside.get(block) else if (!full) self.leads.get(block) else null) |was| {
             // A pane of a followed tab that becomes its lead, or a lead that steps aside: it
             // keeps what it runs. A lead still asks for its report and title.
             self.setText(&lead.program, was.program);
@@ -4619,8 +4622,8 @@ pub const Core = struct {
     }
 
     /// A followed block sent an event: a lead block of a tab of a session that is not
-    /// selected, or a minimized pane of the selected one. Any other block of a session that
-    /// is not selected costs no request.
+    /// selected, or a minimized pane of the selected one. A block beside a lead asks only
+    /// when its process changes (`followedBlockEvent`); any other block costs no request.
     fn leadEvent(self: *Core, lead: *Lead, payload: json.Value) void {
         const name = model.str(model.get(payload, "name")) orelse return;
         if (std.mem.eql(u8, name, "process_changed")) {

@@ -449,7 +449,9 @@ pub const UiState = struct {
     view: ?*const View,
     /// By block id. A block without an entry shows its label.
     blocks: *const std.StringHashMapUnmanaged(BlockInfo),
-    /// By block id: the lead blocks of the tabs of sessions other than the selected one.
+    /// By block id: the blocks of the tabs of sessions other than the selected one that the
+    /// core follows (each tab's lead, and by what it runs each other pane, #226), and the
+    /// selected session's minimized panes.
     leads: ?*const std.StringHashMapUnmanaged(BlockInfo) = null,
     forwards: []const ForwardInfo = &.{},
 };
@@ -475,7 +477,8 @@ pub fn leadBlock(w: *const Window) ?*const Block {
 /// that runs unseen; the same value is in the tab's entry of `windows`), `block` is the
 /// tab's lead block (`leadBlock`; left out for a tab without blocks) and the fields
 /// after it describe that block as an entry of `blocks` does. `others` names the programs of
-/// its other panes, as `icon` names the lead's, in layout order (`writeOtherPanes`, #226).
+/// its other panes, as `icon` names the lead's, in layout order (`writeOtherPanes`, #226); a tab of
+/// the selected session leaves it out, the app reads its `windows` and `blocks` instead.
 /// Both lists use the reported app, window hint, recognized executable, or program basename.
 /// layout node: {"block":id} or {"dir":"row"|"column","ratio":f,"first":node,"second":node}
 /// ("row" = side by side = Rex "horizontal"). `window` = active window, `focused` = its
@@ -632,7 +635,8 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
                     try writeString(jw, b.id);
                 }
                 try writeBlockInfo(jw, lead, info);
-                try writeOtherPanes(jw, state, w, lead);
+                // The app makes the selected session's from its `windows` and `blocks`.
+                if (!isSelectedSession(state, s.id)) try writeOtherPanes(jw, state, w, lead);
                 try jw.endObject();
             }
             try jw.endArray();
@@ -731,8 +735,8 @@ fn writeState(jw: *json.Stringify, state: UiState) std.Io.Writer.Error![4]usize 
 }
 
 /// What the core learned about block `id`: from the selected session's panes, else from
-/// the blocks it follows (the lead blocks of the other sessions' tabs, the selected
-/// session's minimized panes).
+/// the blocks it follows (the other sessions' tabs' lead blocks and the panes beside them,
+/// the selected session's minimized panes).
 fn blockInfo(state: UiState, id: Id) BlockInfo {
     if (state.blocks.get(id)) |info| return info;
     if (state.leads) |leads| if (leads.get(id)) |info| return info;
@@ -756,6 +760,10 @@ fn iconHint(icon: ?[]const u8, info: BlockInfo) []const u8 {
         report.app
     else
         icon orelse info.agent orelse std.fs.path.basenamePosix(info.program);
+}
+
+fn isSelectedSession(state: UiState, id: Id) bool {
+    return if (state.session) |selected| std.mem.eql(u8, selected, id) else false;
 }
 
 /// A tab's `others`: the program of each pane it draws but `lead`, as `icon` names the lead's, in

@@ -8584,3 +8584,33 @@ test "Core: a pane beside a followed tab's lead is asked only what it runs, and 
 
     try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
 }
+
+test "Core: a pane handed over beside a lead names what it runs now, not the app its pane last reported (#226)" {
+    var recorder: Recorder = .{};
+    defer recorder.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const core = try bootstrapped(&recorder);
+    defer core.destroy();
+    try answerAttach(core, try tabsView(a, "session:a", 1, "window:a1", &.{
+        .{ .window = "window:a1", .blocks = &.{ "block:t1", "block:t2" }, .focused = "block:t1" },
+    }, true));
+    const status = protocol.methods.terminalProgramStatus;
+    // `block:t2` runs Claude Code installed natively, which only its report names.
+    try answer(core, try requestId(core, process_method, "\"block:t2\""), "{\"foreground\":{\"name\":\"2.1.329\"}}");
+    try answer(core, try requestId(core, status, "\"block:t2\""), "{\"records\":[{\"state\":\"working\",\"app\":\"claude-code\"}]}");
+    // Another session is shown: `block:t2` is followed beside its tab's lead, by what it runs.
+    core.selectSession("session:b");
+    try answerAttach(core, try tabsView(a, "session:b", 3, "window:b1", &.{.{ .window = "window:b1", .blocks = &.{"block:b1"} }}, false));
+    try testing.expectEqual(@as(usize, 1), counts(core).beside);
+    try testing.expect(core.beside.get("block:t2").?.tab_report.app.len == 0);
+    // Claude Code ends and the shell runs again: no report is asked, and none is left over.
+    try blockEvent(core, "session:a", "block:t2", "program_status_removed", "{}");
+    try blockEvent(core, "session:a", "block:t2", "process_changed", "{\"generation\":2}");
+    try answer(core, try requestId(core, process_method, "\"block:t2\""), "{\"foreground\":{\"name\":\"zsh\"}}");
+    const tab = (try tabsOf(&recorder, a, "session:a"))[0];
+    try testing.expectEqualStrings("zsh", model.str(model.items(model.get(tab, "others"))[0]).?);
+    try testing.expectEqual(@as(usize, 1), queuedFor(core, status, "block:t2"));
+    try testing.expectEqual(@as(usize, 0), recorder.errors.items.len);
+}
