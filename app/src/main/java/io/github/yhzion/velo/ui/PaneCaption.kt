@@ -107,11 +107,14 @@ internal fun TabCaption(
             TabTile(tile.brand, panes = tile.panes, behind = tile.behind, size = unit * CaptionTile, dot = tile.dot,
                 ring = VeloTheme.surface.surface, tag = tileTag, byFace = true, stop = true,
                 contentDescription = tabTileDescription(tile, activity?.icon),
-                stateDescription = activity?.badge?.let { "Unread, ${it.description}" })
+                // With the pie, the working dots and their words give way: the tile says the program works.
+                stateDescription = activity?.badge?.let { "Unread, ${it.description}" }
+                    ?: activity?.indicator?.description?.takeIf { tile.progress != null },
+                progress = tile.progress)
         }
         Text(title, Modifier.weight(1f, fill).testTag("$tag-title"), color = color, style = style, maxLines = 1,
             overflow = TextOverflow.Ellipsis)
-        when (rowMark(activity?.indicator)) {
+        when (if (tile != null) rowMark(activity?.indicator, tile) else rowMark(activity?.indicator)) {
             RowMark.Working -> WorkingDots(unit * 4, unit * 3, Modifier.testTag("$tag-working"),
                 description = activity?.indicator?.description ?: TabIndicator.Working.description)
             RowMark.Waiting -> Box(

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Dp
@@ -99,6 +100,20 @@ class CardNameTest {
         assertEquals(VeloTheme.colors.backdrop.warning.toArgb(), dot[dot.width / 2, dot.height / 2].toArgb())
         compose.drawn("card-name-b-working").assertExists()
         compose.drawn("card-name-b-attention").assertDoesNotExist()
+    }
+
+    @Test fun aWorkingTabsProgressIsAPieWithoutDotsAsInTheSidebar() {
+        // The overview card's name and the caption under the panes draw the tab as its sidebar row does (#251).
+        show(listOf(row(TabInfo("p", program = "claude", activity = "working", block = "p1", progress = 30)),
+            row(TabInfo("b", program = "claude", activity = "working", block = "b1"))))
+        compose.drawn("card-name-p-tile-pie").assertExists()
+        compose.drawn("card-name-p-tile-logo").assertDoesNotExist()
+        compose.drawn("card-name-p-working").assertDoesNotExist()
+        // The dots' words give way with them: the tile says the program works.
+        val said = compose.drawn("card-name-p-tile").fetchSemanticsNode().config
+        assertEquals(TabIndicator.Working.description, said[SemanticsProperties.StateDescription])
+        compose.drawn("card-name-b-tile-logo").assertExists()
+        compose.drawn("card-name-b-working").assertExists()
     }
 
     @Test fun everyCardsTileIsInFullColourAndItsDotIsRingedInTheBackdrop() {
