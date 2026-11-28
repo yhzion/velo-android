@@ -861,6 +861,11 @@ test "encodeKey" {
     try std.testing.expectEqualStrings("\x1b", p.encodeKey(&out, Keys.KEYCODE_ESCAPE, 0, 0, 0));
     try std.testing.expectEqualStrings("\x1bOP", p.encodeKey(&out, Keys.KEYCODE_F1, 0, 0, 0));
     try std.testing.expectEqualStrings("\x1b[1;5C", p.encodeKey(&out, Keys.KEYCODE_DPAD_RIGHT, Keys.META_CTRL_ON, 0, 0));
+    // The key bar's Space (#213) is sent with its character; with none it would type nothing.
+    try std.testing.expectEqualStrings(" ", p.encodeKey(&out, Keys.KEYCODE_SPACE, 0, ' ', 0));
+    try std.testing.expectEqualStrings(" ", p.encodeKey(&out, Keys.KEYCODE_SPACE, Keys.META_SHIFT_ON, ' ', 0));
+    try std.testing.expectEqualStrings("\x00", p.encodeKey(&out, Keys.KEYCODE_SPACE, Keys.META_CTRL_ON, ' ', 0));
+    try std.testing.expectEqualStrings("\x1b ", p.encodeKey(&out, Keys.KEYCODE_SPACE, Keys.META_ALT_ON, ' ', 0));
     try std.testing.expectEqualStrings("", p.encodeKey(&out, Keys.KEYCODE_A, 0, 'a', 1));
     // Application cursor mode (DECCKM) is honored.
     p.write("\x1b[?1h");

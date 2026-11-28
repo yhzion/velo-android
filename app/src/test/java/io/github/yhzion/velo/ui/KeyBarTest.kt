@@ -144,6 +144,9 @@ class KeyBarTest {
         assertTrue("Space" in Settings.ALL_KEYS)
         assertEquals(KeyGroup.Editing, keyGroup("Space"))
         assertEquals(android.view.KeyEvent.KEYCODE_SPACE, KEY_CODES["Space"])
+        // Sent with its character, or the core would type nothing for it without Ctrl or Alt.
+        assertEquals(' '.code, barKeyChar(KEY_CODES.getValue("Space")))
+        for (key in KEY_CODES.keys - "Space") assertEquals(key, 0, barKeyChar(KEY_CODES.getValue(key)))
         assertFalse("a held Space types one space", "Space" in REPEAT_KEYS)
         assertEquals("SPACE", keyName("Space"))
         assertEquals("Space", spokenKeyName("Space"))

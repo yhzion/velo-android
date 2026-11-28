@@ -31,6 +31,13 @@ internal val KEY_CODES = mapOf(
     "Space" to KeyEvent.KEYCODE_SPACE, "Backspace" to KeyEvent.KEYCODE_DEL,
 )
 
+/**
+ * The character a bar key in [KEY_CODES] types, sent with its keycode: a space for Space (#213), as
+ * a hardware keyboard sends it, and 0 for a key that types none. The core drops a key's text below
+ * 0x20, so Space sent without it would type nothing unless Ctrl or Alt were armed.
+ */
+internal fun barKeyChar(code: Int): Int = if (code == KeyEvent.KEYCODE_SPACE) ' '.code else 0
+
 /** The key bar's modifiers: a tap arms one for the next key, another tap takes it back. */
 val StickyKeys = setOf("Ctrl", "Alt", "Shift")
 

@@ -875,7 +875,7 @@ internal fun Workspace(
                         } else if (!input.finishBarComposition()) {
                             // A composition that was a paste waits for its question; the key waits with it, unsent.
                             val code = KEY_CODES[k]
-                            if (code != null) input.sendKey(code, 0, 0) else input.sendText(k)
+                            if (code != null) input.sendKey(code, 0, barKeyChar(code)) else input.sendText(k)
                         }
                     }
                 }
