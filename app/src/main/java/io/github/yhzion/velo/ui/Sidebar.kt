@@ -484,7 +484,7 @@ private fun TabRowView(
             } else null,
             tile = {
                 BouncingMark(connected && bouncesIcon(activity.badge), motion) {
-                    TabTile(tile.brand, panes = tile.panes, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
+                    TabTile(tile.brand, panes = tile.panes, behind = tile.behind, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
                         contentDescription = said.description, stateDescription = said.state)
                 }
             }, trailing = {

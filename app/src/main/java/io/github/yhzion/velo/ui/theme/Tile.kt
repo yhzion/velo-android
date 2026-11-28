@@ -52,8 +52,9 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 // The tab tile of the redesign (Tile and TabTiles boards): a program's brand tile, one layer
-// more behind it for each pane of a split tab up to four, the pane count at the front tile's
-// lower right from five panes, and a state dot at its upper right. The rules are pure functions
+// more behind it for each pane of a split tab up to four, each in the brand of a pane's program
+// and stacked above the face as Rex for Mac stacks them (#217), the pane count at the front
+// tile's lower right from five panes, and a state dot at its upper right. The rules are pure functions
 // of the tile's size in the board's units (dp at Medium); TabTile scales them to the Size setting.
 
 /** The program a tab runs, as its tile draws it. */
@@ -125,48 +126,71 @@ fun tileLayers(panes: Int): Int = panes.coerceIn(1, MaxTileLayers)
 /** Whether the pane count shows: when there are more panes than layers. */
 fun tilePaneCountShown(panes: Int): Boolean = panes > MaxTileLayers
 
-/** How far each layer behind steps up and right, for a face [size] across. */
+/** How far each layer behind stands above the one in front of it, for a face [size] across. */
 fun tileStep(size: Float): Float = max(2.5f, size * 0.115f)
 
-/** The square the tile takes: the face and room for three steps above and to its right, so a row's text never moves. */
+/** The square the tile takes: the face and room for three steps above it, so a row's text never moves. */
 fun tileBox(size: Float): Float = size + ceil(tileStep(size) * 3)
 
 /**
- * The part of the tile's box a tile of [panes] panes is laid out by, when it lines up by its face
- * (the caption under the panes): the face, and to its right only the steps its layers take. The
- * layers that step above the face draw outside it.
+ * The part of the tile's box a tile is laid out by when it lines up by its face (the caption under
+ * the panes): the face alone. The layers stand above the face and draw outside it.
  */
-fun tileFaceBounds(panes: Int, size: Float): Rect {
+fun tileFaceBounds(size: Float): Rect {
     val top = tileBox(size) - size
-    return Rect(0f, top, size + (tileLayers(panes) - 1) * tileStep(size), top + size)
+    return Rect(0f, top, size, top + size)
 }
 
 /** A layer behind the face. [number] is the board's name for it: 2 is just behind the face, 4 the farthest. */
-data class TileLayer(val number: Int, val dx: Float, val dy: Float, val scale: Float, val alpha: Float, val brightness: Float)
+data class TileLayer(val number: Int, val dy: Float, val scale: Float, val alpha: Float, val brightness: Float)
 
 /**
- * The layers behind the face of a tab of [panes] panes, the farthest first. Each is the face
- * moved [TileLayer.dx] right and [TileLayer.dy] down, made smaller towards its top right corner,
- * and dimmed.
+ * The layers behind the face of a tab of [panes] panes, the farthest first, as Rex for Mac stacks
+ * them (#217): each stands [TileLayer.dy] above the one in front of it, straight behind the face,
+ * [TileLayer.scale] as wide, and dimmed, so only its top edge shows above the face.
  */
 fun tileBackLayers(panes: Int, size: Float): List<TileLayer> {
     val step = tileStep(size)
     return (tileLayers(panes) - 1 downTo 1).map { i ->
-        TileLayer(i + 1, i * step, -i * step, 1 - i * 0.12f, 1 - i * 0.2f, 0.6f - i * 0.08f)
+        TileLayer(i + 1, -i * step, 1 - i * 0.12f, 1 - i * 0.12f, 0.85f - i * 0.1f)
     }
 }
 
 /**
- * Where [layer] stands in the tile's box, for a face [size] across (the face at the box's lower left):
- * the face made [TileLayer.scale] as large towards its top right corner, which is moved
- * [TileLayer.dx] right and [TileLayer.dy] down. The layer is laid out there, not transformed, so its
- * box is the one it draws in.
+ * Where [layer] stands in the tile's box, for a face [size] across (the face at the box's lower
+ * left): the face made [TileLayer.scale] as large about its middle, with its top [TileLayer.dy]
+ * from the face's. The layer is laid out there, not transformed, so its box is the one it draws in.
  */
 fun tileLayerRect(layer: TileLayer, size: Float): Rect {
     val side = size * layer.scale
-    val right = size + layer.dx
+    val left = (size - side) / 2
     val top = tileBox(size) - size + layer.dy
-    return Rect(right - side, top, right, top + side)
+    return Rect(left, top, left + side, top + side)
+}
+
+/**
+ * The brands of the layers behind a [face] of a tab of [panes] panes, the nearest first, from
+ * [others]: the brands of its other panes in the tab's layout order, so focus moving does not
+ * reshuffle the stack. A pane whose program is not known is [TileBrand.Terminal].
+ *
+ * Up to four panes, one layer per other pane, the first one nearest. From five, one layer per
+ * kind of program other than the face's, the most panes first (a tie in layout order); when there
+ * are fewer kinds than layers, the kind with the most panes of all the tab's (a tie goes to the
+ * face's kind, then to layout order) fills the rest, beside its own layer when it has one.
+ */
+fun tileBehind(face: TileBrand, others: List<TileBrand>, panes: Int): List<TileBrand> {
+    val slots = tileLayers(panes) - 1
+    val known = (others + List((panes - 1 - others.size).coerceAtLeast(0)) { TileBrand.Terminal }).take(panes - 1)
+    if (!tilePaneCountShown(panes)) return known.take(slots)
+    val counts = known.groupingBy { it }.eachCount()
+    // groupingBy keeps the order brands first appear in, so sortedByDescending breaks a tie by layout order.
+    val kinds = counts.keys.filter { it != face }.sortedByDescending { counts.getValue(it) }.take(slots)
+    val extra = slots - kinds.size
+    if (extra == 0) return kinds
+    val all = counts + (face to (counts[face] ?: 0) + 1)
+    val most = (listOf(face) + counts.keys).distinct().maxBy { all.getValue(it) }
+    return if (most in kinds) kinds.flatMap { if (it == most) List(extra + 1) { most } else listOf(it) }
+    else kinds + List(extra) { most }
 }
 
 /** The face's corner radius. */
@@ -218,13 +242,16 @@ private val PiFill = SolidColor(Color(0xFF30556B))
 private val FaceHighlight = Color.White.copy(alpha = 0.25f)
 private val LayerRim = Color.White.copy(alpha = 0.18f)
 
+/** How much of a tool's logo colour tints its layer's glass, so a layer behind the face still shows the program. */
+private const val ToolLayerTint = 0.55f
+
 /**
- * The tile of a tab that runs [brand] in [panes] panes. [size] is the face; the tile takes
+ * The tile of a tab that runs [brand] in [panes] panes. [behind] are the brands of the layers
+ * behind the face, the nearest first ([tileBehind]); a layer it does not name takes [brand]. [size] is the face; the tile takes
  * [tileBox] of it, the face at its lower left. [dot] puts a state dot at the face's upper right;
  * from five panes the pane count sits at its lower right. Both are ringed in [ring], the colour
  * of the row behind the tile. [byFace] lays the tile out by [tileFaceBounds] instead of its box,
- * so a row centres the face and the next item starts where the farthest layer ends; the rest of
- * the box draws outside.
+ * so a row centres the face and the next item starts after it; the rest of the box draws outside.
  *
  * [tag] is the tile's test tag, `tab-tile-<tab id>`; its parts get the canvas's names under it
  * (`-face`, `-logo`, `-letter`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
@@ -234,7 +261,7 @@ private val LayerRim = Color.White.copy(alpha = 0.18f)
  */
 @Composable
 fun TabTile(
-    brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, size: Dp = VeloTheme.sizes.tabTile,
+    brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, behind: List<TileBrand> = emptyList(), size: Dp = VeloTheme.sizes.tabTile,
     dot: TileDot? = null, ring: Color = VeloTheme.surface.surface, tag: String? = null,
     contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null, byFace: Boolean = false,
 ) {
@@ -244,20 +271,21 @@ fun TabTile(
     val s = size.value / unit
     fun u(v: Float): Dp = (v * unit).dp
     fun Modifier.tagged(part: String) = if (tag != null) testTag(if (part.isEmpty()) tag else "$tag-$part") else this
-    val fill: Brush = when (brand) {
+    fun fillOf(b: TileBrand): Brush = when (b) {
         TileBrand.Claude -> ClaudeFill
         TileBrand.Codex -> CodexFill
         TileBrand.Omp -> OmpFill
         TileBrand.Pi -> PiFill
         else -> SolidColor(colors.glass)
     }
+    val fill = fillOf(brand)
     val corner = u(tileCorner(s))
     val shape = RoundedCornerShape(corner)
     val laidOut = if (!byFace) Modifier else Modifier.layout { measurable, _ ->
         val box = measurable.measure(Constraints())
         // The face's pixels, as the face below is sized, so its centre is the reported centre.
         val face = size.roundToPx()
-        layout(u(tileFaceBounds(panes, s).right).roundToPx(), face) { box.placeRelative(0, face - box.height) }
+        layout(u(tileFaceBounds(s).right).roundToPx(), face) { box.placeRelative(0, face - box.height) }
     }
     Box(
         modifier.then(laidOut).size(u(tileBox(s))).tagged("")
@@ -269,10 +297,14 @@ fun TabTile(
     ) {
         for (layer in tileBackLayers(panes, s)) {
             val r = tileLayerRect(layer, s)
+            val program = behind.getOrNull(layer.number - 2) ?: brand
+            // A tool's layer is its glass tinted with its logo's colour, as only its top edge shows, not the logo; the
+            // plain tool look (Terminal) keeps the bare glass.
+            val tint = if (program.filled || program == TileBrand.Terminal) null else (program.ink ?: colors.text).copy(alpha = ToolLayerTint)
             Box(
                 Modifier.offset(u(r.left), u(r.top)).size(u(r.width)).tagged("layer-${layer.number}")
                     .graphicsLayer { alpha = layer.alpha }
-                    .drawBehind { drawLayer(fill, corner.toPx() * layer.scale, layer.brightness, 1.dp.toPx() * layer.scale) },
+                    .drawBehind { drawLayer(fillOf(program), tint, corner.toPx() * layer.scale, layer.brightness, 1.dp.toPx() * layer.scale) },
             )
         }
         Box(
@@ -326,12 +358,13 @@ fun TabTile(
 }
 
 /**
- * A layer behind the face: the fill and a faint rim [line] wide, both dimmed to [brightness], as
- * the board's brightness filter dims the whole layer.
+ * A layer behind the face: the fill with a tool's [tint] over it and a faint rim [line] wide, all
+ * dimmed to [brightness], as the board's brightness filter dims the whole layer.
  */
-private fun DrawScope.drawLayer(fill: Brush, corner: Float, brightness: Float, line: Float) {
+private fun DrawScope.drawLayer(fill: Brush, tint: Color?, corner: Float, brightness: Float, line: Float) {
     val radius = CornerRadius(corner)
     drawRoundRect(fill, cornerRadius = radius)
+    if (tint != null) drawRoundRect(tint, cornerRadius = radius)
     drawRoundRect(LayerRim, Offset(line / 2, line / 2), Size(size.width - line, size.height - line), CornerRadius(corner - line / 2), Stroke(line))
     drawRoundRect(Color.Black.copy(alpha = 1 - brightness), cornerRadius = radius)
 }

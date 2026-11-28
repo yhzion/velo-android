@@ -21,6 +21,9 @@ enum class CloseControl { X, Swipe }
  * counts the panes the tab draws; [minimized] says it has more that are not drawn and still
  * run, how many is not known. [ownLabel] is the label the user gave ("" for the server's automatic
  * one). [shown] marks the one tab the panes show: of the active remote, its selected session.
+ * [others] names the programs of the other panes it draws, as [icon] names the lead pane's, in the
+ * tab's layout order (null for one not known); it is empty when they are not known, as for a tab
+ * of a session other than the selected one, whose lead pane alone the core follows.
  */
 data class TabRow(
     val session: String,
@@ -39,6 +42,7 @@ data class TabRow(
     val block: String? = null,
     val terminalBlocks: List<String> = emptyList(),
     val kind: String? = null,
+    val others: List<String?> = emptyList(),
 ) {
     /** The shown tab's row carries an X; any other row shows Close after a left swipe. */
     val closeControl: CloseControl get() = if (shown) CloseControl.X else CloseControl.Swipe
@@ -120,9 +124,9 @@ internal fun blockedIndicator(kind: String?) = when (kind) {
  * [this] tab as the sidebar's row of [session]. A row that is one [pane] of a tab ([paneRow]) is a terminal before
  * the server reports its program: only a tab is named "Tab" then (#181).
  */
-private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false): TabRow {
+private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, others: List<String?> = emptyList()): TabRow {
     val executable = program.substringAfterLast('/')
-    val hint = (icon ?: executable).takeUnless { it.isBlank() || VersionName.matches(it) }
+    val hint = programHint(icon, program)
     val agent = TabAgent.from(hint)
     val osc = if (titleIsLabel) "" else title.singleLine()
     val spinner = if (agent == TabAgent.Codex) CodexSpinner.find(osc) else null
@@ -160,8 +164,27 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false):
         }
     }
     return TabRow(session, id, name, cwd, hint, program, panes, minimized, activity, own, shown,
-        since, mark, block, terminalBlocks, kind)
+        since, mark, block, terminalBlocks, kind, others)
 }
+
+/** What names a pane's program: its [icon] hint, else its [program]'s file name; null when neither says. */
+private fun programHint(icon: String?, program: String): String? =
+    (icon ?: program.substringAfterLast('/')).takeUnless { it.isBlank() || VersionName.matches(it) }
+
+/**
+ * The programs of the panes of [w] other than its [lead] (its first when [lead] is not one of them), in layout
+ * order, as [TabRow.others] names them: null for a pane the state knows nothing of.
+ */
+internal fun otherPanePrograms(state: UiState, w: WindowInfo, lead: String?): List<String?> {
+    val blocks = tabBlocks(w)
+    val face = lead?.takeIf { it in blocks } ?: blocks.firstOrNull()
+    return blocks.filter { it != face }.map { b -> state.blocks[b]?.let { programHint(it.icon, it.program) } }
+}
+
+/** [TabRow.others] of the tab [tab] of [session]: known only in the selected session, whose windows the state holds. */
+private fun otherPanePrograms(state: UiState, session: String, tab: TabInfo): List<String?> =
+    if (session != state.session) emptyList()
+    else state.windows.firstOrNull { it.id == tab.id }?.let { otherPanePrograms(state, it, tab.block) }.orEmpty()
 
 internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): TabRow {
     val lead = leadBlock(state, this)
@@ -172,7 +195,7 @@ internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): Ta
         activity = info?.activity ?: "idle", since = info?.since, statusTitle = info?.statusTitle.orEmpty(),
         kind = info?.kind, reportedIdle = info?.reportedIdle == true, titleIsLabel = info?.titleIsLabel == true,
         statusSummary = info?.statusSummary.orEmpty())
-        .row(session, shown)
+        .row(session, shown, others = otherPanePrograms(state, this, lead))
 }
 
 /**
@@ -261,7 +284,7 @@ fun sessionGroups(state: UiState, active: Boolean, collapsed: Set<String>, activ
     val shownTab = if (active) shownTabId(state) else null
     return state.sessions.mapNotNull { s ->
         val rows = s.tabs.orEmpty()
-            .map { it.row(s.id, shown = s.id == state.session && it.id == shownTab) }
+            .map { it.row(s.id, shown = s.id == state.session && it.id == shownTab, others = otherPanePrograms(state, s.id, it)) }
             .filter { row ->
                 (!activityOnly || activeReport(row)) &&
                     (text.isEmpty() || row.name.contains(text, true) || row.folder.contains(text, true) ||
@@ -345,7 +368,7 @@ internal fun tabMessage(state: UiState, row: TabRow): String? {
 fun tabOf(state: UiState, session: String, tab: String): TabRow? {
     val s = state.sessions.firstOrNull { it.id == session } ?: return null
     val shown = session == state.session && tab == shownTabId(state)
-    s.tabs?.let { tabs -> return tabs.firstOrNull { it.id == tab }?.row(session, shown) }
+    s.tabs?.let { tabs -> return tabs.firstOrNull { it.id == tab }?.let { it.row(session, shown, others = otherPanePrograms(state, session, it)) } }
     if (session != state.session) return null
     return state.windows.firstOrNull { it.id == tab }?.row(state, session, shown)
 }

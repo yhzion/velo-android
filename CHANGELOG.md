@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Changed
+- The layers behind a split tab's tile show its other panes' programs, such as Claude Code's orange behind bash, and stand straight above the tile as in Rex for Mac. A screen reader says the mix.
+
 ### Fixed
 - With a keyboard in use, the screen reader no longer jumps back to a control higher up when a list scrolls, so Notifications settings can be read through to the Work started alerts.
 - At a large text size, notices no longer cover the key bar. When they do not fit, the upload and error notices wait behind newer ones, Undo stays, and a notice that comes back is not read twice.

@@ -2,6 +2,7 @@ package io.github.yhzion.velo.ui
 
 import io.github.yhzion.velo.ui.theme.TileBrand
 import io.github.yhzion.velo.ui.theme.TileDot
+import io.github.yhzion.velo.ui.theme.tileBehind
 import io.github.yhzion.velo.ui.theme.tileBrand
 import io.github.yhzion.velo.ui.theme.tileLabel
 
@@ -9,16 +10,26 @@ import io.github.yhzion.velo.ui.theme.tileLabel
 // Sidebar boards). Rex for Mac's sidebar: the program's brand tile, one layer per pane, and the state
 // of a report not yet seen in a dot on the tile; what the program does now at the row's end.
 
-/** The tile of a tab: its program's [brand], its [panes] (one layer each up to four, the count from five) and its state [dot]. */
-data class TabTileLook(val brand: TileBrand, val panes: Int, val dot: TileDot?)
+/**
+ * The tile of a tab: its program's [brand], its [panes] (one layer each up to four, the count from five) and its state
+ * [dot]. [others] names the programs of its other panes in layout order ([TabRow.others]), and [behind] is the brand of
+ * each layer behind the face, the nearest first ([tileBehind]).
+ */
+data class TabTileLook(
+    val brand: TileBrand, val panes: Int, val dot: TileDot?,
+    val others: List<String?> = emptyList(), val behind: List<TileBrand> = emptyList(),
+)
 
 /**
  * The tile of [row] as it draws [activity] ([ActivityReadState.activity]): the brand of the agent its
- * report names, else of the program it runs; a layer per pane it draws, at least one; and the dot of
- * the report not yet seen ([tileDot]).
+ * report names, else of the program it runs; a layer per pane it draws, at least one, each in the brand
+ * of another pane's program ([tileBehind]); and the dot of the report not yet seen ([tileDot]).
  */
-internal fun tabTile(row: TabRow, activity: TabActivity): TabTileLook =
-    TabTileLook(tileBrand(activity.icon ?: row.icon), row.panes.coerceAtLeast(1), tileDot(activity.badge))
+internal fun tabTile(row: TabRow, activity: TabActivity): TabTileLook {
+    val brand = tileBrand(activity.icon ?: row.icon)
+    val panes = row.panes.coerceAtLeast(1)
+    return TabTileLook(brand, panes, tileDot(activity.badge), row.others, tileBehind(brand, row.others.map(::tileBrand), panes))
+}
 
 /**
  * The dot a report not yet seen ([TabActivity.badge]) puts at the tile's upper right: blue for a
@@ -45,16 +56,35 @@ internal fun rowMark(indicator: TabIndicator?): RowMark? = when (indicator) {
 
 /**
  * What a screen reader says for a tab's tile: its brand's name and its panes ([tileLabel]). A program
- * without a brand of its own is called by its name ([hint]), as its mark was before the tiles.
+ * without a brand of its own is called by its name ([hint]), as its mark was before the tiles. When its
+ * panes run more than one program, the make-up follows (#217): "bash, 8 panes: 4 Claude Code, 2 OpenCode,
+ * 1 Codex, 1 bash", the most panes first, a tie in layout order, and the panes whose program is not known last.
  */
 internal fun tabTileDescription(tile: TabTileLook, hint: String?): String =
-    listOfNotNull(tileProgram(tile, hint), tilePanes(tile)).joinToString(", ")
+    listOfNotNull(tileProgram(tile, hint), tilePanes(tile)).joinToString(", ") + tileMakeUp(tile, hint).orEmpty()
 
 /** The program a tile names: its brand's name, or the program's own ([hint]) for one without a brand. */
 private fun tileProgram(tile: TabTileLook, hint: String?): String =
-    if (tile.brand != TileBrand.Terminal) tile.brand.label else hint?.trim()?.takeIf { it.isNotEmpty() } ?: tile.brand.label
+    if (tile.brand != TileBrand.Terminal) tile.brand.label else programName(hint) ?: tile.brand.label
+
+/** What a pane running [hint] is called: its brand's name, or the program's own; null when neither is known. */
+private fun programName(hint: String?): String? =
+    tileBrand(hint).takeIf { it != TileBrand.Terminal }?.label ?: hint?.trim()?.takeIf { it.isNotEmpty() }
 
 private fun tilePanes(tile: TabTileLook): String? = if (tile.panes > 1) "${tile.panes} panes" else null
+
+/** ": 4 Claude Code, 2 OpenCode, 1 bash" for a tile whose panes run more than one program, else null. */
+private fun tileMakeUp(tile: TabTileLook, hint: String?): String? {
+    if (tile.panes < 2) return null
+    val others = (tile.others + List((tile.panes - 1 - tile.others.size).coerceAtLeast(0)) { null }).take(tile.panes - 1)
+    val names = others.map(::programName)
+    // The face's pane after the others, so a tie lists the other panes in layout order first.
+    val counts = (names.filterNotNull() + tileProgram(tile, hint)).groupingBy { it }.eachCount()
+    if (counts.size < 2) return null
+    val unknown = names.count { it == null }
+    return ": " + (counts.entries.sortedByDescending { it.value }.map { "${it.value} ${it.key}" } +
+        listOfNotNull(unknown.takeIf { it > 0 }?.let { "$it unknown" })).joinToString(", ")
+}
 
 /**
  * What a screen reader hears for a tab's row besides its second line: the tile's [description] with
