@@ -13,6 +13,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - The key bar spans the pane column, rounds as the panes do, and shows Tab, Enter, Shift and Space as icons. On a narrow upright screen its keys wrap into two rows instead of shrinking.
 - The key bar's icons are a little larger, and in the Compact pane style the bar keeps a small gap above the keyboard instead of touching it.
 
+### Changed
+- With the eye on, the sidebar lists the busy and finished tabs of every remote in one list: Blocked, Failed, Working, Done. The newest in each comes first, and a tab that moves slides to its new group.
+
 ## 2.15.1 - 2026-11-28
 
 ### Changed

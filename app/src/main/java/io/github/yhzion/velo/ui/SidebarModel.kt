@@ -310,54 +310,6 @@ fun sessionGroups(state: UiState, active: Boolean, collapsed: Set<String>, activ
     }
 }
 
-/**
- * The groups Activity shows, in Rex for Mac's order (its `ActivityPriority`): programs waiting
- * for the user, then failed, working and finished ones. Its titles are Rex for Mac's.
- */
-enum class ActivityPriority(val title: String) { Blocked("Blocked"), Failed("Failed"), Working("Working"), Done("Done") }
-
-/**
- * The group a tab joins while Activity is on, from what its row draws ([activity]); null leaves
- * it out. A tab that works, waits or failed stays in while it does so. A finished tab stays only
- * until its report is seen ([TabActivity.badge]): Rex for Mac's Done lists finishes not yet seen.
- * Without a mark (the remote is offline) the lead pane's report decides, a finish aside.
- */
-internal fun activityPriority(row: TabRow, activity: TabActivity): ActivityPriority? = when (activity.indicator) {
-    TabIndicator.Working, TabIndicator.CodexActive -> ActivityPriority.Working
-    TabIndicator.Waiting, TabIndicator.Permission, TabIndicator.Question, TabIndicator.Auth -> ActivityPriority.Blocked
-    TabIndicator.Error -> ActivityPriority.Failed
-    TabIndicator.Done -> ActivityPriority.Done.takeIf { activity.badge == TabIndicator.Done }
-    else -> when (row.activity) {
-        "working" -> ActivityPriority.Working
-        "blocked" -> ActivityPriority.Blocked
-        "error" -> ActivityPriority.Failed
-        else -> null
-    }
-}
-
-/** One of Activity's groups: its [priority] and its tabs, of every session. */
-data class ActivityGroup(val priority: ActivityPriority, val rows: List<TabRow>)
-
-/**
- * What Activity lists for one remote: every tab with an [activityPriority] whose name or folder
- * holds [query], whatever session is folded, in one group per [ActivityPriority] that has any.
- * [activity] says what each row draws. A group lists its newest report first, and a tab
- * without a report time last, in the server's order.
- */
-internal fun activityGroups(state: UiState, active: Boolean, query: String, activity: (TabRow) -> TabActivity): List<ActivityGroup> {
-    val priorities = HashMap<TabRow, Pair<ActivityPriority, Long?>>()
-    val rows = sessionGroups(state, active, emptySet(), true, query) { row ->
-        val drawn = activity(row)
-        activityPriority(row, drawn)?.also { priorities[row] = it to drawn.since } != null
-    }.flatMap { it.rows }
-    val byPriority = rows.groupBy { priorities.getValue(it).first }
-    return ActivityPriority.entries.mapNotNull { priority ->
-        byPriority[priority]?.let { group ->
-            ActivityGroup(priority, group.sortedByDescending { priorities.getValue(it).second ?: Long.MIN_VALUE })
-        }
-    }
-}
-
 /** Whether a tab's row draws the dot of news the user has not seen: what lights the dot on the eye. */
 internal fun wantsAttention(activity: TabActivity): Boolean = activity.badge != null
 
