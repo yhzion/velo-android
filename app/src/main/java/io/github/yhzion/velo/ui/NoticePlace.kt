@@ -141,7 +141,8 @@ internal val NoticeRowLeast = 160.dp
  * Where two or more do not end [padding] above the key bar so (a larger text size wraps them to more lines, #192),
  * the notices without a control ([waitsIn]) wait, the oldest first, until the rest fit or one is left: a waiting
  * notice is not placed, and its [NoticeWait] says so. The move's Undo has a control and never waits. The notices
- * left stay above the key bar, from the column's top if they must, as one or more stacked there do.
+ * left stay above the key bar, from the column's top if they must, as one or more stacked there do. So does one
+ * notice whose own place would cover the key bar (#227): the error notice's two lines at a large text size.
  */
 @Composable
 internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, gap: Dp, lift: Dp, modifier: Modifier, content: @Composable () -> Unit) {
@@ -200,8 +201,11 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
             if (notices.isEmpty()) return@layout
             val width = notices.maxOf { it.width }
             val height = notices.sumOf { it.height } + between * (count - 1)
-            // Where notices wait, those left keep off the key bar: alone, one goes there from the column's top.
-            val floor = if (arrangement == NoticeArrangement.AboveKeyBar || shown.size < measurables.size) keyBarTop else constraints.maxHeight
+            // Where notices wait, those left keep off the key bar: alone, one goes there from the column's top. So does
+            // one notice whose place by the column's bottom would cover the key bar (#227).
+            val covers = noticeTop(top, bottom, constraints.maxHeight, height, side, up) + height > keyBarTop
+            val floor = if (arrangement == NoticeArrangement.AboveKeyBar || shown.size < measurables.size || covers) keyBarTop
+                else constraints.maxHeight
             val x = side + Alignment.CenterHorizontally.align(width, space, layoutDirection)
             var y = noticeTop(top, bottom, floor, height, side, up)
             notices.forEach {

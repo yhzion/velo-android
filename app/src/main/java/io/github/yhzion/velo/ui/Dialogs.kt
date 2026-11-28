@@ -20,6 +20,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -117,6 +118,9 @@ internal fun ErrorNoticeTimer(conn: HostConnection) {
  * are read as before. A notice that only moved to another place, which [heard] knows, is made anew
  * there too, but it is no live region: it was read where it first showed (#195). Where it [waits] behind
  * newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again either.
+ *
+ * Its text shows [ErrorNoticeLines] lines at most and ends with an ellipsis where it is longer, so that a long error
+ * at a large text size does not cover the key bar (#227). A screen reader hears all of it.
  */
 @Composable
 internal fun ErrorNotice(
@@ -146,7 +150,9 @@ internal fun ErrorNotice(
                         if (live) liveRegion = LiveRegionMode.Polite
                         contentDescription = errorNoticeSaid(msg, said)
                     }
-                }, containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) { Text(said) }
+                }, containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) {
+                    Text(said, maxLines = ErrorNoticeLines, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -155,15 +161,20 @@ internal fun ErrorNotice(
 /**
  * The height of a Material Snackbar that holds only [text] in [style], at most [width] px wide, as it lays itself out
  * (Material3 1.5): 48 dp for one line; for more, at least 68 dp, its first baseline 30 dp from the top and 6 dp under
- * its last line. Its text is 32 dp narrower than the Snackbar, which is at most 624 dp wide. Its own layout answers
- * one line's height at any width, so the error notice answers this instead ([ownWidth], #192).
+ * its last line. Its text is 32 dp narrower than the Snackbar, which is at most 624 dp wide, and takes
+ * [ErrorNoticeLines] lines at most, as the error notice draws it (#227). Its own layout answers one line's height at
+ * any width, so the error notice answers this instead ([ownWidth], #192).
  */
 internal fun snackbarHeight(measurer: TextMeasurer, text: String, style: TextStyle, density: Density, width: Int): Int = with(density) {
     val textWidth = (minOf(width, SnackbarMaxWidth.roundToPx()) - (SnackbarTextSide * 2).roundToPx()).coerceAtLeast(0)
-    val laid = measurer.measure(text, style, constraints = Constraints(maxWidth = textWidth))
+    val laid = measurer.measure(text, style, overflow = TextOverflow.Ellipsis, maxLines = ErrorNoticeLines,
+        constraints = Constraints(maxWidth = textWidth))
     if (laid.lineCount < 2) maxOf(48.dp.roundToPx(), laid.size.height)
     else maxOf(68.dp.roundToPx(), (30.dp.roundToPx() - laid.firstBaseline.roundToInt()).coerceAtLeast(0) + laid.size.height + 6.dp.roundToPx())
 }
+
+/** The most lines the error notice's text shows (#227): the rest ends in an ellipsis. */
+internal const val ErrorNoticeLines = 2
 
 /** The widest a Material Snackbar draws itself ([snackbarHeight]). */
 private val SnackbarMaxWidth = 624.dp

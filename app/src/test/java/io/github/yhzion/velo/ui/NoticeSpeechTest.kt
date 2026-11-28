@@ -513,6 +513,26 @@ class NoticeSpeechTest {
         assertTrue("$said", listOf("Error: $missing") in said)
     }
 
+    @Test fun aLongErrorCutOnScreenIsReadWhole() {
+        // The screen shows two lines of it and an ellipsis (#227); a screen reader hears all of it, once.
+        val longer = "Could not connect to the remote: ssh: handshake failed: ssh: unable to authenticate, " +
+            "attempted methods [none publickey], no supported methods remain on the server."
+        val c = connection()
+        compose.setContent {
+            view = LocalView.current
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                VeloTheme { Box(Modifier.width(300.dp)) { ErrorNotice(c) } }
+            }
+        }
+        settle()
+        val from = mark()
+        c.error = longer
+        settle()
+        assertEquals(listOf(listOf("Error: $longer")), compose.runOnIdle { Speech.focusableNodes(view).map { it.second } })
+        assertEquals(listOf(listOf("Error: $longer")), readOut(from))
+    }
+
     @Test fun theNoteThatReplacesALoginsCancelIsNoError() {
         val c = connection()
         compose.setContent {

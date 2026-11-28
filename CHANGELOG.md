@@ -4,6 +4,9 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ## Unreleased
 
+### Fixed
+- A long error notice shows two lines and ends with an ellipsis, so at a large text size it no longer covers the key bar with the keyboard up. A screen reader still reads the whole error.
+
 ## 2.16.0 - 2026-11-28
 
 ### Added

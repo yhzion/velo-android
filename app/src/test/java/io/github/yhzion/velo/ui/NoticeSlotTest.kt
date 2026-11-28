@@ -470,13 +470,67 @@ class NoticeSlotTest {
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
-    @Test fun aShortToastAndAThreeLineErrorAtFontScale1_3LeaveTheErrorAloneFromTheColumnsTop() {
-        // A known limit: the error alone is 95.2 dp tall, more than the 83 dp above the key bar, so it still covers it.
-        // One notice keeps #165's place (#169), and only where others wait does it go from the column's top.
+    @Test fun aShortToastAndALongErrorAtFontScale1_3LeaveTheErrorAloneFromTheColumnsTop() {
+        // Before #227 the error took three lines, 95.2 dp, and covered the key bar by 12.2 dp. Two lines end above it.
         realNotices(velvetColumn, undo = false, fontScale = 1.3f, errorWords = longerError, uploadWords = "Uploading a.png…")
         assertTrue("the toast waits", !placed("upload"))
         assertEquals(0f, bounds("error").top.value, 0.5f)
-        assertEquals(95.2f, bounds("error").bottom.value, 0.5f)
+        assertClearOfTheKeyBar("error")
+        assertTheErrorIsCutToTwoLines()
+    }
+
+    // An error alone from the start (#227): its text shows two lines at most and ends with an ellipsis where it is
+    // longer. One notice keeps #165's place, 16 dp down, unless that covers the key bar: then it goes from the column's
+    // top. Before #227 the 163-letter error ended at 95.2 dp at 1.3, and the 62-letter one at 84.6 dp at 1.3 and
+    // 97.9 dp at 2.0.
+
+    /** The error notice's text as it is laid out. Its node says it all ([errorNoticeSaid]), so the text is unmerged. */
+    private fun errorTextLayout(words: String): TextLayoutResult {
+        val results = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(words, useUnmergedTree = true).fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        return results.single()
+    }
+
+    /** The error's text takes two lines and ends with an ellipsis: it is longer than they hold. */
+    private fun assertTheErrorIsCutToTwoLines() {
+        val t = errorTextLayout(longerError)
+        assertEquals("two lines", 2, t.lineCount)
+        assertTrue("its end cut with an ellipsis", t.isLineEllipsized(1))
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aLongErrorAloneAtFontScale1_3StaysOffTheKeyBar() {
+        realNotices(velvetColumn, undo = false, upload = false, fontScale = 1.3f, errorWords = longerError)
+        assertClearOfTheKeyBar("error")
+        assertTheErrorIsCutToTwoLines()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aLongErrorAloneAtFontScale2StaysOffTheKeyBar() {
+        realNotices(velvetColumn, undo = false, upload = false, fontScale = 2f, errorWords = longerError)
+        assertClearOfTheKeyBar("error")
+        assertTheErrorIsCutToTwoLines()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aTwoLineErrorAloneAtFontScale1_3StaysOffTheKeyBar() {
+        realNotices(velvetColumn, undo = false, upload = false, fontScale = 1.3f, errorWords = longError)
+        assertClearOfTheKeyBar("error")
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aTwoLineErrorAloneAtFontScale2StaysOffTheKeyBar() {
+        realNotices(velvetColumn, undo = false, upload = false, fontScale = 2f, errorWords = longError)
+        assertClearOfTheKeyBar("error")
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aShortErrorAloneKeepsItsPlace() {
+        // One line clears the key bar from #165's place: it stays 16 dp down.
+        realNotices(velvetColumn, undo = false, upload = false, fontScale = 2f)
+        assertEquals(16f, bounds("error").top.value, 0.5f)
+        assertEquals(1, errorTextLayout(errorText).lineCount)
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
