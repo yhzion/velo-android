@@ -65,6 +65,8 @@ class SpaceKeyChipTest {
         chip.performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("keyboard-chip-space").assertIsSelected()
+        // The bar's preview draws its cap, SPACE, said as Space.
+        compose.onNodeWithTag("key-space", useUnmergedTree = true).assertExists()
         assertEquals(before.dropLast(1) + "Space" + "Backspace", settings.keyBar)
     }
 }
