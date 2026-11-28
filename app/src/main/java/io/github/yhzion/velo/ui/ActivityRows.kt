@@ -102,13 +102,16 @@ internal fun ActivityRow(
         }
     }
     val tile = tabTile(row, activity)
-    // The group's title says the state, so a screen reader hears only what the tile adds: unread, and of what.
-    val said = tabRowTileSpeech(tile, activity.icon ?: row.icon, row.name, activity.badge, null)
+    val message = entry.message
+    val reason = wellReason(activity.indicator)
+    val third = message?.let { activityThirdLine(entry.priority, reason, it) }
+    // The group's title says the state, so a screen reader hears only what the tile adds: unread, and of what. Where
+    // the well says what the tab waits for, "Unread" alone (#279: each part once).
+    val wellSays = activity.indicator.takeIf { reason != null && third?.contains(reason) == true }
+    val said = tabRowTileSpeech(tile, activity.icon ?: row.icon, row.name, activity.badge, wellSays)
     val gap = 12.bd
     // The group's title says it works; the percent of a pie is said with the session (#251).
     val sessionSaid = progressSaid(tile, entry.sessionLabel, PercentAt.First)
-    val message = entry.message
-    val third = message?.let { activityThirdLine(entry.priority, wellReason(activity.indicator), it) }
     // The row says all of it, its parts hidden, so that its words stay with it half under the Filter field (#279).
     val description = activityRowDescription(listOfNotNull(said.description, said.state), row.name.takeIf { said.nameSaid },
         sessionSaid ?: entry.sessionLabel, age, third.orEmpty())

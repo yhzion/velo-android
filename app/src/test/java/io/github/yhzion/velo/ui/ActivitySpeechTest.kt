@@ -79,6 +79,13 @@ class ActivitySpeechTest {
             .map { node -> node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.joinToString() }
         assertEquals(listOf("Blocked", "Working", "Done"), headings.filter { it in ActivityPriority.entries.map(ActivityPriority::title) })
 
+        // A waiting row not yet seen says "Unread" and, with its well, what it waits for: once (#279).
+        val asking = compose.runOnIdle { Speech.saidAt(view, compose.onNodeWithTag("activity-row-remote:a/session:s/w2").fetchSemanticsNode().id) }
+            .joinToString(", ")
+        val reason = TabIndicator.Question.description
+        assertTrue(asking, "Unread" in asking)
+        assertEquals(asking, 1, asking.split(reason).size - 1)
+
         val working = "remote:a/session:s/w1"
         fun said() = compose.runOnIdle { Speech.saidAt(view, compose.onNodeWithTag("activity-row-$working").fetchSemanticsNode().id) }
         assertEquals(1, said().count { "Reading the code" in it })
