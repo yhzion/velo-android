@@ -288,6 +288,13 @@ class SqueezedPaneTreeTest {
         val heights = paneHeights()
         assertTrue("c squeezed: $heights", heights[2] < px(25f))
         assertEquals("pending, panes $heights", listOf(true, true, true, true), panesFound().map { it != null })
+        // The ratio left unconfirmed: the split goes back to the layout's, and no handle keeps judging c by the old wish.
+        compose.mainClock.advanceTimeBy(1600)
+        compose.waitForIdle()
+        for ((said, bounds, _) in handles()) {
+            val along = if (said.endsWith("left and right")) bounds.width() else bounds.height()
+            assertEquals("after the wait: $said on $bounds", px(32f), along.toFloat(), 1f)
+        }
     }
 
     /** The same while a finger drags the lowest handle and has not let go: c stays in the tree (#283). */
