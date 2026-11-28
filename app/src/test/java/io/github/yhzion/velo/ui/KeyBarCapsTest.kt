@@ -145,9 +145,11 @@ class KeyBarCapsTest {
     }
 
     @Test fun inCompactStyleTheBarKeepsAGapToTheKeyboardUnderIt() {
-        // The workspace's outer margin in Compact style is 4 pixels; under the key bar it is made up to gapCompact.
+        // The workspace's outer margin in Compact style is 4 pixels; under the key bar it is made up to gapCompact, 3.4 at Medium.
         val outer = (4 / compose.density.density).dp
-        val clearance = keyBarClearance(compact = true, outer = outer, gapCompact = 4.dp)
+        val gapCompact = veloSizes(UiSize.Medium).gapCompact
+        assertEquals(3.4f, gapCompact.value, 0.01f)
+        val clearance = keyBarClearance(compact = true, outer = outer, gapCompact = gapCompact)
         compose.setContent {
             VeloTheme(UiSize.Medium) {
                 Column(Modifier.width(325.dp).testTag("column")) {
@@ -156,9 +158,9 @@ class KeyBarCapsTest {
             }
         }
         compose.waitForIdle()
-        assertEquals(4f, (bounds("column").bottom - bounds("key-bar").bottom).value + outer.value, 0.5f)
+        assertEquals(gapCompact.value, (bounds("column").bottom - bounds("key-bar").bottom).value + outer.value, 0.5f)
         // The other style's margin is a whole gap already, and nothing is added.
-        assertEquals(0.dp, keyBarClearance(compact = false, outer = 8.dp, gapCompact = 4.dp))
+        assertEquals(0.dp, keyBarClearance(compact = false, outer = 6.8.dp, gapCompact = gapCompact))
     }
 
     @Test fun theBarPhoneBarOnItsSideScrollsInOneRow() {
