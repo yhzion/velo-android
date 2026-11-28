@@ -233,26 +233,36 @@ class NoticeSpeechTest {
 
     private val uploading = "Uploading 17957915015754169069198214825020.png…"
 
-    /** The toast and the error notice of [c] over the Velvet's column in landscape with the keyboard up, at font scale 2. */
-    private fun foldingNotices(c: HostConnection) {
+    /**
+     * The toast and the error notice of [c] over the Velvet's column in landscape with the keyboard up, at font scale 2,
+     * or in the sidebar while the returned switch says so, as Workspace draws them.
+     */
+    private fun foldingNotices(c: HostConnection): MutableState<Boolean> {
+        val inSidebar = mutableStateOf(false)
         compose.setContent {
             view = LocalView.current
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
                 VeloTheme {
-                    val px = LocalDensity.current.density
-                    Box(Modifier.width(1088.dp).height(137.dp)) {
-                        PaneNotices({ Rect(0f, 0f, 1088 * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, 1088 * px, 120 * px) },
-                            padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
-                            val heard = remember { HeardNotices() }
-                            UploadToast(c, heard, waits = true)
-                            ErrorNotice(c, heard = heard, waits = true)
+                    val heard = remember { HeardNotices() }
+                    if (inSidebar.value) Sidebar(device, emptyList(), Modifier.fillMaxSize(), actions(), notices = {
+                        UploadToast(c, heard)
+                        ErrorNotice(c, heard = heard)
+                    }) else {
+                        val px = LocalDensity.current.density
+                        Box(Modifier.width(1088.dp).height(137.dp)) {
+                            PaneNotices({ Rect(0f, 0f, 1088 * px, 32 * px) }, keyBar = { Rect(0f, 83 * px, 1088 * px, 120 * px) },
+                                padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
+                                UploadToast(c, heard, waits = true)
+                                ErrorNotice(c, heard = heard, waits = true)
+                            }
                         }
                     }
                 }
             }
         }
         settle()
+        return inSidebar
     }
 
     /** What a screen reader finds on screen now, node by node. */
@@ -319,6 +329,41 @@ class NoticeSpeechTest {
         c.error = null
         settle()
         assertEquals("read where it first shows", listOf(listOf(uploading)), readOut(from))
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aNoticeThatWaitedFromTheStartIsReadInTheSidebar() {
+        // #192 review, M3: a toast that never showed in the pane column was never heard there.
+        val c = connection()
+        val inSidebar = foldingNotices(c)
+        c.uploading = uploading
+        c.error = missing
+        settle()
+        val from = mark()
+        inSidebar.value = true
+        settle()
+        assertEquals("the toast is read where it first shows", listOf(listOf(uploading)), readOut(from))
+        val back = mark()
+        inSidebar.value = false
+        settle()
+        assertEquals("nothing is read again", emptyList<List<String>>(), readOut(back))
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aMoveToTheSidebarAndBackKeepsWhichNoticeIsNewer() {
+        // #192 review, M4: the error came first and waits behind the newer toast, before and after the move.
+        val c = connection()
+        val inSidebar = foldingNotices(c)
+        c.error = missing
+        settle()
+        c.uploading = uploading
+        settle()
+        assertEquals(listOf(listOf(uploading)), found())
+        inSidebar.value = true
+        settle()
+        inSidebar.value = false
+        settle()
+        assertEquals("the newer toast still shows", listOf(listOf(uploading)), found())
     }
 
     // The keyboard: it opens from the Filter field and leaves the sidebar shorter, with a notice in it.

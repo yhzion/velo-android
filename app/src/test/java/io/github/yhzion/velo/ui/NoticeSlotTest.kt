@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
@@ -195,7 +196,8 @@ class NoticeSlotTest {
      * [upload] and [error] say; the connection is returned to change them.
      */
     private fun realNotices(width: Int, undo: Boolean = true, upload: Boolean = true, error: Boolean = true,
-                            fontScale: Float = 1f, rtl: Boolean = false): HostConnection {
+                            fontScale: Float = 1f, rtl: Boolean = false, errorWords: String = errorText,
+                            uploadWords: String = "Uploading $uploadName…"): HostConnection {
         val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
         val notice = MoveNotice("b", MovePlace.NewTab, before, undoFor(before, "b", MovePlace.NewTab) { it.label })
         compose.setContent {
@@ -209,7 +211,7 @@ class NoticeSlotTest {
                             padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                             if (undo) UndoNotice(c, notice, onDone = {}, Modifier.testTag("undo"))
                             val heard = remember { HeardNotices() }
-                            UploadToast(c, heard, waits = true)
+                            UploadToast(c, heard, waits = true, Modifier.testTag("upload"))
                             ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
                         }
                     }
@@ -218,8 +220,8 @@ class NoticeSlotTest {
         }
         // After the fake core's state is applied: a connected state clears the error notice.
         compose.waitForIdle()
-        if (upload) c.uploading = "Uploading $uploadName…"
-        if (error) c.error = errorText
+        if (upload) c.uploading = uploadWords
+        if (error) c.error = errorWords
         compose.waitForIdle()
         return c
     }
@@ -271,7 +273,7 @@ class NoticeSlotTest {
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun twoNoticesUnderAOneLinePaneLieSideBySideAtTheirOwnWidths() {
         realNotices(velvetColumn, undo = false)
-        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("toast"), bounds("error")))
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("upload"), bounds("error")))
         assertEquals(1, toastText().lineCount)
         assertTheErrorKeepsItsOwnWidth()
     }
@@ -284,7 +286,7 @@ class NoticeSlotTest {
         c.error = errorText
         compose.waitForIdle()
         val undo = bounds("undo")
-        assertOneRowAboveTheKeyBar(velvetColumn, listOf(undo, bounds("toast"), bounds("error")))
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(undo, bounds("upload"), bounds("error")))
         assertEquals("Undo $undo keeps its own width $ownUndo", (ownUndo.right - ownUndo.left).value, (undo.right - undo.left).value, 0.5f)
         assertTheErrorKeepsItsOwnWidth()
         assertEquals(2, toastText().lineCount)
@@ -295,7 +297,7 @@ class NoticeSlotTest {
     @Test fun threeNoticesInRtlGoFromTheRight() {
         realNotices(velvetColumn, rtl = true)
         // The first notice at the start, which is the right.
-        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("error"), bounds("toast"), bounds("undo")))
+        assertOneRowAboveTheKeyBar(velvetColumn, listOf(bounds("error"), bounds("upload"), bounds("undo")))
         assertTheErrorKeepsItsOwnWidth()
         assertTheNameIsWhole()
     }
@@ -304,7 +306,7 @@ class NoticeSlotTest {
     @Test fun oneNoticeUnderAOneLinePaneKeepsItsPlace() {
         // #165's place: from the pane's top down, padding below the column's top, over the caption.
         realNotices(velvetColumn, undo = false, error = false)
-        val toast = bounds("toast")
+        val toast = bounds("upload")
         assertEquals(16f, toast.top.value, 0.5f)
         assertEquals(velvetColumn.toFloat(), (toast.left + toast.right).value, 1f)
     }
@@ -314,8 +316,15 @@ class NoticeSlotTest {
     // without a control wait, the oldest first, until the rest fit or one is left; the Undo never waits. Before #192,
     // three at 1.3 ended at 96.8 dp, two at 2.0 at 126.5 and three at 2.0 at 162.3.
 
-    /** Whether the notice [tag] is on screen: a waiting one is not placed, and a screen reader does not find it. */
-    private fun placed(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().any { it.layoutInfo.isPlaced }
+    /**
+     * Whether the notice [tag] is on screen: a waiting one is not placed. Its tag is given outside what it hides from
+     * a screen reader while it waits, so the node is found either way.
+     */
+    private fun placed(tag: String): Boolean {
+        val nodes = compose.onAllNodesWithTag(tag).fetchSemanticsNodes()
+        assertEquals("one node tagged $tag", 1, nodes.size)
+        return nodes.single().layoutInfo.isPlaced
+    }
 
     /**
      * The notices [shown] are on screen side by side in that order, inside the column's padding and clear of the key bar;
@@ -339,26 +348,26 @@ class NoticeSlotTest {
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun twoNoticesAtFontScale1_3StayAboveTheKeyBar() {
         realNotices(velvetColumn, undo = false, fontScale = 1.3f)
-        assertShownAndWaiting(listOf("toast", "error"), waiting = emptyList())
+        assertShownAndWaiting(listOf("upload", "error"), waiting = emptyList())
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun threeNoticesAtFontScale1_3FoldTheOlderToastBehindTheError() {
         realNotices(velvetColumn, fontScale = 1.3f)
-        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("toast"))
+        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("upload"))
         assertTheUndoButtonShows()
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun twoNoticesAtFontScale2ShowOnlyTheNewer() {
         realNotices(velvetColumn, undo = false, fontScale = 2f)
-        assertShownAndWaiting(listOf("error"), waiting = listOf("toast"))
+        assertShownAndWaiting(listOf("error"), waiting = listOf("upload"))
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun threeNoticesAtFontScale2KeepTheUndoAndTheNewer() {
         realNotices(velvetColumn, fontScale = 2f)
-        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("toast"))
+        assertShownAndWaiting(listOf("undo", "error"), waiting = listOf("upload"))
         assertTheUndoButtonShows()
     }
 
@@ -366,7 +375,7 @@ class NoticeSlotTest {
     @Test fun theUndoAndTheToastAtFontScale2LeaveTheToastWaitingBehindTheUndo() {
         // Side by side they ended at 90.7 dp, 7.7 over the key bar: the toast waits until the Undo goes.
         realNotices(velvetColumn, error = false, fontScale = 2f)
-        assertShownAndWaiting(listOf("undo"), waiting = listOf("toast"))
+        assertShownAndWaiting(listOf("undo"), waiting = listOf("upload"))
         assertTheUndoButtonShows()
     }
 
@@ -375,18 +384,18 @@ class NoticeSlotTest {
         val c = realNotices(velvetColumn, undo = false, upload = false, fontScale = 2f)
         c.uploading = "Uploading $uploadName…"
         compose.waitForIdle()
-        assertShownAndWaiting(listOf("toast"), waiting = listOf("error"))
+        assertShownAndWaiting(listOf("upload"), waiting = listOf("error"))
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
     @Test fun theWaitingToastComesBackWhenTheErrorGoes() {
         val c = realNotices(velvetColumn, undo = false, fontScale = 2f)
-        assertShownAndWaiting(listOf("error"), waiting = listOf("toast"))
+        assertShownAndWaiting(listOf("error"), waiting = listOf("upload"))
         c.error = null
         compose.waitForIdle()
         // Alone, it has #165's place: from the pane's top down, 16 dp below the column's top.
-        assertShownAndWaiting(listOf("toast"), waiting = emptyList())
-        assertEquals(16f, bounds("toast").top.value, 0.5f)
+        assertShownAndWaiting(listOf("upload"), waiting = emptyList())
+        assertEquals(16f, bounds("upload").top.value, 0.5f)
     }
 
     @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
@@ -403,7 +412,7 @@ class NoticeSlotTest {
                         PaneNotices({ Rect(0f, 0f, velvetColumn * px, paneBottom * px) }, keyBar = { Rect(0f, 83 * px, velvetColumn * px, 120 * px) },
                             padding = 16.dp, gap = 8.dp, lift = 0.dp, modifier = Modifier.matchParentSize()) {
                             val heard = remember { HeardNotices() }
-                            UploadToast(c, heard, waits = true)
+                            UploadToast(c, heard, waits = true, Modifier.testTag("upload"))
                             ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
                         }
                     }
@@ -414,11 +423,111 @@ class NoticeSlotTest {
         c.uploading = "Uploading $uploadName…"
         c.error = errorText
         compose.waitForIdle()
-        assertTrue("the toast waits", !placed("toast"))
+        assertTrue("the toast waits", !placed("upload"))
         paneBottom = 300
         compose.waitForIdle()
-        assertTrue("the toast is back", placed("toast") && placed("error"))
-        assertTrue("stacked in the pane area", bounds("error").top >= bounds("toast").bottom && bounds("error").bottom <= 300.dp - 16.dp + 0.5.dp)
+        assertTrue("the toast is back", placed("upload") && placed("error"))
+        assertTrue("stacked in the pane area", bounds("error").top >= bounds("upload").bottom && bounds("error").bottom <= 300.dp - 16.dp + 0.5.dp)
+    }
+
+    // Errors that wrap to more lines (#192 review, M1 and M2): the Snackbar answers one line's height whatever its
+    // text, so the error notice answers its own; and where notices wait, the ones left stay off the key bar too.
+
+    private val longError = "The remote has no file at /data/local/nosuch/missing-file.txt."
+    private val longerError = "Could not connect to the remote: ssh: handshake failed: ssh: unable to authenticate, " +
+        "attempted methods [none publickey], no supported methods remain on the server."
+
+    /** The notices [tags] that show end above the key bar (83 dp) and start in the column; at least one shows. */
+    private fun assertClearOfTheKeyBar(vararg tags: String) {
+        val shown = tags.filter(::placed)
+        assertTrue("some notice shows", shown.isNotEmpty())
+        shown.forEach {
+            val n = bounds(it)
+            assertTrue("$it $n ends above the key bar", n.bottom <= 83.dp + 0.5.dp)
+            assertTrue("$it $n starts in the column", n.top >= (-0.5).dp)
+        }
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theUndoAndAThreeLineErrorAtFontScale1_3StayOffTheKeyBar() {
+        realNotices(velvetColumn, upload = false, fontScale = 1.3f, errorWords = longerError)
+        assertClearOfTheKeyBar("undo", "error")
+        assertTheUndoButtonShows()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theUndoAndATwoLineErrorAtFontScale2StayOffTheKeyBar() {
+        realNotices(velvetColumn, upload = false, fontScale = 2f, errorWords = longError)
+        assertClearOfTheKeyBar("undo", "error")
+        assertTheUndoButtonShows()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theUndoAndAnErrorTallerThanTheColumnLeaveTheErrorWaiting() {
+        realNotices(velvetColumn, upload = false, fontScale = 2f, errorWords = longerError)
+        assertShownAndWaiting(listOf("undo"), waiting = listOf("error"))
+        assertTheUndoButtonShows()
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aShortToastAndAThreeLineErrorAtFontScale1_3LeaveTheErrorAloneFromTheColumnsTop() {
+        // A known limit: the error alone is 95.2 dp tall, more than the 83 dp above the key bar, so it still covers it.
+        // One notice keeps #165's place (#169), and only where others wait does it go from the column's top.
+        realNotices(velvetColumn, undo = false, fontScale = 1.3f, errorWords = longerError, uploadWords = "Uploading a.png…")
+        assertTrue("the toast waits", !placed("upload"))
+        assertEquals(0f, bounds("error").top.value, 0.5f)
+        assertEquals(95.2f, bounds("error").bottom.value, 0.5f)
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun aShortToastAndATwoLineErrorAtFontScale2StayOffTheKeyBar() {
+        realNotices(velvetColumn, undo = false, fontScale = 2f, errorWords = longError, uploadWords = "Uploading a.png…")
+        assertClearOfTheKeyBar("upload", "error")
+    }
+
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theErrorLeftAloneAtFontScale1_3StaysOffTheKeyBar() {
+        // Side by side the toast and this error end at 70.9 dp, inside the 16 dp above the key bar: the toast waits,
+        // and the error, 68.6 dp tall, goes from the column's top rather than 16 dp down, over the key bar.
+        realNotices(velvetColumn, undo = false, fontScale = 1.3f, errorWords = longError)
+        assertShownAndWaiting(listOf("error"), waiting = listOf("upload"))
+        assertClearOfTheKeyBar("error")
+    }
+
+    /** The error notice's own height ([snackbarHeight]) is the height its Snackbar lays itself out at. */
+    @Config(qualifiers = "w1200dp-h393dp-land-420dpi")
+    @Test fun theErrorNoticeAnswersTheHeightItIsDrawnAt() {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
+        var scale by mutableStateOf(1f)
+        var width by mutableStateOf(300)
+        var own = 0
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, scale)) {
+                VeloTheme {
+                    // Tall enough for the longest error at the narrowest width: a shorter box cuts the Snackbar.
+                    Box(Modifier.width(width.dp).requiredHeight(1000.dp)) {
+                        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                        io.github.yhzion.velo.ui.theme.VeloSurface(VeloTheme.colors.overlay) {
+                            val style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                            val px = LocalDensity.current
+                            c.error?.let { own = snackbarHeight(measurer, it, style, px, with(px) { width.dp.roundToPx() }) }
+                        }
+                        ErrorNotice(c, Modifier.testTag("error"))
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val px = compose.density.density
+        for (s in listOf(1f, 1.3f, 2f)) for (words in listOf(errorText, longError, longerError)) for (w in listOf(250, 400, 700, 1000)) {
+            scale = s
+            width = w
+            c.error = words
+            compose.waitForIdle()
+            val drawn = bounds("error").let { (it.bottom - it.top).value * px }
+            assertEquals("scale $s, ${words.length} letters, $w dp", drawn, own.toFloat(), 1f)
+        }
     }
 
     private fun actions() = SidebarActions(
