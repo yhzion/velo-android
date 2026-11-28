@@ -9,9 +9,16 @@
 # Robolectric downloads its android-all jar itself, inside the test JVM and not through Gradle;
 # a 429 there ends as a failing test and is not retried.
 #
+# Maven Central's 429 can last longer than a few minutes (#221: on PR #216 three runs over
+# 3.5 minutes all got it), so the waits add up to 12 minutes: 60, 120, 240 and 300 seconds.
+#
 # Usage: gradle-retry.sh <command> [args...]
-# GRADLE_RETRY_ATTEMPTS (default 3) bounds the runs; GRADLE_RETRY_DELAY (default 60) is the
-# wait in seconds before the second run, and doubles before each later one.
+# GRADLE_RETRY_ATTEMPTS (default 5) bounds the runs. GRADLE_RETRY_DELAY (default 60) is the
+# wait in seconds before the second run; it doubles before each later one, up to
+# GRADLE_RETRY_MAX_DELAY (default 300). A Retry-After of N seconds in the failure report makes
+# that wait at least N. GRADLE_RETRY_WINDOW (default 900) bounds the waits together: when the
+# next wait would pass it, the run ends instead. pr-check-android.yml's timeout-minutes leaves
+# room for five runs and the whole window.
 set -uo pipefail
 
 if (($# == 0)); then
@@ -19,8 +26,11 @@ if (($# == 0)); then
   exit 2
 fi
 
-attempts=${GRADLE_RETRY_ATTEMPTS:-3}
+attempts=${GRADLE_RETRY_ATTEMPTS:-5}
 delay=${GRADLE_RETRY_DELAY:-60}
+max_delay=${GRADLE_RETRY_MAX_DELAY:-300}
+window=${GRADLE_RETRY_WINDOW:-900}
+waited=0
 
 # Gradle prints each failure on stderr as a block from "* What went wrong:" to "* Try:".
 # A block is a network failure when it names one of these. Plugin resolution names no status
@@ -47,6 +57,12 @@ network_only() {
   ' "$1"
 }
 
+# Prints the largest Retry-After in seconds that stderr shows, or nothing. Gradle 9.6.0 does not
+# print response headers today; a server's or a later Gradle's message may carry one.
+retry_after() {
+  grep -oiE 'retry-after["'"'"']?[:= ]+[0-9]+' "$1" | grep -oE '[0-9]+$' | sort -n | tail -n 1
+}
+
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
@@ -63,7 +79,17 @@ for ((attempt = 1; ; attempt++)); do
     echo "::error::A repository could not be reached in $attempts attempts"
     exit "$status"
   fi
-  echo "::warning::A repository could not be reached (attempt $attempt of $attempts); retrying in ${delay}s"
-  sleep "$delay"
+  wait=$((delay < max_delay ? delay : max_delay))
+  asked=$(retry_after "$err")
+  if [[ -n $asked ]] && ((10#$asked > wait)); then
+    wait=$((10#$asked))
+  fi
+  if ((waited + wait > window)); then
+    echo "::error::A repository could not be reached in $attempt attempts; waiting ${wait}s more would pass the ${window}s window"
+    exit "$status"
+  fi
+  echo "::warning::A repository could not be reached (attempt $attempt of $attempts); retrying in ${wait}s"
+  sleep "$wait"
+  waited=$((waited + wait))
   delay=$((delay * 2))
 done

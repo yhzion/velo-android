@@ -174,7 +174,9 @@ expect 0 2 "$read_timeout"                         # read timeout, then passes
 expect 0 2 "$no_answer"                            # no answer from the host, then passes
 expect 0 2 "$truncated"                            # truncated download, then passes
 expect 0 3 "$maven_429" "$compose_plugin"          # two network failures, then passes
-expect 1 3 "$maven_429" "$maven_429" "$maven_429"  # bounded: three runs, then fails
+expect 0 5 "$maven_429" "$maven_429" "$maven_429" "$maven_429"  # four 429s, then passes
+m5=("$maven_429" "$maven_429" "$maven_429" "$maven_429" "$maven_429")
+expect 1 5 "${m5[@]}"                              # bounded: five runs, then fails
 expect 1 1 "$failing_tests"                        # failing tests: no retry
 expect 1 1 "$compile_error"                        # compile error: no retry
 expect 1 1 "$not_found"                            # missing artifact: no retry
@@ -183,7 +185,7 @@ expect 1 1 ""                                      # no failure report (Gradle c
 expect 1 2 "$maven_429" "$failing_tests"           # retried, then a real failure ends it
 # A plugin version that does not exist reads like an unreachable portal (the same report from
 # Gradle), so it costs the bounded retries: the known price of retrying plugin resolution.
-expect 1 3 "$compose_plugin" "$compose_plugin" "$compose_plugin"
+expect 1 5 "$compose_plugin" "$compose_plugin" "$compose_plugin" "$compose_plugin" "$compose_plugin"
 
 fail() { echo "$*" >&2; exit 1; }
 
@@ -194,26 +196,52 @@ status=0
 bash "$script" "$work/fake-gradle" >/dev/null 2>&1 || status=$?
 [[ $status == 7 ]] || fail "Exit status $status, expected 7"
 rm -f "$work"/out.* "$work"/status.* "$work/runs"
-for n in 1 2 3; do printf '%s\n' "$maven_429" >"$work/out.$n"; echo 7 >"$work/status.$n"; done
+for n in 1 2 3 4 5; do printf '%s\n' "$maven_429" >"$work/out.$n"; echo 7 >"$work/status.$n"; done
 status=0
 bash "$script" "$work/fake-gradle" >"$work/stdout" 2>/dev/null || status=$?
 [[ $status == 7 ]] || fail "Exit status $status after the retries, expected 7"
-grep -q '::error::A repository could not be reached in 3 attempts' "$work/stdout" ||
+grep -q '::error::A repository could not be reached in 5 attempts' "$work/stdout" ||
   fail "No ::error:: line after the retries"
 
-# The wait starts at GRADLE_RETRY_DELAY and doubles: a fake sleep records its arguments.
+# The defaults: the wait starts at 60 seconds, doubles and stops at 300, 12 minutes in all
+# (#221). A fake sleep records its arguments.
 mkdir "$work/bin"
 printf '#!/usr/bin/env bash\necho "$1" >>"%s"\n' "$work/slept" >"$work/bin/sleep"
 chmod +x "$work/bin/sleep"
-PATH="$work/bin:$PATH" GRADLE_RETRY_DELAY=60 expect 1 3 "$maven_429" "$maven_429" "$maven_429"
-[[ $(cat "$work/slept") == $'60\n120' ]] || fail "Waited $(tr '\n' ' ' <"$work/slept"), expected 60 120"
+slept() { tr '\n' ' ' 2>/dev/null <"$work/slept" | sed 's/ $//'; }
+waits() { # waits <expected waits> [NAME=value...] -- <expect arguments...>
+  local want=$1
+  shift
+  rm -f "$work/slept"
+  (
+    export PATH="$work/bin:$PATH" GRADLE_RETRY_DELAY=60
+    while [[ $1 != -- ]]; do export "$1"; shift; done
+    shift
+    expect "$@"
+  ) || exit 1
+  [[ $(slept) == "$want" ]] || fail "Case at line ${BASH_LINENO[0]}: waited '$(slept)', expected '$want'"
+}
+waits '60 120 240 300' -- 1 5 "${m5[@]}"
+
+# A Retry-After longer than the planned wait lengthens it; a shorter one does not shorten it.
+maven_429_after="${maven_429/Too Many Requests/Too Many Requests (Retry-After: 200)}"
+waits '200 120' -- 0 3 "$maven_429_after" "$maven_429"
+waits '60 120' -- 0 3 "${maven_429/Too Many Requests/Retry-After: 30}" "$maven_429"
+waits '60' -- 0 2 "${maven_429/Too Many Requests/retry-after=007}"
+
+# The waits together stay inside GRADLE_RETRY_WINDOW: a Retry-After of 1000 seconds ends the
+# run at once, and a third wait that would pass 300 seconds ends it after two.
+waits '' -- 1 1 "${maven_429/Too Many Requests/Retry-After: 1000}"
+waits '60 120' GRADLE_RETRY_WINDOW=300 -- 1 3 "${m5[@]}"
+grep -q '::error::A repository could not be reached in 3 attempts; waiting 240s more would pass the 300s window' \
+  "$work/stdout" || fail "No ::error:: line when the window ends the retries"
 
 # stdout and stderr stay apart, and the report still reaches stderr.
 expect 0 2 "$maven_429"
 grep -q 'run 1' "$work/stdout" || fail "Gradle's stdout is missing"
 if grep -q 'What went wrong' "$work/stdout"; then fail "The failure report reached stdout"; fi
 grep -q 'Received status code 429' "$work/stderr" || fail "The failure report is missing on stderr"
-grep -q '::warning::A repository could not be reached (attempt 1 of 3)' "$work/stdout" ||
+grep -q '::warning::A repository could not be reached (attempt 1 of 5); retrying in 0s' "$work/stdout" ||
   fail "No ::warning:: line before the retry"
 
 GRADLE_RETRY_ATTEMPTS=1 expect 1 1 "$maven_429"   # one attempt means no retry
