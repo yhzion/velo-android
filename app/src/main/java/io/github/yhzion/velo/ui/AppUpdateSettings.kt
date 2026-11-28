@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -65,6 +66,14 @@ internal fun rememberInstalledCode(): Long {
 @Composable
 internal fun updateDot(): Boolean = rememberUpdateStatus().unseen(rememberInstalledCode())
 
+/** What the Updates page says when GitHub's limit is used up until [resetAt]. */
+internal fun rateLimitText(resetAt: Long, zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()) =
+    "GitHub’s hourly limit for update checks is reached. Try again after ${shortTime(Instant.ofEpochMilli(resetAt).atZone(zone), locale)}."
+
+// Newer locale data puts a narrow no-break space before AM and PM.
+private fun shortTime(at: ZonedDateTime, locale: Locale) =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(at).replace('\u202F', ' ')
+
 /**
  * When the last successful check was, in [zone]: "Last checked: today, 9:41 PM", "yesterday, …",
  * or its date. Null when nothing was checked yet ([at] 0).
@@ -78,8 +87,7 @@ internal fun lastCheckedText(at: Long, now: Long, zone: ZoneId = ZoneId.systemDe
         today.minusDays(1) -> "yesterday"
         else -> DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(then)
     }
-    // Newer locale data puts a narrow no-break space before AM and PM.
-    val time = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(then).replace(' ', ' ')
+    val time = shortTime(then, locale)
     return "Last checked: $day, $time"
 }
 
@@ -178,6 +186,10 @@ private fun ChannelRelease(host: SettingsHost, channel: UpdateChannel, installed
             releases = found
             lastCheck = UpdateSettings.lastCheck(ctx)
         } catch (e: CancellationException) { throw e }
+        catch (limited: RateLimitedException) {
+            UpdateSettings.limitReached(ctx, limited.resetAt)
+            problem = rateLimitText(limited.resetAt)
+        }
         catch (_: Exception) { problem = "Couldn’t check for updates. Try again later." }
         finally { busy = false }
     }

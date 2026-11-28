@@ -9,6 +9,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Fixed
 - A long error notice shows two lines and ends with an ellipsis, so at a large text size it no longer covers the key bar with the keyboard up. A screen reader still reads the whole error.
+- Update checks no longer stop when a home network uses up GitHub's hourly limit: stable checks read a small file the next releases carry, and a reached limit says when to try again.
 
 ## 2.16.0 - 2026-11-28
 

@@ -28,11 +28,14 @@ class UpdateCheckJobService : JobService() {
                 val release = runInterruptible(Dispatchers.IO) {
                     @Suppress("DEPRECATION")
                     val installed = packageManager.getPackageInfo(packageName, 0).longVersionCode
-                    ReleaseFeed.newer(channel, installed).firstOrNull()
+                    ReleaseFeed.update(channel, installed, UpdateSettings.apiBlockedUntil(this@UpdateCheckJobService))
                 }
                 UpdateSettings.finish(this@UpdateCheckJobService, generation, startedAt, release)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (limited: RateLimitedException) {
+                UpdateSettings.limitReached(this@UpdateCheckJobService, limited.resetAt)
+                Log.w("UpdateCheck", "Background update check waits for GitHub's limit to reset")
             } catch (failure: Exception) {
                 // A failed feed request is not evidence that an announced release is gone.
                 Log.w("UpdateCheck", "Background update check failed", failure)

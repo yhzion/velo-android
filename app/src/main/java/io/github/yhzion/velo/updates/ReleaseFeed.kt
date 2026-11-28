@@ -11,6 +11,21 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
+/** GitHub refused the API request: its hourly limit for this network is used up until [resetAt] (epoch ms). */
+class RateLimitedException(val resetAt: Long) : IOException("GitHub's request limit is reached.")
+
+/** Where the feed reads from; [ReleaseFeed]'s network by default, a fake in tests. */
+internal interface FeedSource {
+    /** Page [page] (from 1) of the API's release list. */
+    fun page(page: Int): String
+
+    /** The latest release's update manifest, and the tag the download redirect named as the latest. */
+    fun manifest(): Pair<String, String>
+
+    /** The text of release [tag]'s asset [name]. */
+    fun asset(tag: String, name: String): String
+}
+
 enum class UpdateChannel { Stable, Preview, Edge }
 
 data class AppRelease(
@@ -31,6 +46,11 @@ object ReleaseFeed {
     private const val PER_PAGE = 100
     private const val MAX_PAGES = 32
     private const val MAX_PAGE_BYTES = 4 * 1024 * 1024
+    private const val MANIFEST = "velo-update.json"
+    private const val MAX_MANIFEST_BYTES = 256 * 1024
+    private const val MAX_CHECKSUM_BYTES = 1024
+    private const val MAX_REDIRECTS = 4
+    private val RATE_LIMIT_WAIT = 60_000L..60 * 60_000L
     private const val MAX_CODE = 2_100_000_000L
     private const val LAST_LEGACY_CODE = 2_005_003L
     private val tagPattern = Regex(
@@ -38,12 +58,53 @@ object ReleaseFeed {
     )
     private val marker = Regex("""<!-- android-version-code: ([1-9][0-9]{0,9}) -->""")
     private val digestPattern = Regex("""sha256:([0-9a-fA-F]{64})""")
+    private val sha256Pattern = Regex("""[0-9a-fA-F]{64}""")
+    private val checksumLine = Regex("""([0-9a-f]{64})  (\S+)\n?""")
+    private val latestRedirect = Regex(Regex.escape("$REPOSITORY/releases/download/") + "([^/]+)" + Regex.escape("/$MANIFEST"))
+    // Release downloads: the repository's own pages, then GitHub's asset storage.
+    private val downloadHosts = setOf("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
 
     /**
      * Blocking I/O. Every eligible release newer than [installedCode], newest first; the first of
      * them is the update. Empty means a complete feed contained no eligible update, not a failed check.
      */
-    fun newer(channel: UpdateChannel, installedCode: Long): List<AppRelease> = newer(channel, installedCode, ::readPage)
+    fun newer(channel: UpdateChannel, installedCode: Long): List<AppRelease> =
+        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network)
+
+    /**
+     * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
+     * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
+     */
+    fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long): AppRelease? =
+        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network).firstOrNull()
+
+    /**
+     * Stable checks read the latest release's update manifest first: a release download, so not under
+     * the API's 60-an-hour limit that every device behind one router shares. Any doubt about it, or
+     * another channel, asks the API, unless a limit it reported ([apiBlockedUntil]) has not passed.
+     * [everyRelease] also asks the API for every newer release's notes when the manifest found one,
+     * and keeps the manifest's release if the API fails or disagrees.
+     */
+    internal fun check(
+        channel: UpdateChannel, installedCode: Long, everyRelease: Boolean, apiBlockedUntil: Long, source: FeedSource,
+        now: Long = System.currentTimeMillis(),
+    ): List<AppRelease> {
+        val blocked = apiBlockedUntil > now && apiBlockedUntil - now <= RATE_LIMIT_WAIT.last
+        if (channel == UpdateChannel.Stable) {
+            val found = try {
+                listOfNotNull(fromManifest(installedCode, source))
+            } catch (e: IOException) {
+                null // No manifest yet (releases before it), or one that does not hold up: the API decides.
+            }
+            if (found != null) {
+                if (found.isEmpty() || !everyRelease || blocked) return found
+                val all = try { newer(channel, installedCode, source::page) } catch (e: IOException) { null }
+                return all?.takeIf { it.firstOrNull()?.versionCode == found[0].versionCode } ?: found
+            }
+        }
+        if (blocked) throw RateLimitedException(apiBlockedUntil)
+        return newer(channel, installedCode, source::page)
+    }
 
     internal fun latest(channel: UpdateChannel, installedCode: Long, readPage: (Int) -> String): AppRelease? =
         newer(channel, installedCode, readPage).firstOrNull()
@@ -94,8 +155,7 @@ object ReleaseFeed {
             if (!published || channel != UpdateChannel.Stable || "<!-- android-version-code" in body) return null
             baseCode
         } else {
-            val line = body.lineSequence().filter { "<!-- android-version-code" in it }.singleOrNull() ?: return null
-            marker.matchEntire(line)?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it in 3_000_001..MAX_CODE } ?: return null
+            modernCode(body) ?: return null
         }
         if (versionCode <= minimumCode) return null
 
@@ -110,6 +170,57 @@ object ReleaseFeed {
         return AppRelease(tag, versionCode, channel, apkUrl, digest.groupValues[1].lowercase(), notesUrl, changeNotes(body))
     }
 
+    /** The one version-code marker line of a release body, for a release after the legacy ones. */
+    private fun modernCode(body: String): Long? {
+        val line = body.lineSequence().filter { "<!-- android-version-code" in it }.singleOrNull() ?: return null
+        return marker.matchEntire(line)?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it in 3_000_001..MAX_CODE }
+    }
+
+    /**
+     * The latest release by its update manifest (made by release.yml): null when it is not newer than
+     * [installedCode]. Throws when the manifest is missing or does not hold up: it must name the
+     * release the redirect named, a stable tag, the canonical APK, and the digest in the release's own
+     * `.sha256` asset. The installer still checks the downloaded APK against that digest.
+     */
+    private fun fromManifest(installedCode: Long, source: FeedSource): AppRelease? {
+        val (latestTag, text) = source.manifest()
+        val manifest = try {
+            Json.parseToJsonElement(text) as? JsonObject
+        } catch (e: SerializationException) {
+            null
+        } ?: throw IOException("Invalid update manifest.")
+        fun invalid(): Nothing = throw IOException("Invalid update manifest.")
+        val tag = manifest.text("tag")?.takeIf { it == latestTag } ?: invalid()
+        // The latest release is never a prerelease.
+        val (_, _, _, suffix) = tagPattern.matchEntire(tag)?.destructured ?: invalid()
+        if (suffix.isNotEmpty()) invalid()
+        val code = (manifest["versionCode"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull ?: invalid()
+        val notes = manifest.text("notes") ?: invalid()
+        if (modernCode(notes) != code) invalid()
+        if (code <= installedCode) return null
+        val name = apkName(tag)
+        if (manifest.text("apk") != name) invalid()
+        val sha256 = manifest.text("sha256")?.takeIf { sha256Pattern.matches(it) }?.lowercase() ?: invalid()
+        val listed = checksumLine.matchEntire(source.asset(tag, "$name.sha256"))?.destructured
+        if (listed == null || listed.component1() != sha256 || listed.component2() != name) {
+            throw IOException("The update manifest's digest differs from the release's checksum.")
+        }
+        return AppRelease(tag, code, UpdateChannel.Stable, downloadUrl(tag, name), sha256,
+            "$REPOSITORY/releases/tag/$tag", changeNotes(notes))
+    }
+
+    /**
+     * The limit a 403 or 429 reports, or null for another refusal. The wait is the reset time less
+     * the server's own clock, so a phone clock that is off does not stretch or cut it; at least a
+     * minute, at most an hour.
+     */
+    internal fun rateLimit(status: Int, remaining: String?, reset: String?, serverDate: Long, now: Long): RateLimitedException? {
+        if (status != 403 && status != 429 || remaining?.trim() != "0") return null
+        val resetAt = reset?.trim()?.toLongOrNull()?.times(1000)
+        val wait = if (resetAt == null) RATE_LIMIT_WAIT.last else resetAt - (if (serverDate > 0) serverDate else now)
+        return RateLimitedException(now + wait.coerceIn(RATE_LIMIT_WAIT))
+    }
+
     private fun JsonArray.uploaded(name: String, url: String): JsonObject? {
         val asset = singleOrNull { (it as? JsonObject)?.text("name") == name } as? JsonObject ?: return null
         val size = asset["size"] as? JsonPrimitive ?: return null
@@ -119,30 +230,76 @@ object ReleaseFeed {
 
     private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 
-    private fun readPage(page: Int): String {
-        val connection = URL("$API?per_page=$PER_PAGE&page=$page").openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 15_000
-            connection.instanceFollowRedirects = false
-            connection.setRequestProperty("User-Agent", "Velo-Update-Check")
-            connection.setRequestProperty("Accept", "application/vnd.github+json")
-            connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) throw IOException("Could not fetch the release list.")
-            if (connection.contentLengthLong > MAX_PAGE_BYTES) throw IOException("Release page exceeds the size limit.")
-            return connection.inputStream.use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                val bytes = ByteArrayOutputStream()
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count == -1) break
-                    if (count > MAX_PAGE_BYTES - bytes.size()) throw IOException("Release page exceeds the size limit.")
-                    bytes.write(buffer, 0, count)
+    private object Network : FeedSource {
+        override fun page(page: Int) =
+            fetch("$API?per_page=$PER_PAGE&page=$page", MAX_PAGE_BYTES, api = true).first
+
+        override fun manifest(): Pair<String, String> {
+            val (text, via) = fetch("$REPOSITORY/releases/latest/download/$MANIFEST", MAX_MANIFEST_BYTES, api = false)
+            // The first redirect names the release "latest" stands for.
+            val tag = via.firstOrNull()?.let(latestRedirect::matchEntire)?.groupValues?.get(1)
+                ?: throw IOException("The latest release was not named.")
+            return tag to text
+        }
+
+        override fun asset(tag: String, name: String) = fetch(downloadUrl(tag, name), MAX_CHECKSUM_BYTES, api = false).first
+    }
+
+    /**
+     * The text at [address] and the redirects followed to it. The API is read without redirects; a
+     * download follows a few, over HTTPS to [downloadHosts] only.
+     */
+    private fun fetch(address: String, maxBytes: Int, api: Boolean): Pair<String, List<String>> {
+        var url = URL(address)
+        val via = mutableListOf<String>()
+        for (hop in 0..MAX_REDIRECTS) {
+            val connection = url.openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 15_000
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("User-Agent", "Velo-Update-Check")
+                if (api) {
+                    connection.setRequestProperty("Accept", "application/vnd.github+json")
+                    connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
                 }
-                bytes.toString("UTF-8")
+                val status = connection.responseCode
+                if (status == HttpURLConnection.HTTP_OK) return read(connection, maxBytes) to via
+                if (!api && status in setOf(301, 302, 303, 307, 308)) {
+                    val next = connection.getHeaderField("Location")?.let { URL(url, it) }
+                    if (next == null || next.protocol != "https" || next.host !in downloadHosts) {
+                        throw IOException("Unexpected download redirect.")
+                    }
+                    via += next.toString()
+                    url = next
+                    continue
+                }
+                if (api) {
+                    rateLimit(status, connection.getHeaderField("X-RateLimit-Remaining"),
+                        connection.getHeaderField("X-RateLimit-Reset"), connection.date, System.currentTimeMillis())
+                        ?.let { throw it }
+                    throw IOException("Could not fetch the release list.")
+                }
+                throw IOException("Could not fetch the update manifest.")
+            } finally {
+                connection.disconnect()
             }
-        } finally {
-            connection.disconnect()
+        }
+        throw IOException("Too many download redirects.")
+    }
+
+    private fun read(connection: HttpURLConnection, maxBytes: Int): String {
+        if (connection.contentLengthLong > maxBytes) throw IOException("Response exceeds the size limit.")
+        return connection.inputStream.use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            val bytes = ByteArrayOutputStream()
+            while (true) {
+                val count = input.read(buffer)
+                if (count == -1) break
+                if (count > maxBytes - bytes.size()) throw IOException("Response exceeds the size limit.")
+                bytes.write(buffer, 0, count)
+            }
+            bytes.toString("UTF-8")
         }
     }
 }

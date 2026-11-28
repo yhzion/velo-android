@@ -166,7 +166,7 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact }}
           path: assets
           merge-multiple: true
-      - name: Publish both assets to the existing tag
+      - name: Publish the APK, its checksum and the update manifest to the existing tag
         working-directory: assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -186,8 +186,15 @@ jobs:
           base=${GITHUB_REF_NAME#v}
           notes=$(bash "$GITHUB_WORKSPACE/.github/scripts/changelog.sh" body "${base%%-*}" \
             "${APK_VERSION_CODE:?Missing APK versionCode}")
+          # The update manifest: what the app reads from releases/latest/download/ outside the API's
+          # 60-an-hour limit. Its digest must match the .sha256 asset, which the app checks too.
+          manifest=velo-update.json
+          jq -n --arg tag "$GITHUB_REF_NAME" --argjson code "$APK_VERSION_CODE" --arg apk "$name" \
+            --arg sha256 "$(cut -d' ' -f1 "$name.sha256")" --arg notes "$notes" \
+            '{tag: $tag, versionCode: $code, apk: $apk, sha256: $sha256, notes: $notes}' > "$manifest"
+          [[ $(jq -r .sha256 "$manifest") =~ ^[0-9a-f]{64}$ ]]
           flags=(--latest)
           if [[ $GITHUB_REF_NAME == *-* ]]; then flags=(--prerelease --latest=false); fi
-          gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" \
+          gh release create "$GITHUB_REF_NAME" "$name" "$name.sha256" "$manifest" \
             --verify-tag --title "$GITHUB_REF_NAME" "${flags[@]}" --generate-notes \
             --notes "$notes"

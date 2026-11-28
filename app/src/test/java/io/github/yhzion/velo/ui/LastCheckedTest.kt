@@ -25,4 +25,9 @@ class LastCheckedTest {
     @Test fun neverCheckedSaysNothing() {
         assertEquals(null, lastCheckedText(0L, at("2026-11-26T09:00:00"), zone, Locale.US))
     }
+
+    @Test fun aReachedLimitSaysWhenToTryAgain() {
+        assertEquals("GitHub’s hourly limit for update checks is reached. Try again after 10:05 PM.",
+            rateLimitText(at("2026-11-26T22:05:00"), zone, Locale.US))
+    }
 }

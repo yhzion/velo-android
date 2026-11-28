@@ -21,6 +21,8 @@ internal object UpdateSettings {
     private const val AVAILABLE_CODE = "availableCode"
     private const val CHECK_STARTED = "checkStarted"
     private const val SEEN = "seen"
+    // Until when GitHub's API limit for this network is used up; it is shared by every channel.
+    private const val API_BLOCKED_UNTIL = "apiBlockedUntil"
 
     private fun prefs(context: Context) = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
 
@@ -94,6 +96,14 @@ internal object UpdateSettings {
     }
 
     fun lastCheck(context: Context): Long = prefs(context).getLong(LAST_CHECK, 0L)
+
+    /** Until when automatic checks leave the API alone ([ReleaseFeed.update]); 0 when no limit was reported. */
+    fun apiBlockedUntil(context: Context): Long = prefs(context).getLong(API_BLOCKED_UNTIL, 0L)
+
+    /** A check was told GitHub's limit is used up until [resetAt] ([RateLimitedException]). */
+    fun limitReached(context: Context, resetAt: Long) {
+        prefs(context).edit().putLong(API_BLOCKED_UNTIL, resetAt).apply()
+    }
 
     /**
      * Store a successful check of [channel] that started at [startedAt] and found [release] (null:
