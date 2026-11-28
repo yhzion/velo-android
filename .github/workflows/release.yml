@@ -84,8 +84,12 @@ jobs:
         working-directory: native
         run: zig build test
 
+      # gradle-retry.sh runs the step again only when a repository could not be reached, as in
+      # pr-check-android.yml (#269: the v2.16.1 run's first attempt failed to resolve the Compose
+      # plugin). A compile error or a failing test still ends the release at once. The signing
+      # step below is offline and needs no retry.
       - name: Run Android unit tests and resolve release dependencies before signing
-        run: gradle --no-daemon --no-scan :app:testDebugUnitTest :app:assembleRelease
+        run: bash .github/scripts/gradle-retry.sh gradle --no-daemon --no-scan :app:testDebugUnitTest :app:assembleRelease
 
       - name: Sign offline and verify the APK signer
         env:
