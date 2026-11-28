@@ -189,6 +189,8 @@ data class TabInfo(
     val reportedIdle: Boolean = false,
     val titleIsLabel: Boolean = false,
     val statusSummary: String = "",
+    /** How far a working or blocked program says it is, 0 to 100 (OSC 7501); null when it did not say. */
+    val progress: Int? = null,
 )
 
 @Serializable
@@ -242,4 +244,6 @@ data class BlockInfo(
     val reportedIdle: Boolean = false,
     val titleIsLabel: Boolean = false,
     val statusSummary: String = "",
+    /** How far a working or blocked program says it is, 0 to 100 (OSC 7501); null when it did not say. */
+    val progress: Int? = null,
 )

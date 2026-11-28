@@ -539,11 +539,11 @@ private fun TabRowView(
             tile = {
                 BouncingMark(connected && bouncesIcon(activity.badge), motion) {
                     TabTile(tile.brand, panes = tile.panes, behind = tile.behind, dot = tile.dot, ring = tabRowFill(row.shown), tag = "tab-tile-$id",
-                        contentDescription = said.description, stateDescription = said.state)
+                        contentDescription = said.description, stateDescription = said.state, progress = tile.progress)
                 }
             }, trailing = {
                 // The second line says what the program does now: the marks are drawn only (#150).
-                when (rowMark(mark)) {
+                when (rowMark(mark, tile)) {
                     RowMark.Working -> WorkingDots(5.bd, 4.bd, Modifier.testTag("tab-working-$id").padding(end = 8.bd), description = null)
                     RowMark.Waiting -> Box(Modifier.padding(end = 10.bd).testTag("tab-attention-$id").size(9.bd)
                         .background(VeloTheme.surface.warning, CircleShape))

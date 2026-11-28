@@ -13,11 +13,12 @@ import io.github.yhzion.velo.ui.theme.tileLabel
 /**
  * The tile of a tab: its program's [brand], its [panes] (one layer each up to four, the count from five) and its state
  * [dot]. [others] names the programs of its other panes in layout order ([TabRow.others]), and [behind] is the brand of
- * each layer behind the face, the nearest first ([tileBehind]).
+ * each layer behind the face, the nearest first ([tileBehind]). [progress] puts a pie on the face ([tileProgress]).
  */
 data class TabTileLook(
     val brand: TileBrand, val panes: Int, val dot: TileDot?,
     val others: List<String?> = emptyList(), val behind: List<TileBrand> = emptyList(),
+    val progress: Int? = null,
 )
 
 /**
@@ -28,8 +29,17 @@ data class TabTileLook(
 internal fun tabTile(row: TabRow, activity: TabActivity): TabTileLook {
     val brand = tileBrand(activity.icon ?: row.icon)
     val panes = row.panes.coerceAtLeast(1)
-    return TabTileLook(brand, panes, tileDot(activity.badge), row.others, tileBehind(brand, row.others.map(::tileBrand), panes))
+    return TabTileLook(brand, panes, tileDot(activity.badge), row.others, tileBehind(brand, row.others.map(::tileBrand), panes),
+        tileProgress(row, activity))
 }
+
+/**
+ * The progress the tile of [row] shows as a pie in place of its logo (#250): the percent its focused pane's program
+ * reports while that program works and the tab shows it working with nothing unseen. A program that waits, fails or
+ * finishes goes back to its logo and dot, as Rex for Mac's does (report 242, section 6), even with a progress.
+ */
+internal fun tileProgress(row: TabRow, activity: TabActivity): Int? =
+    row.progress?.takeIf { row.activity == "working" && activity.indicator == TabIndicator.Working && activity.badge == null }
 
 /**
  * The dot a report not yet seen ([TabActivity.badge]) puts at the tile's upper right: blue for a
@@ -53,6 +63,10 @@ internal fun rowMark(indicator: TabIndicator?): RowMark? = when (indicator) {
     TabIndicator.Offline -> RowMark.Offline
     else -> null
 }
+
+/** The mark at the end of a row whose [tile] is drawn: a tile with a progress pie already shows the work, so no dots (#250). */
+internal fun rowMark(indicator: TabIndicator?, tile: TabTileLook): RowMark? =
+    rowMark(indicator).takeUnless { it == RowMark.Working && tile.progress != null }
 
 /**
  * What a screen reader says for a tab's tile: its brand's name and its panes ([tileLabel]). A program
@@ -97,12 +111,12 @@ internal data class RowTileSpeech(val description: String, val state: String?, v
  * ([tabTileDescription]); the row's [name] is said unless it is that program. The second line says
  * what the program does now ([mark]) and the folder ([tabRowSubtitle]), so the tile's state is only
  * a report not yet seen ([badge]): "Unread", with the report's words when the second line does not
- * say them.
+ * say them; or, for a tile with a progress pie, the percent ("30%", #250).
  */
 internal fun tabRowTileSpeech(tile: TabTileLook, hint: String?, name: String, badge: TabIndicator?, mark: TabIndicator?): RowTileSpeech =
     RowTileSpeech(
         tabTileDescription(tile, hint),
-        badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" },
+        badge?.let { if (it == mark) "Unread" else "Unread, ${it.description}" } ?: tile.progress?.let { "$it%" },
         nameSaid = name.trim().let { n ->
             // A tab without a name of its own is named by its command, such as nvim for Neovim. Every
             // unknown name maps to Terminal, so a Terminal tile's name is compared as it is.

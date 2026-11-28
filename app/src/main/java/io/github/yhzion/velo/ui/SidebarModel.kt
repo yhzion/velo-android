@@ -44,6 +44,8 @@ data class TabRow(
     val terminalBlocks: List<String> = emptyList(),
     val kind: String? = null,
     val others: List<String?> = emptyList(),
+    /** How far its program says it is, 0 to 100; null when it did not say (#250). */
+    val progress: Int? = null,
 ) {
     /** The shown tab's row carries an X; any other row shows Close after a left swipe. */
     val closeControl: CloseControl get() = if (shown) CloseControl.X else CloseControl.Swipe
@@ -166,7 +168,7 @@ private fun TabInfo.row(session: String, shown: Boolean, pane: Boolean = false, 
         }
     }
     return TabRow(session, id, name, cwd, hint, program, panes, minimized, activity, own, shown,
-        since, mark, block, terminalBlocks, kind, others)
+        since, mark, block, terminalBlocks, kind, others, progress)
 }
 
 /** What names a pane's program: its [icon] hint, else its [program]'s file name; null when neither says. */
@@ -196,7 +198,7 @@ internal fun WindowInfo.row(state: UiState, session: String, shown: Boolean): Ta
         program = info?.program.orEmpty(), title = info?.title.orEmpty(), cwd = info?.cwd.orEmpty(),
         activity = info?.activity ?: "idle", since = info?.since, statusTitle = info?.statusTitle.orEmpty(),
         kind = info?.kind, reportedIdle = info?.reportedIdle == true, titleIsLabel = info?.titleIsLabel == true,
-        statusSummary = info?.statusSummary.orEmpty())
+        statusSummary = info?.statusSummary.orEmpty(), progress = info?.progress)
         .row(session, shown, others = otherPanePrograms(state, this, lead))
 }
 
@@ -213,7 +215,7 @@ private fun BlockInfo?.asPane(tab: String, block: String?): TabInfo =
         program = this?.program.orEmpty(), title = this?.title.orEmpty(), cwd = this?.cwd.orEmpty(),
         activity = this?.activity ?: "idle", since = this?.since, statusTitle = this?.statusTitle.orEmpty(),
         kind = this?.kind, reportedIdle = this?.reportedIdle == true, titleIsLabel = this?.titleIsLabel == true,
-        statusSummary = this?.statusSummary.orEmpty())
+        statusSummary = this?.statusSummary.orEmpty(), progress = this?.progress)
 
 /**
  * What a pane whose block is [info] is called on its own, by one rule wherever one pane is named (#208): its row's

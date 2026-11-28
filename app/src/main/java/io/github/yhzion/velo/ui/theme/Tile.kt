@@ -211,6 +211,18 @@ fun tileDotRect(size: Float, dot: Float = 9f): Rect {
     return Rect(left, top, left + dot, top + dot)
 }
 
+/**
+ * The progress pie on the face (#250), for a face [size] across, in the face's units: a ring and,
+ * inside it with a gap, a wedge that fills clockwise from twelve o'clock. Rex for Mac's sidebar
+ * draws it so, about half the face across (report 242, section 6).
+ */
+data class TilePie(val ring: Float, val line: Float, val wedge: Float)
+
+fun tilePie(size: Float): TilePie = TilePie(ring = size * 0.25f, line = max(1f, size * 0.05f), wedge = size * 0.15f)
+
+/** How many degrees of the wedge a report of [progress] percent fills; out of 0..100 is the nearer end. */
+fun tilePieSweep(progress: Int): Float = 360f * progress.coerceIn(0, 100) / 100
+
 /** The pane count chip's height. */
 private const val ChipHeight = 16f
 
@@ -254,8 +266,10 @@ private const val ToolLayerTint = 0.55f
  * of the row behind the tile. [byFace] lays the tile out by [tileFaceBounds] instead of its box,
  * so a row centres the face and the next item starts after it; the rest of the box draws outside.
  *
+ * [progress] (0 to 100) puts a progress pie on a plain glass face in place of the logo ([tilePie], #250).
+ *
  * [tag] is the tile's test tag, `tab-tile-<tab id>`; its parts get the canvas's names under it
- * (`-face`, `-logo`, `-letter`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
+ * (`-face`, `-logo`, `-letter`, `-pie`, `-layer-N`, `-badge`, `-pane-count`). [contentDescription] is
  * what a screen reader says, with [stateDescription] (the state its dot shows); a null
  * [contentDescription] leaves the tile out, for a row that says it itself. The letter and the pane
  * count are part of the picture and are never said on their own.
@@ -269,7 +283,7 @@ fun TabTile(
     brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, behind: List<TileBrand> = emptyList(), size: Dp = VeloTheme.sizes.tabTile,
     dot: TileDot? = null, ring: Color = VeloTheme.surface.surface, tag: String? = null,
     contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null, byFace: Boolean = false,
-    stop: Boolean = false,
+    stop: Boolean = false, progress: Int? = null,
 ) {
     val colors = VeloTheme.colors.sheet
     // One board unit at this size, and the face in board units: the rules are in those.
@@ -284,7 +298,9 @@ fun TabTile(
         TileBrand.Pi -> PiFill
         else -> SolidColor(colors.glass)
     }
-    val fill = fillOf(brand)
+    // A pie stands in the logo's place on the plain glass face: what the program says it has done shows, not who it is.
+    val fill = if (progress != null) fillOf(TileBrand.Terminal) else fillOf(brand)
+    val filledFace = brand.filled && progress == null
     val corner = u(tileCorner(s))
     val shape = RoundedCornerShape(corner)
     val laidOut = if (!byFace) Modifier else Modifier.layout { measurable, _ ->
@@ -315,11 +331,16 @@ fun TabTile(
         }
         Box(
             Modifier.align(Alignment.BottomStart).size(size).tagged("face")
-                .drawBehind { drawFace(fill, corner.toPx(), brand.filled, colors.glassEdge) },
+                .drawBehind { drawFace(fill, corner.toPx(), filledFace, colors.glassEdge) },
             contentAlignment = Alignment.Center,
         ) {
             val ink = brand.ink ?: colors.text
-            if (brand.logo != null) {
+            if (progress != null) {
+                val pie = tilePie(s)
+                Box(Modifier.size(u(pie.ring * 2)).tagged("pie").drawBehind {
+                    drawPie(colors.ok, tilePieSweep(progress), u(pie.line).toPx(), u(pie.wedge).toPx())
+                })
+            } else if (brand.logo != null) {
                 Icon(painterResource(brand.logo), null, Modifier.size(u((s * brand.glyphShare).roundToInt().toFloat())).tagged("logo"), tint = ink)
             } else if (brand.letter != null) {
                 // The letter's box is its size high, as the board sets it (line-height 1); the glyph keeps its own room.
@@ -391,6 +412,13 @@ private fun DrawScope.drawFace(fill: Brush, corner: Float, filled: Boolean, rim:
     } else {
         drawRoundRect(rim, Offset(line / 2, line / 2), Size(size.width - line, size.height - line), CornerRadius(corner - line / 2), Stroke(line))
     }
+}
+
+/** The progress pie in its square: a ring [line] wide on the square's edge, and a wedge of [radius] that fills [sweep] degrees from twelve o'clock. */
+private fun DrawScope.drawPie(tint: Color, sweep: Float, line: Float, radius: Float) {
+    drawCircle(tint, size.minDimension / 2 - line / 2, style = Stroke(line))
+    if (sweep <= 0f) return
+    drawArc(tint, -90f, sweep, useCenter = true, topLeft = center - Offset(radius, radius), size = Size(radius * 2, radius * 2))
 }
 
 /** A dot of [tint] in a ring of [ring] [ringWidth] wide, drawn outside the dot's square. */
