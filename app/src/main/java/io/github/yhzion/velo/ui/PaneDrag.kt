@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
@@ -327,6 +328,12 @@ fun destinationTab(place: MovePlace): String? = when (place) {
     MovePlace.NewTab -> null
 }
 
+/**
+ * The name of each tab of [live], the state with titles, as its card says it ([tabTitle]): what a move's capsule and the
+ * screen reader's actions of its places call the tabs (#234).
+ */
+internal fun moveTabNames(live: UiState): Map<String, String> = live.windows.associate { it.id to tabTitle(live, it) }
+
 /** The header of a moved pane's ghost: its [place] ("Pane 2"), then its name by the one rule ([paneName], #208). */
 internal fun ghostHeader(place: String, info: BlockInfo?): String = "$place · ${paneName(info)}"
 
@@ -596,7 +603,10 @@ internal fun PaneMoveOverlay(
     val windows = state.windows
     val cards = row.map { id -> cardWindow(windows.firstOrNull { it.id == id } ?: WindowInfo(id), move.block, move.sourceTab) }
     val name = { block: String -> panePlace(windows, block) }
-    val tabName = { tab: String -> windows.firstOrNull { it.id == tab }?.let { tabTitle(state, it) }.orEmpty() }
+    // Named from the live state, as the cards are (#234): the overlay's state is the steady one, without titles. Read once
+    // when the move starts, as the ghost's header is, and unobserved, so a new title does not compose the overlay again.
+    val liveTabs = remember(move) { Snapshot.withoutReadObservation { moveTabNames(conn.state) } }
+    val tabName = { tab: String -> liveTabs[tab] ?: windows.firstOrNull { it.id == tab }?.let { tabTitle(state, it) }.orEmpty() }
     // Everything here stands at absolute px of the pane area: no child starts on the right in RTL.
     Box(Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
         PlaceOutlines(overview, moves, move, stage, cards, windows, roles, radius, name)
@@ -795,7 +805,8 @@ private fun BoxScope.Ghost(conn: HostConnection, overview: OverviewState, move: 
         conn.viewportText(move.block).lines().map(String::trimEnd).filter(String::isNotEmpty).take(GhostLines)
     }
     // Named from the live state, as every other place names a pane (#208): the overlay's state is the steady one, without titles.
-    val header = remember(move) { ghostHeader(name(move.block), conn.state.blocks[move.block]) }
+    // Unobserved, so a new title does not compose the ghost again (#234).
+    val header = remember(move) { Snapshot.withoutReadObservation { ghostHeader(name(move.block), conn.state.blocks[move.block]) } }
     Column(
         Modifier.align(AbsoluteAlignment.TopLeft)
             .layout { measurable, constraints ->

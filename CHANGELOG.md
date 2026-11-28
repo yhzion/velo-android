@@ -11,6 +11,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - After GitHub's hourly limit was reached, automatic Preview and Edge update checks resume as soon as a check reaches GitHub again, such as on another network, instead of waiting up to an hour.
 - Half-folded on its side with the keyboard up, the caption under the panes now hides where it would cut the key bar, so the key bar stays whole.
 - A minimized pane's capsule names its program, such as bash, instead of Terminal, and keeps up with what the pane runs.
+- While a pane is moved, the capsule and the screen reader's actions name each tab by its title, as the tab's card does.
 
 ## 2.16.1 - 2026-11-28
 
