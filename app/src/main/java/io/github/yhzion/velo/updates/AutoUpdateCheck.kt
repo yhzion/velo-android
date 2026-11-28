@@ -40,9 +40,11 @@ internal object AutoUpdateCheck {
 
     /**
      * Forgets the last attempt, as a new process would. Tests only: Robolectric shares this object across
-     * test classes, so a fake time left here would hold off a later test's check by the retry wait (#292).
+     * test classes, so a fake time left here could hold off a later test's check whose clock falls within
+     * the retry wait after it (#292). A check still under way fails the test that left it, not a later one.
      */
     internal fun resetForTests() {
+        check(!running) { "A foreground check is still under way" }
         lastAttempt = 0L
     }
 

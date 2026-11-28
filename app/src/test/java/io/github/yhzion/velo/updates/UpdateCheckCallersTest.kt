@@ -164,8 +164,8 @@ class UpdateCheckCallersTest {
     }
 
     /**
-     * #292: a failed foreground check holds off the next by the retry wait, and the reset that each test
-     * ends with forgets it, so a later test's check at the same fake time is not skipped.
+     * #292: a failed foreground check holds off the next by the retry wait, and [AutoUpdateCheck.resetForTests],
+     * which each test here ends with, forgets it, so a check right after the reset is not skipped.
      */
     @Test fun aResetForgetsTheLastForegroundAttempt() {
         ReflectionHelpers.setStaticField(Build::class.java, "SUPPORTED_ABIS", arrayOf("arm64-v8a"))
