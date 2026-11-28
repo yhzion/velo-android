@@ -52,6 +52,9 @@ import org.robolectric.annotation.GraphicsMode
  * (#188): the grid's close that waits for Undo, a move of a tab's only pane, a move's notice, the minimap's picker with
  * a pane under a floating one, which the scan opens by a tap first ([Taps]), and the hardware keys' pane picker.
  *
+ * Each scene is scanned as drawn, then after each page its lists scroll ([ScrollSweep], #276), so a node below the fold
+ * of a long settings page, or past the edge of the overview's strip, is heard as a screen reader scrolling reaches it.
+ *
  * The scan runs at each [ScanWidth], the phone's and the unfolded Fold8's (#175), and its name says which.
  * Unfolded, a scene draws its wide layout, and settings-remotes draws studio-mac's menu open. The
  * checks that need no width are in [SpeechCheckTest].
@@ -90,7 +93,8 @@ class DoubleSpeechTest(private val width: ScanWidth) {
         compose.waitForIdle()
         assertEquals("The scenes are drawn at $width", width.w to width.h, drawn)
         assertEquals("The window is $width", (width.w * density).toInt() to (width.h * density).toInt(), window)
-        val twiceSaid = mutableListOf<String>()
+        // A finding is named once, though the sweep sees its node at several scroll steps.
+        val twiceSaid = linkedSetOf<String>()
         val heard = mutableMapOf<String, List<Said>>()
         val drumTags = mutableListOf<String>()
         for (name in names) {
@@ -102,12 +106,17 @@ class DoubleSpeechTest(private val width: ScanWidth) {
                 compose.onNodeWithTag(tag).performClick()
                 compose.waitForIdle()
             }
-            val said = compose.runOnIdle { utterances(view) }
+            // Each place the scene's lists scroll to (#276): a node below the fold is heard too.
+            val said = mutableListOf<Said>()
+            ScrollSweep(compose, view).sweep {
+                val step = utterances(view)
+                said += step
+                for (s in step.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $s"
+                for ((a, b) in step.zipWithNext()) if (Speech.repeatsNeighbour(a.parts, b.parts)) twiceSaid += "$name, $a, then $b"
+            }
             heard[name] = said
             // The drum's cards say nothing, so their names' tags, kept in the unmerged tree, show the drum was drawn.
             if (name == "workspace-drum") drumTags += compose.taggedNodes().map { it.tag }
-            for (s in said.filter { Speech.saysTwice(it.parts) }) twiceSaid += "$name, $s"
-            for ((a, b) in said.zipWithNext()) if (Speech.repeatsNeighbour(a.parts, b.parts)) twiceSaid += "$name, $a, then $b"
         }
         assertTrue("Said twice to a screen reader at $width (scene, node, words):\n" + twiceSaid.joinToString("\n"), twiceSaid.isEmpty())
         // The screens no board draws were drawn and heard (#174), so the scan is not empty by a screen that did not draw.

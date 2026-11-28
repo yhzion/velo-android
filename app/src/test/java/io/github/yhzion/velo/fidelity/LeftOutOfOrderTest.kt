@@ -37,7 +37,7 @@ import org.robolectric.annotation.GraphicsMode
  * reaches it last, out of its place (#205's caption tile, CaptionOrderTest). A clickable or focusable node is no stop in
  * that order either. So a node that says something must be such a stop or be said by one above it; a merging node
  * hidden from accessibility hides all it holds ([Speech.hidesAll]). The scan runs with a screen reader on, as Compose
- * works out the order only then, at each [ScanWidth].
+ * works out the order only then, at each [ScanWidth], and at each page the scene's lists scroll to ([ScrollSweep], #276).
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -65,11 +65,12 @@ class LeftOutOfOrderTest(private val width: ScanWidth) {
             // Tags as resource ids name the node a failure points at.
             Box(Modifier.semantics { testTagsAsResourceId = true }) { key(current) { FidelityScenes.getValue(current)() } }
         }
-        val leftOut = mutableListOf<String>()
+        // A node the sweep sees at several scroll steps is named once.
+        val leftOut = linkedSetOf<String>()
         for (name in names) {
             current = name
-            compose.waitForIdle()
-            leftOut += compose.runOnIdle { leftOut(view) }.map { "$name, $it" }
+            // Each place the scene's lists scroll to (#276), so a node below the fold has its place too.
+            ScrollSweep(compose, view).sweep { leftOut += leftOut(view).map { "$name, $it" } }
         }
         assertTrue("Said, but out of a screen reader's order at $width (scene, node, words):\n" + leftOut.joinToString("\n"), leftOut.isEmpty())
     }
