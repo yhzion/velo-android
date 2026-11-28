@@ -310,10 +310,11 @@ A plain number is the Large size read from the images; "at Medium" is the redesi
 | `rail` | 60 at Medium | The rail: a control and 6 on each side (Rail board); never narrower than that at any size. |
 | `keyBar` | 56 at Medium: `keyCap` and a `keyGap` above and below it | The key bar strip in one row, across the pane column's whole width (#218). Two rows are 6 + 44 + 6 + 44 + 6 = 106. |
 | `key` | 36 at Medium | The least width of a key's cap (#218). Every cap takes the same share of the bar (#142); a key takes the taps up to halfway to the next key, and the first and the last up to the strip's ends. Below it, the bar takes two rows on a window taller than wide and scrolls sideways on any other. |
+| `keyIcon` | 20 at Medium | A key's icon on the key bar and on the Keyboard settings' chips, arrows included (#218: the canvas draws them 20 on a key). |
 | `keyCap` | 44 at Medium, kept at 44 (`MinKey`) | A key's cap inside the strip (#218). |
 | `keyGap` | 6 at Medium | Between two caps on the key bar, and between the caps and the strip's edge on every side (#218). |
 | `gap` | 8 at Medium | Between panes, and between panes and the screen's edge (Tokens board). |
-| `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style. |
+| `gapCompact` | 4 | Between pane cards and adjacent chrome in Compact style, and under the key bar, over the keyboard or the screen's edge (#218: the outer margin of 4 pixels is made up to it there, `keyBarClearance`). |
 | `overlayPadding` | 16 | Inside an overlay, from its edge to its content (AK 15.4, MB1 17.1). |
 | `menuItem` | 48 | A menu item. derived: M03 45.7 and AK 44.8, raised to Android's least touch target. |
 | `menuWidth` | 285 | The widest a menu grows (M03 284.8). |

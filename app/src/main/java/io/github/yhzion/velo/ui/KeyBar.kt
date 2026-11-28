@@ -158,8 +158,8 @@ internal fun keyTestTag(key: String): String = "key-" + when (key) {
  * The keys in the saved order (KeyBar board), as a touch bar's keys (#142, #218): caps of one width
  * across the bar, `sizes.keyGap` between them and around them ([keyCaps]). The strip rounds as the
  * pane card above it does ([radius]), and each cap one gap less, so the two curves run side by side.
- * Each key takes the taps up to halfway to the next, and the first and the last up to the strip's
- * ends. When the caps would be narrower than `sizes.key`, a bar on an [upright] window puts its keys
+ * Each key takes the taps up to halfway to the next, and the first and the last of a row up to the
+ * strip's ends. When the caps would be narrower than `sizes.key`, a bar on an [upright] window puts its keys
  * in two rows, and any other scrolls sideways, the edge with more keys beyond it fading out. A sticky
  * key in [armed] is lit until the next key uses it. While the bar is not [enabled] (the panes' input
  * is paused: [paneInputPaused]) every key is drawn disabled and takes no tap.
@@ -194,7 +194,12 @@ internal fun KeyBar(
                 val columns = caps.columns
                 // Between two caps, the first takes half the gap and the second the rest; at the strip's edge, a key takes the padding.
                 fun start(i: Int) = if (i % columns == 0) gap else gap - gap / 2
-                fun end(i: Int) = if (i % columns == columns - 1 || i == keys.lastIndex) gap else gap / 2
+                // The last key of a short second row also takes the taps over the empty places after it, up to the strip's end.
+                fun end(i: Int) = when {
+                    i % columns == columns - 1 -> gap
+                    i == keys.lastIndex -> gap + (i % columns + 1 until columns).sumOf { caps.widths[it] + gap }
+                    else -> gap / 2
+                }
                 fun top(i: Int) = if (i < columns) gap else gap - gap / 2
                 fun bottom(i: Int) = if (i / columns == caps.rows - 1) gap else gap / 2
                 val buttons = subcompose(KeyBarSlot.Keys) {

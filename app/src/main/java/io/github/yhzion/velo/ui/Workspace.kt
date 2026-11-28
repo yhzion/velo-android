@@ -861,7 +861,7 @@ internal fun Workspace(
                 val hostLabel = activeRemote?.label?.ifEmpty { null } ?: hostName(state)
                 ShownCaption(conn, connected, host = hostLabel, modifier = captionSlot(gap), compact = compactStyle, notification = notification)
                 if (keyBarShown) {
-                    KeyBar(s.keyBar, armed, keyBarSlot(gap).onPlaced { keyBarBox.value = it.boundsInParent() },
+                    KeyBar(s.keyBar, armed, keyBarSlot(gap, keyBarClearance(compactStyle, outerY, sizes.gapCompact)).onPlaced { keyBarBox.value = it.boundsInParent() },
                         enabled = !paused && activeSearch == null && pendingSearch == null, radius = radius) { k, repeated ->
                         // A modifier is felt turning on or off, any other key as a key (#309).
                         if (!repeated) haptic(barKeyFeel(k, armed))
@@ -1207,8 +1207,16 @@ internal fun RowScope.paneColumnSlot(): Modifier = Modifier.testTag("pane-area")
 /** The caption's place: [gap] under the panes. */
 internal fun captionSlot(gap: Dp): Modifier = Modifier.padding(top = gap)
 
-/** The key bar's place: [gap] under the caption, across the pane column's whole width (#218). */
-internal fun keyBarSlot(gap: Dp): Modifier = Modifier.padding(top = gap)
+/** The key bar's place: [gap] under the caption and [below] over what lies under it, across the pane column's whole width (#218). */
+internal fun keyBarSlot(gap: Dp, below: Dp = 0.dp): Modifier = Modifier.padding(top = gap, bottom = below)
+
+/**
+ * The room under the key bar beyond the screen's [outer] margin: in Compact style, the margin is a few
+ * pixels, and the bar would touch the keyboard under it; it keeps [gapCompact] to it, as the panes keep
+ * to the bar (#218). In the other style the margin is a whole gap already.
+ */
+internal fun keyBarClearance(compact: Boolean, outer: Dp, gapCompact: Dp): Dp =
+    if (compact) (gapCompact - outer).coerceAtLeast(0.dp) else 0.dp
 
 /** True on the folded (cover) screen and on split-screen halves: the short side of the window is under 600dp. */
 fun isCompact(widthDp: Float, heightDp: Float): Boolean = minOf(widthDp, heightDp) < 600f

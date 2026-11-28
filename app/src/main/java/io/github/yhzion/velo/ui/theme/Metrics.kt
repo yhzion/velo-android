@@ -135,6 +135,8 @@ class VeloSizes(
     val keyBar: Dp = medium(56f),
     /** The least width of a key's cap (#218: 36); narrower, and the bar takes two rows or scrolls ([io.github.yhzion.velo.ui.keyCaps]). */
     val key: Dp = medium(36f),
+    /** A key's icon on the key bar and on the Keyboard settings' chips (#218: "키 위에서는 20 dp"). */
+    val keyIcon: Dp = medium(20f),
     /** A key's cap: the least key, [MinKey] (#218: 44). */
     val keyCap: Dp = medium(44f),
     /** Between two caps on the key bar, and between the caps and the strip's edge (#218: 6). */
@@ -297,6 +299,7 @@ fun veloSizes(size: UiSize): VeloSizes {
         // The strip is a cap and a gap above and below it, whatever the size.
         keyBar = keyCap + keyGap * 2,
         key = base.key.s(),
+        keyIcon = base.keyIcon.s(),
         keyCap = keyCap,
         keyGap = keyGap,
         gap = gap,
