@@ -34,8 +34,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Compose UI 1.13.0 sends no TYPE_VIEW_FOCUSED when a key moves input focus onto a node a list has to scroll to show
- * (#220), so TalkBack says nothing for that move. Compose keeps, for its change events, only the nodes on the screen,
+ * Compose UI 1.13.0 sends no TYPE_VIEW_FOCUSED when a key moves input focus onto a node wholly off the screen, which a
+ * list then scrolls to show (#220), so TalkBack says nothing for that move. A node partly on the screen gets it. Compose keeps, for its change events, only the nodes on the screen,
  * and compares each with the one it kept at the last check: a node that was off the screen has none, so its focus is
  * never compared (AndroidComposeViewAccessibilityDelegateCompat.sendSemanticsPropertyChangeEvents, "previousSemanticsNodes[id]
  * ?: return@forEachKey"; still so in 1.14.0-alpha01). The app has no public way to send the event itself: it would need
@@ -53,7 +53,7 @@ class OffscreenFocusEventTest {
     private val manager =
         ApplicationProvider.getApplicationContext<Context>().getSystemService(AccessibilityManager::class.java)
 
-    @Test fun `a move that has to scroll sends no focus event, as Compose 1_13 does`() {
+    @Test fun `a move onto a node off the screen sends no focus event, as Compose 1_13 does`() {
         val shadow = shadowOf(manager)
         shadow.setEnabled(true)
         shadow.setTouchExplorationEnabled(true)

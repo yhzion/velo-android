@@ -20,11 +20,10 @@ internal object Speech {
 
     /**
      * What a service says for a node: its description, or its text, then its state description (#167);
-     * nothing for a node it skips, as one not visible to the user: Compose marks so each node under a merging node
-     * hidden from accessibility (#235).
+     * nothing for a node it skips.
      */
     fun words(i: AccessibilityNodeInfo): List<String> =
-        if (!i.isImportantForAccessibility || !i.isVisibleToUser) emptyList()
+        if (!i.isImportantForAccessibility) emptyList()
         else listOfNotNull(i.contentDescription ?: i.text, i.stateDescription).map { it.toString() }.filter { it.isNotBlank() }
 
     /** The node of the semantics node [id] (a virtual view id) in [view]. */
@@ -39,7 +38,7 @@ internal object Speech {
             for (c in 0 until parent.childCount) {
                 val id = childVirtualId(parent, c) ?: continue
                 val child = provider.createAccessibilityNodeInfo(id) ?: continue
-                if (focusable(child)) continue
+                if (focusable(child) || hidesAll(child)) continue
                 words += words(child)
                 gather(child)
             }
@@ -48,6 +47,13 @@ internal object Speech {
         gather(info)
         return words
     }
+
+    /**
+     * Whether [info] hides all it holds: a merging node hidden from accessibility (#235). Compose leaves it out and marks
+     * each node under it not visible to the user. A node not visible but important, as a child of a row at the edge of a
+     * scrolling list, is still heard.
+     */
+    fun hidesAll(info: AccessibilityNodeInfo) = !info.isImportantForAccessibility && !info.isVisibleToUser
 
     /** What the semantics node [id] says, as [said]. */
     fun saidAt(view: View, id: Int): List<String> = said(view, node(view, id))
@@ -75,7 +81,7 @@ internal object Speech {
      * So the scans skip a real View's subtree inside an AndroidView (a TextView of TerminalReader, a pane's surface),
      * which an accessibility service reads when its views matter for accessibility; only the Compose nodes around it are heard.
      */
-    private fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int? {
+    fun childVirtualId(info: AccessibilityNodeInfo, index: Int): Int? {
         // AccessibilityNodeInfo keeps each child, and its own source, as a long whose high half is the
         // virtual view id; getChildId and getSourceNodeId are hidden, so they are read by reflection, as Robolectric allows.
         val id = AccessibilityNodeInfo::class.java.getMethod("getChildId", Int::class.javaPrimitiveType).invoke(info, index) as Long

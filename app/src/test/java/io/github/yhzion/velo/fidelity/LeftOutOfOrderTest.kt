@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -31,10 +32,12 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * No node in a registered scene ([FidelityScenes]) says something without a place in a screen reader's order (#235).
- * Compose gives a screen reader the order of the nodes it stops on; a node with a description whose parts carry test
- * tags is neither a leaf nor merging, so it is not one of them, and TalkBack reaches it last, out of its place (#205's
- * caption tile, CaptionOrderTest). So a node that says something must be a stop ([Speech.focusable]) or be said by one
- * above it. The scan runs with a screen reader on, as Compose works out the order only then, at each [ScanWidth].
+ * Compose gives a screen reader the order of the nodes it stops on, the ones it marks screen-reader focusable (leaves and
+ * merging nodes); a node with a description whose parts carry test tags is neither, so it is left out, and TalkBack
+ * reaches it last, out of its place (#205's caption tile, CaptionOrderTest). A clickable or focusable node is no stop in
+ * that order either. So a node that says something must be such a stop or be said by one above it; a merging node
+ * hidden from accessibility hides all it holds ([Speech.hidesAll]). The scan runs with a screen reader on, as Compose
+ * works out the order only then, at each [ScanWidth].
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -71,25 +74,51 @@ class LeftOutOfOrderTest(private val width: ScanWidth) {
         assertTrue("Said, but out of a screen reader's order at $width (scene, node, words):\n" + leftOut.joinToString("\n"), leftOut.isEmpty())
     }
 
+    /**
+     * The start steps stay a polite live region that says their description, so a step that changes is announced:
+     * merging the list (#235) must not lose it.
+     */
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test fun theStartStepsAreStillAnnounced() {
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            Box(Modifier.semantics { testTagsAsResourceId = true }) { FidelityScenes.getValue("start-2")() }
+        }
+        val steps = compose.runOnIdle { nodes(view).single { it.viewIdResourceName == "start-steps" } }
+        assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, steps.liveRegion)
+        // Merging, Compose puts the description on a child of its own; the node says it, as a screen reader reads it.
+        assertEquals(listOf("Step 2 of 3: Pick a computer"), compose.runOnIdle { Speech.said(view, steps) })
+        assertTrue("a stop of its own", steps.isScreenReaderFocusable)
+    }
+
     /** Each node in [view] that says something, is no stop and is under none, with what it says. */
     private fun leftOut(view: View): List<String> {
         val provider = view.accessibilityNodeProvider ?: return emptyList()
         val found = mutableListOf<String>()
         fun walk(id: Int, underStop: Boolean) {
             val info = provider.createAccessibilityNodeInfo(id) ?: return
-            val stop = Speech.focusable(info)
+            if (Speech.hidesAll(info)) return
+            val stop = info.isImportantForAccessibility && info.isScreenReaderFocusable
             val words = Speech.words(info)
             if (!stop && !underStop && words.isNotEmpty()) found += "${info.viewIdResourceName ?: "#$id"}: \"${words.joinToString(" | ")}\""
-            for (c in 0 until info.childCount) childId(info, c)?.let { walk(it, underStop || stop) }
+            for (c in 0 until info.childCount) Speech.childVirtualId(info, c)?.let { walk(it, underStop || stop) }
         }
         walk(AccessibilityNodeProvider.HOST_VIEW_ID, false)
         return found
     }
 
-    /** The virtual view id of [info]'s child at [index]; null for a view of its own (Speech's scans skip them too). */
-    private fun childId(info: AccessibilityNodeInfo, index: Int): Int? {
-        val id = AccessibilityNodeInfo::class.java.getMethod("getChildId", Int::class.javaPrimitiveType).invoke(info, index) as Long
-        return (id ushr 32).toInt().takeIf { it != AccessibilityNodeProvider.HOST_VIEW_ID }
+    /** Every node in [view]. */
+    private fun nodes(view: View): List<AccessibilityNodeInfo> {
+        val provider = view.accessibilityNodeProvider ?: return emptyList()
+        val all = mutableListOf<AccessibilityNodeInfo>()
+        fun walk(id: Int) {
+            val info = provider.createAccessibilityNodeInfo(id) ?: return
+            all += info
+            for (c in 0 until info.childCount) Speech.childVirtualId(info, c)?.let(::walk)
+        }
+        walk(AccessibilityNodeProvider.HOST_VIEW_ID)
+        return all
     }
 
     companion object {
