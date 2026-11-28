@@ -259,12 +259,17 @@ private const val ToolLayerTint = 0.55f
  * what a screen reader says, with [stateDescription] (the state its dot shows); a null
  * [contentDescription] leaves the tile out, for a row that says it itself. The letter and the pane
  * count are part of the picture and are never said on their own.
+ *
+ * With [stop] the tile is a screen reader's stop of its own, in its place on the screen: it takes its parts in (their
+ * tags make them nodes, so without it Compose leaves the tile out of the order it gives, and TalkBack reaches it
+ * last, #205). A tile in a row that is the stop, as a sidebar row, keeps it false, so the row is not split.
  */
 @Composable
 fun TabTile(
     brand: TileBrand, modifier: Modifier = Modifier, panes: Int = 1, behind: List<TileBrand> = emptyList(), size: Dp = VeloTheme.sizes.tabTile,
     dot: TileDot? = null, ring: Color = VeloTheme.surface.surface, tag: String? = null,
     contentDescription: String? = tileLabel(brand, panes), stateDescription: String? = null, byFace: Boolean = false,
+    stop: Boolean = false,
 ) {
     val colors = VeloTheme.colors.sheet
     // One board unit at this size, and the face in board units: the rules are in those.
@@ -290,7 +295,7 @@ fun TabTile(
     }
     Box(
         modifier.then(laidOut).size(u(tileBox(s))).tagged("")
-            .then(if (contentDescription != null) Modifier.semantics {
+            .then(if (contentDescription != null) Modifier.semantics(mergeDescendants = stop) {
                 this.contentDescription = contentDescription
                 role = Role.Image
                 if (stateDescription != null) this.stateDescription = stateDescription

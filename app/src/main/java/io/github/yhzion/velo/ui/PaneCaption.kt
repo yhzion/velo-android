@@ -105,7 +105,7 @@ internal fun TabCaption(
     ) {
         if (tile != null) {
             TabTile(tile.brand, panes = tile.panes, behind = tile.behind, size = unit * CaptionTile, dot = tile.dot,
-                ring = VeloTheme.surface.surface, tag = tileTag, byFace = true,
+                ring = VeloTheme.surface.surface, tag = tileTag, byFace = true, stop = true,
                 contentDescription = tabTileDescription(tile, activity?.icon),
                 stateDescription = activity?.badge?.let { "Unread, ${it.description}" })
         }
