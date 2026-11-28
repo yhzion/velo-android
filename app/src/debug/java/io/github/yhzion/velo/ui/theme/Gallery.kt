@@ -183,7 +183,7 @@ private fun KeySample() {
 private fun RailSample(open: GalleryOverlay?, onOpen: (GalleryOverlay?) -> Unit) {
     val s = VeloTheme.sizes
     Column(
-        Modifier.width(s.rail).fillMaxHeight().clip(rounded(VeloTheme.radii.bar)).background(VeloTheme.surface.surface).padding(vertical = s.overlayPadding),
+        Modifier.width(s.rail).fillMaxHeight().clip(Capsule).background(VeloTheme.surface.surface).padding(vertical = s.overlayPadding),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(s.rowGap),
     ) {
         Text("16:12", style = VeloTheme.type.clock, color = VeloTheme.surface.text)

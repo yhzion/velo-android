@@ -125,6 +125,7 @@ private fun Keys() {
     Label("Key bar keys and key chips")
     VeloSurface(VeloTheme.colors.chrome) {
         KeyStrip(Modifier.testTag("sample-key-strip")) {
+            Spacer(Modifier.width(VeloTheme.sizes.keyGap))
             KeyCap("Esc", {}, Modifier.testTag("sample-key"), contentDescription = spokenKeyName("Esc"))
             Spacer(Modifier.width(VeloTheme.sizes.keyGap))
             KeyCap("Ctrl", {}, Modifier.testTag("sample-key-latched"), armed = true, contentDescription = spokenKeyName("Ctrl"))

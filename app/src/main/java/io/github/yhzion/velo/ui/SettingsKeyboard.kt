@@ -94,7 +94,11 @@ internal fun KeyboardSettings(s: Settings) {
                 Modifier.groupBleed().testTag("keyboard-key-bar-preview").fillMaxWidth().background(VeloTheme.colors.backdrop.surface)
                     .drawBehind { drawLine(c.divider, Offset(0f, size.height - 0.5f), Offset(size.width, size.height - 0.5f), 1f) }
                     .padding(space.s12).padding(bottom = hairline()),
-            ) { KeyBar(s.keyBar, emptySet(), Modifier, enabled = true) { _, _ -> } }
+            ) {
+                // Rounded as the panes' cards are in the chosen pane style (#218).
+                val radius = if (s.paneStyle == "compact") VeloTheme.radii.paneCompact else VeloTheme.radii.pane
+                KeyBar(s.keyBar, emptySet(), Modifier, enabled = true, radius = radius) { _, _ -> }
+            }
             if (s.keyBar.size >= 2) {
                 SettingRow("Order", tag = "keyboard-order", labelFills = false) {
                     if (ordering) VeloButton("Done", { editingOrder = false }, kind = ButtonKind.Primary, row = true, tag = "keyboard-order-done-button")
