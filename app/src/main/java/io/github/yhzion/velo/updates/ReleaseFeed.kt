@@ -3,7 +3,7 @@ package io.github.yhzion.velo.updates
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -60,13 +60,12 @@ object ReleaseFeed {
     private val digestPattern = Regex("""sha256:([0-9a-fA-F]{64})""")
     private val sha256Pattern = Regex("""[0-9a-fA-F]{64}""")
     private val checksumLine = Regex("""([0-9a-f]{64})  (\S+)\n?""")
-    private val latestRedirect = Regex(Regex.escape("$REPOSITORY/releases/download/") + "([^/]+)" + Regex.escape("/$MANIFEST"))
-    // Release downloads: the repository's own pages, then GitHub's asset storage.
-    private val downloadHosts = setOf("github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+    private val latestPath = Regex(Regex.escape("/$REPO_PATH/releases/download/") + "([^/]+)" + Regex.escape("/$MANIFEST"))
 
     /**
-     * Blocking I/O. Every eligible release newer than [installedCode], newest first; the first of
-     * them is the update. Empty means a complete feed contained no eligible update, not a failed check.
+     * Blocking I/O. Eligible releases newer than [installedCode], newest first; the first of them is
+     * the update. Every one when the API answered; on the stable channel, the manifest's release alone
+     * when the API failed or saw no newer one ([check]). Empty means no eligible update, not a failed check.
      */
     fun newer(channel: UpdateChannel, installedCode: Long): List<AppRelease> =
         check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network)
@@ -99,7 +98,11 @@ object ReleaseFeed {
             if (found != null) {
                 if (found.isEmpty() || !everyRelease || blocked) return found
                 val all = try { newer(channel, installedCode, source::page) } catch (e: IOException) { null }
-                return all?.takeIf { it.firstOrNull()?.versionCode == found[0].versionCode } ?: found
+                // The API's list, checked in full, when it has the manifest's release with the same digest or a newer one.
+                val first = all?.firstOrNull() ?: return found
+                val agrees = first.versionCode > found[0].versionCode ||
+                    first.versionCode == found[0].versionCode && first.sha256 == found[0].sha256
+                return if (agrees) all else found
             }
         }
         if (blocked) throw RateLimitedException(apiBlockedUntil)
@@ -209,6 +212,26 @@ object ReleaseFeed {
             "$REPOSITORY/releases/tag/$tag", changeNotes(notes))
     }
 
+    /** The tag of the release a `releases/latest/download/` redirect to [location] stands for, or null. */
+    internal fun latestTag(location: String): String? {
+        val uri = try { URI(location) } catch (e: java.net.URISyntaxException) { return null }
+        if (uri.scheme != "https" || uri.host != "github.com" || uri.rawUserInfo != null || uri.port != -1) return null
+        return uri.rawPath?.let(latestPath::matchEntire)?.groupValues?.get(1)
+    }
+
+    /**
+     * Where a download redirect from [from] to [location] leads: the repository's own release pages on
+     * github.com, or GitHub's asset storage under the installer's rules ([assetRedirect]).
+     */
+    internal fun downloadRedirect(from: URI, location: String): URI = try {
+        val next = from.resolve(location)
+        if (next.host == "github.com" && next.scheme == "https" && next.rawUserInfo == null && next.port == -1 &&
+            next.rawFragment == null && next.rawPath.orEmpty().startsWith("/$REPO_PATH/releases/download/")) next
+        else assetRedirect(from, location)
+    } catch (e: IllegalArgumentException) {
+        throw IOException("Unexpected download redirect.", e)
+    }
+
     /**
      * The limit a 403 or 429 reports, or null for another refusal. The wait is the reset time less
      * the server's own clock, so a phone clock that is off does not stretch or cut it; at least a
@@ -237,8 +260,7 @@ object ReleaseFeed {
         override fun manifest(): Pair<String, String> {
             val (text, via) = fetch("$REPOSITORY/releases/latest/download/$MANIFEST", MAX_MANIFEST_BYTES, api = false)
             // The first redirect names the release "latest" stands for.
-            val tag = via.firstOrNull()?.let(latestRedirect::matchEntire)?.groupValues?.get(1)
-                ?: throw IOException("The latest release was not named.")
+            val tag = via.firstOrNull()?.let(::latestTag) ?: throw IOException("The latest release was not named.")
             return tag to text
         }
 
@@ -247,13 +269,13 @@ object ReleaseFeed {
 
     /**
      * The text at [address] and the redirects followed to it. The API is read without redirects; a
-     * download follows a few, over HTTPS to [downloadHosts] only.
+     * download follows a few, as [downloadRedirect] allows.
      */
     private fun fetch(address: String, maxBytes: Int, api: Boolean): Pair<String, List<String>> {
-        var url = URL(address)
+        var uri = URI(address)
         val via = mutableListOf<String>()
         for (hop in 0..MAX_REDIRECTS) {
-            val connection = url.openConnection() as HttpURLConnection
+            val connection = uri.toURL().openConnection() as HttpURLConnection
             try {
                 connection.connectTimeout = 10_000
                 connection.readTimeout = 15_000
@@ -266,12 +288,9 @@ object ReleaseFeed {
                 val status = connection.responseCode
                 if (status == HttpURLConnection.HTTP_OK) return read(connection, maxBytes) to via
                 if (!api && status in setOf(301, 302, 303, 307, 308)) {
-                    val next = connection.getHeaderField("Location")?.let { URL(url, it) }
-                    if (next == null || next.protocol != "https" || next.host !in downloadHosts) {
-                        throw IOException("Unexpected download redirect.")
-                    }
-                    via += next.toString()
-                    url = next
+                    val location = connection.getHeaderField("Location") ?: throw IOException("Redirect without a location.")
+                    uri = downloadRedirect(uri, location)
+                    via += uri.toString()
                     continue
                 }
                 if (api) {

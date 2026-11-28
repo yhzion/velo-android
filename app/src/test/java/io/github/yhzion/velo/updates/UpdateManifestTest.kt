@@ -1,6 +1,7 @@
 package io.github.yhzion.velo.updates
 
 import java.io.IOException
+import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -21,12 +22,12 @@ class UpdateManifestTest {
 
     private fun quote(text: String) = "\"" + text.replace("\n", "\\n") + "\""
 
-    private fun apiEntry(tag: String, code: Long): String {
+    private fun apiEntry(tag: String, code: Long, digest: String = sha): String {
         val name = "velo-$tag-arm64-v8a.apk"
         val url = "$repo/releases/download/$tag/$name"
         return """{"tag_name":"$tag","html_url":"$repo/releases/tag/$tag","draft":false,"prerelease":${'-' in tag},
             "body":"<!-- android-version-code: $code -->","assets":[
-            {"name":"$name","browser_download_url":"$url","state":"uploaded","size":1,"digest":"sha256:$sha"},
+            {"name":"$name","browser_download_url":"$url","state":"uploaded","size":1,"digest":"sha256:$digest"},
             {"name":"$name.sha256","browser_download_url":"$url.sha256","state":"uploaded","size":91}] }"""
     }
 
@@ -96,6 +97,12 @@ class UpdateManifestTest {
         assertEquals(listOf("v2.16.1", "v2.16.0"), check(Fake(api = { both }), installed = 3000051, everyRelease = true).map { it.tag })
         val behind = "[${apiEntry("v2.16.0", 3000052)}]" // a list that does not have the manifest's release yet
         assertEquals(listOf("v2.16.1"), check(Fake(api = { behind }), installed = 3000051, everyRelease = true).map { it.tag })
+        // The API, checked in full, may know a newer release than the one marked latest.
+        val newer = "[${apiEntry("v2.17.0", 3000060)},${apiEntry("v2.16.1", 3000053)}]"
+        assertEquals(listOf("v2.17.0", "v2.16.1"), check(Fake(api = { newer }), installed = 3000051, everyRelease = true).map { it.tag })
+        // The same release with another digest: the manifest's, which matches the release's checksum.
+        val otherDigest = "[${apiEntry("v2.16.1", 3000053, "12".repeat(32))}]"
+        assertEquals(sha.lowercase(), check(Fake(api = { otherDigest }), installed = 3000051, everyRelease = true).single().sha256)
         val limited = Fake(api = { throw RateLimitedException(now + 60_000) })
         assertEquals(listOf("v2.16.1"), check(limited, installed = 3000051, everyRelease = true).map { it.tag })
         // Nothing newer: the API is not asked for notes.
@@ -142,5 +149,41 @@ class UpdateManifestTest {
         assertNull(ReleaseFeed.rateLimit(404, "0", "1800000000", now, now))
         assertNull(ReleaseFeed.rateLimit(500, "0", "1800000000", now, now))
         assertTrue(RateLimitedException(now) is IOException)
+    }
+
+    @Test fun theFirstRedirectNamesTheLatestRelease() {
+        val download = "$repo/releases/download/v2.16.1/velo-update.json"
+        assertEquals("v2.16.1", ReleaseFeed.latestTag(download))
+        assertEquals("v2.16.1", ReleaseFeed.latestTag("$download?x=1")) // a query does not change the release
+        for (location in listOf(
+            "https://github.com/yhzion/other-android/releases/download/v2.16.1/velo-update.json",
+            "$repo/releases/download/v2.16.1/velo-v2.16.1-arm64-v8a.apk",
+            "$repo/releases/download/v2.16.1/x/velo-update.json",
+            "http://github.com/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "https://github.com:8443/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "https://u@github.com/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "https://gist.github.com/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "not a uri ^",
+        )) assertNull(location, ReleaseFeed.latestTag(location))
+    }
+
+    @Test fun downloadsFollowRedirectsToTheReleasePagesAndGitHubsAssetStorageOnly() {
+        val start = URI("$repo/releases/latest/download/velo-update.json")
+        val release = "$repo/releases/download/v2.16.1/velo-update.json"
+        assertEquals(URI(release), ReleaseFeed.downloadRedirect(start, release))
+        assertEquals(URI(release), ReleaseFeed.downloadRedirect(start, "/yhzion/velo-android/releases/download/v2.16.1/velo-update.json"))
+        val asset = "https://release-assets.githubusercontent.com/github-production-release-asset/1470994129/a?sp=r&sig=x"
+        assertEquals(URI(asset), ReleaseFeed.downloadRedirect(URI(release), asset))
+        for (location in listOf(
+            "http://release-assets.githubusercontent.com/a",
+            "https://evil.example/a",
+            "https://github.com/yhzion/other-android/releases/download/v2.16.1/velo-update.json",
+            "https://github.com:8443/yhzion/velo-android/releases/download/v2.16.1/velo-update.json",
+            "https://u@objects.githubusercontent.com/a",
+            "https://objects.githubusercontent.com/a#x",
+            "https://release-assets.githubusercontent.com:8443/a",
+            "not a uri ^",
+        )) assertThrows(location, IOException::class.java) { ReleaseFeed.downloadRedirect(URI(release), location) }
     }
 }
