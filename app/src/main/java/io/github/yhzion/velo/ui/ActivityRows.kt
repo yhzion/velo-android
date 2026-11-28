@@ -105,42 +105,46 @@ internal fun ActivityRow(
     // The group's title says the state, so a screen reader hears only what the tile adds: unread, and of what.
     val said = tabRowTileSpeech(tile, activity.icon ?: row.icon, row.name, activity.badge, null)
     val gap = 12.bd
+    // The group's title says it works; the percent of a pie is said with the session (#251).
+    val sessionSaid = progressSaid(tile, entry.sessionLabel, PercentAt.First)
+    val message = entry.message
+    val third = message?.let { activityThirdLine(entry.priority, wellReason(activity.indicator), it) }
+    // The row says all of it, its parts hidden, so that its words stay with it half under the Filter field (#279).
+    val description = activityRowDescription(listOfNotNull(said.description, said.state), row.name.takeIf { said.nameSaid },
+        sessionSaid ?: entry.sessionLabel, age, third.orEmpty())
     Box(modifier) {
         Column(Modifier.testTag("activity-row-$id").padding(horizontal = 8.bd).fillMaxWidth().clip(rounded(14.bd))
             .background(if (row.shown) c.selected else Color.Transparent)
             .combinedClickable(onLongClick = { menu = true }, onClick = onSelect)
-            .semantics { if (row.shown) selected = true }
+            .semantics { contentDescription = description; if (row.shown) selected = true }
             .padding(start = 12.bd, end = 10.bd, top = 7.bd, bottom = 7.bd)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) {
                 BouncingMark(bouncesIcon(activity.badge), motion) {
                     TabTile(tile.brand, panes = tile.panes, behind = tile.behind, dot = tile.dot, ring = tabRowFill(row.shown),
-                        tag = "tab-tile-$id", contentDescription = said.description, stateDescription = said.state, progress = tile.progress)
+                        tag = "tab-tile-$id", contentDescription = null, progress = tile.progress)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.bd)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // A name that only says again what the tile says is not read twice (#150).
-                        Text(row.name, Modifier.weight(1f).testTag("activity-title-$id")
-                            .then(if (said.nameSaid) Modifier else Modifier.semantics { hideFromAccessibility() }), style = type.body.naturalLines(), color = c.text,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // The row says the name, unless it only says again what the tile says (#150).
+                        Text(row.name, Modifier.weight(1f).testTag("activity-title-$id").semantics { hideFromAccessibility() },
+                            style = type.body.naturalLines(), color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         // A tile with a progress pie already shows the work (#250): no dots then.
                         if (rowMark(activity.indicator, tile) == RowMark.Working) {
                             WorkingDots(5.bd, 4.bd, Modifier.padding(start = 8.bd).testTag("tab-working-$id"), description = null)
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // The group's title says it works; the percent of a pie is said with the session (#251).
-                        val sessionSaid = progressSaid(tile, entry.sessionLabel, PercentAt.First)
+                        // The line keeps the words the row says for it, a pie's percent first, for what reads them.
                         Text(entry.sessionLabel, Modifier.weight(1f).testTag("activity-session-$id")
-                            .then(if (sessionSaid != null) Modifier.clearAndSetSemantics { text = AnnotatedString(sessionSaid) } else Modifier), style = type.caption.naturalLines(),
-                            color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            .clearAndSetSemantics { text = AnnotatedString(sessionSaid ?: entry.sessionLabel); hideFromAccessibility() },
+                            style = type.caption.naturalLines(), color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         age?.let {
-                            Text(it, Modifier.padding(start = 8.bd).testTag("activity-age-$id"), style = type.caption.naturalLines(),
-                                color = c.secondary, maxLines = 1)
+                            Text(it, Modifier.padding(start = 8.bd).testTag("activity-age-$id").semantics { hideFromAccessibility() },
+                                style = type.caption.naturalLines(), color = c.secondary, maxLines = 1)
                         }
                     }
                 }
             }
-            val message = entry.message
             if (message != null) Box(Modifier.padding(start = VeloTheme.sizes.tabTile + gap, top = 6.bd)) {
                 when (entry.priority) {
                     ActivityPriority.Working -> MessageCapsule(message, motion, Modifier.testTag("activity-capsule-$id"))
@@ -165,14 +169,31 @@ internal fun ActivityRow(
 }
 
 /**
+ * What an Activity row says (#279), in the order it shows them: its [tile]'s words, its [name] (null where the tile
+ * says it already, #150), its [session] line (a pie's percent first, #251), its [age] and its [third] line's words.
+ * Compose leaves out a node that a later one covers whole, so a row half under the sidebar's Filter field lost all
+ * but what showed above the field while these were said by its parts.
+ */
+internal fun activityRowDescription(tile: List<String>, name: String?, session: String, age: String?, third: List<String>): String =
+    (tile + listOfNotNull(name, session, age) + third).joinToString(", ")
+
+/** The words of the line under a row of [priority]: a working tab's [message], a waiting or failed tab's [reason] and message, a finished one's none. */
+internal fun activityThirdLine(priority: ActivityPriority, reason: String?, message: String): List<String> = when (priority) {
+    ActivityPriority.Working -> listOf(message)
+    ActivityPriority.Blocked, ActivityPriority.Failed -> listOfNotNull(reason, message)
+    ActivityPriority.Done -> emptyList()
+}
+
+/**
  * The well under a waiting or failed tab's row (#248): what it waits for ([reason], in the accent; a failure has
- * none) over its program's [message] in at most two lines, which end with an ellipsis and do not run.
+ * none) over its program's [message] in at most two lines, which end with an ellipsis and do not run. The row says
+ * them ([activityRowDescription]), so the well is hidden from a screen reader.
  */
 @Composable
 internal fun ReasonWell(reason: String?, message: String, modifier: Modifier = Modifier) {
     val c = VeloTheme.surface
     val type = VeloTheme.type
-    Column(modifier.fillMaxWidth().clip(rounded(10.bd)).background(c.text.copy(alpha = .07f))
+    Column(modifier.clearAndSetSemantics { hideFromAccessibility() }.fillMaxWidth().clip(rounded(10.bd)).background(c.text.copy(alpha = .07f))
         .padding(horizontal = 12.bd, vertical = 8.bd), verticalArrangement = Arrangement.spacedBy(2.bd)) {
         if (reason != null) Text(reason, style = type.value.naturalLines(), color = c.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(message, style = type.value.naturalLines(), color = c.secondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -203,7 +224,8 @@ private val CapsuleRise = CubicBezierEasing(0.3f, 1.2f, 0.6f, 1f)
  * push the old up and come in from below while the pill takes their width. Words wider than the row rest for
  * [CapsuleRestMs] from the change, then run left at [CapsuleSpeedDp] dp a second, a copy following after a gap, and
  * rest again at their start after each lap; the pill's ends fade while they run. Nothing moves while the system's
- * animations are off ([motion]): long words end in an ellipsis then. A screen reader reads the words once.
+ * animations are off ([motion]): long words end in an ellipsis then. The row says the words once
+ * ([activityRowDescription]); the capsule keeps them as its description for what reads them, hidden from a screen reader.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -213,7 +235,7 @@ internal fun MessageCapsule(text: String, motion: Float, modifier: Modifier = Mo
     val moves = animates(motion)
     val pad = 10.bd
     Box(modifier.clip(Capsule).background(c.text.copy(alpha = .08f)).heightIn(min = 24.bd)
-        .clearAndSetSemantics { contentDescription = text }, contentAlignment = Alignment.CenterStart) {
+        .clearAndSetSemantics { contentDescription = text; hideFromAccessibility() }, contentAlignment = Alignment.CenterStart) {
         AnimatedContent(text, transitionSpec = {
             val sizing = SizeTransform(clip = true) { _, _ -> if (moves) spring(stiffness = Spring.StiffnessMediumLow) else snap() }
             if (!moves) EnterTransition.None togetherWith ExitTransition.None using sizing

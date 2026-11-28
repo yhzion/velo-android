@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -65,25 +66,40 @@ class SidebarRowNameTest {
     @Test fun aTabRowHalfUnderTheFilterFieldKeepsItsWords() =
         assertScrolledRowKeepsItsWords("tab-row-t5", "tab-title-t5", listOf("htop, Build release 5, ~/src/api"))
 
+    @Test fun aSessionHeaderHalfUnderTheFilterFieldKeepsItsName() =
+        assertScrolledRowKeepsItsWords("session-header-s5", "session-name-s5", listOf("s5"))
+
     /**
-     * Eight connected remotes with one tab each, in a sidebar 600 dp tall (#238). The list is scrolled until the words
-     * tagged [wordsTag] of the row tagged [tag] start 1 dp under the Filter field's top: they are covered, the row's top
-     * is not. The row says [said] there, as it does shown whole.
+     * A working row of Activity with a progress pie and its program's words (#279): the percent is said with the session
+     * (#251). Each tab has a pie, so no row has working dots, which never rest.
      */
-    private fun assertScrolledRowKeepsItsWords(tag: String, wordsTag: String, said: List<String>) {
-        val hosts = (1..8).map { n ->
-            val tab = TabInfo("t$n", label = "Build release $n", program = "htop", cwd = "~/src/api", block = "block:t$n", active = true)
-            SidebarHost(Remote("remote:host$n", "host$n", "https://host$n.example.ts.net"),
-                UiState(status = "connected", server = "host$n", sessions = listOf(SessionInfo("session:$n", "s$n", listOf(tab))),
-                    session = "session:$n", window = tab.id),
-                ActivityReadState(), active = n == 1, removed = false)
+    @Test fun anActivityRowHalfUnderTheFilterFieldKeepsItsWords() {
+        val tabs = (1..10).map { n ->
+            TabInfo("t$n", label = "Build release $n", program = "htop", cwd = "~/src/api", block = "block:t$n", active = n == 1,
+                activity = "working", since = System.currentTimeMillis() - 120_000 - n * 1_000L, progress = 30, statusSummary = "Reading part $n")
         }
+        val host = SidebarHost(Remote("remote:a", "a", "https://a.example.ts.net"),
+            UiState(status = "connected", server = "a", sessions = listOf(SessionInfo("session:s", "Build", tabs)), session = "session:s", window = "t1"),
+            ActivityReadState(), active = true, removed = false)
+        val id = "remote:a/session:s/t5"
+        assertScrolledRowKeepsItsWords("activity-row-$id", "activity-title-$id", listOf("htop, Build release 5, 30% · Build, 2m, Reading part 5"),
+            listOf(host), activity = true)
+    }
+
+    /**
+     * Eight connected remotes with one tab each, in a sidebar 600 dp tall (#238), unless [hosts] gives others, and with
+     * Activity on where [activity] says so (#279). The list is scrolled until the words tagged [wordsTag] of the row
+     * tagged [tag] start 1 dp under the Filter field's top: they are covered, the row's top is not. The row says [said]
+     * there, as it does shown whole.
+     */
+    private fun assertScrolledRowKeepsItsWords(tag: String, wordsTag: String, said: List<String>, hosts: List<SidebarHost> = remotes(),
+        activity: Boolean = false) {
         compose.setContent {
             view = LocalView.current
             VeloTheme {
                 Box(Modifier.width(393.dp).height(600.dp)) {
                     Sidebar(DeviceRow("velo-phone", "Running", "Running", TailnetChip("Connected", Status.Ok)), hosts,
-                        Modifier.fillMaxSize(), actions())
+                        Modifier.fillMaxSize(), actions(), state = remember { SidebarState().apply { activityOnly = activity } })
                 }
             }
         }
@@ -138,6 +154,14 @@ class SidebarRowNameTest {
         assertTrue("the Filter band $filter covers the words $words", filter.top < words.top && filter.bottom > words.bottom)
         val said = compose.runOnIdle { Speech.saidAt(view, row.fetchSemanticsNode().id) }
         assertEquals("$name said once, among $said", 1, said.count { it == name })
+    }
+
+    private fun remotes() = (1..8).map { n ->
+        val tab = TabInfo("t$n", label = "Build release $n", program = "htop", cwd = "~/src/api", block = "block:t$n", active = true)
+        SidebarHost(Remote("remote:host$n", "host$n", "https://host$n.example.ts.net"),
+            UiState(status = "connected", server = "host$n", sessions = listOf(SessionInfo("session:$n", "s$n", listOf(tab))),
+                session = "session:$n", window = tab.id),
+            ActivityReadState(), active = n == 1, removed = false)
     }
 
     private fun actions() = SidebarActions(

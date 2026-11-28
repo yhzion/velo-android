@@ -615,7 +615,8 @@ private fun ActivityGroupHeader(priority: ActivityPriority, modifier: Modifier =
  * A session's header (Sidebar board, session-header): its label (a tap collapses or expands its
  * tabs, or selects a session that shows none: [headerTap]) with the chevron that says which, `+`
  * for a new tab in it, and a `…` menu ([sessionMenu]). The remote must be [connected] for `+` and
- * the menu's items.
+ * the menu's items. The header says its label itself, the label's text hidden (#279): Compose leaves out a node that a
+ * later one covers whole, so a header half under the Filter field was a heading with no name.
  */
 @Composable
 private fun SessionHeader(
@@ -628,11 +629,11 @@ private fun SessionHeader(
     Row(
         Modifier.testTag("session-header-$label").fillMaxWidth().height(44.bd)
             .clickable(onClickLabel = if (!folds) "Select" else if (group.collapsed) "Expand" else "Collapse", onClick = onTap)
-            .semantics { heading() }
+            .semantics { contentDescription = label; heading() }
             .padding(start = 20.bd, end = 4.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.bd),
     ) {
-        Text(label, Modifier.weight(1f).testTag("session-name-$label"), style = VeloTheme.type.header.naturalLines(),
+        Text(label, Modifier.weight(1f).testTag("session-name-$label").saidBy(label), style = VeloTheme.type.header.naturalLines(),
             color = VeloTheme.colors.textOnRaised, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // The chevron says what a tap on the header does; the header takes the tap.
         if (folds) Box(button.testTag("session-collapse-$label"), contentAlignment = Alignment.Center) {
