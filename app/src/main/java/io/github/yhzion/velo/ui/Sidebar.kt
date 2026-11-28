@@ -381,9 +381,12 @@ internal fun Sidebar(
 @Composable
 private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: @Composable () -> Unit,
                           body: @Composable (head: @Composable () -> Unit, folded: Boolean) -> Unit, notices: (@Composable () -> Unit)?) {
-    // The height of the head as the inner column last laid it out above the list: 0 while it is folded.
-    val placed = remember { intArrayOf(0) }
-    Layout(listOf({ SidebarHeadAndBody(least, headHeight, placed, head, body) }, notices ?: {}), modifier) { (inner, notes), constraints ->
+    // One head, moved between its place above the list and the list's first row, so that its nodes, and a screen
+    // reader's focus on one of them, stay as it folds. Unfolding makes them anew: the list keeps its row's composition
+    // for reuse, so the head is not free to move back.
+    val current = rememberUpdatedState(head)
+    val moving = remember { movableContentOf { current.value() } }
+    Layout(listOf({ SidebarHeadAndBody(least, headHeight, moving, body) }, notices ?: {}), modifier) { (inner, notes), constraints ->
         val width = constraints.maxWidth
         val band = least.roundToPx()
         val stack = notes.map { it.measure(Constraints(maxWidth = width)) }
@@ -397,7 +400,7 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: 
         layout(constraints.constrainWidth(all.maxOfOrNull { it.width } ?: 0), constraints.constrainHeight(height)) {
             column.forEach { it.placeRelative(0, 0) }
             // Placed last, so over the body when it keeps the height under them.
-            var at = sidebarNoticesTop(height, placed[0], stackHeight, band)
+            var at = sidebarNoticesTop(height, 0, stackHeight, band)
             stack.forEach { it.placeRelative(0, at); at += it.height }
         }
     }
@@ -406,20 +409,18 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: 
 /**
  * The head over the body in the height [SidebarColumn] gives them, or, where the head would leave the body less than
  * the Filter's band ([least]), the body alone with the head folded into its list ([sidebarFoldsHead]). Composed where
- * it measures, so the head goes where the height of this very pass says; it notes in [placed] the height it gave the
- * head above the list.
+ * it measures, so the head goes where the height of this very pass says.
  */
 @Composable
-private fun SidebarHeadAndBody(least: Dp, headHeight: Int, placed: IntArray, head: @Composable () -> Unit,
+private fun SidebarHeadAndBody(least: Dp, headHeight: Int, head: @Composable () -> Unit,
                                body: @Composable (head: @Composable () -> Unit, folded: Boolean) -> Unit) {
     SubcomposeLayout { constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
-        val folded = headHeight >= 0 && sidebarFoldsHead(height, headHeight, 0, least.roundToPx())
+        val folded = headHeight >= 0 && sidebarFoldsHead(height, headHeight, least.roundToPx())
+        // The place above the list lets the head go before the list takes it, so a folding head is moved, nodes and all.
         val top = subcompose(SidebarSlot.Head) { if (!folded) head() }.map { it.measure(Constraints(maxWidth = width, maxHeight = height)) }
-        val topHeight = top.sumOf { it.height }
-        placed[0] = topHeight
-        val bodyHeight = (height - topHeight).coerceAtLeast(0)
+        val bodyHeight = (height - top.sumOf { it.height }).coerceAtLeast(0)
         val inside = subcompose(SidebarSlot.Body) { body(head, folded) }
             .map { it.measure(Constraints(maxWidth = width, minHeight = bodyHeight, maxHeight = bodyHeight)) }
         layout(width, height) {

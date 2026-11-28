@@ -284,13 +284,13 @@ private var noticeAge = 0L
 private fun nextNoticeAge(): Long = ++noticeAge
 
 /**
- * Whether the sidebar folds its head (the toolbar and This Device) into its list (#209): its column is [height] px
- * tall, the head [head] px, the notices it holds [notices] px with their padding, and the Filter's band [least] px.
- * It folds when the head and the notices leave the body less than the band: landscape with the keyboard up, where the
+ * Whether the sidebar folds its head (the toolbar and This Device) into its list (#209): the head is [head] px tall,
+ * and [height] px is what the notices leave the head and the body ([sidebarBodyHeight] with no head). It folds when
+ * the head would leave the body less than the Filter's band, [least] px: landscape with the keyboard up, where the
  * Filter field would get no room and leave what a screen reader sees, or a short sidebar whose notices would lie over
  * the toolbar's buttons. Folded, the head scrolls with the list, and the band and the notices share the whole height.
  */
-internal fun sidebarFoldsHead(height: Int, head: Int, notices: Int, least: Int): Boolean = height - head - notices < least
+internal fun sidebarFoldsHead(height: Int, head: Int, least: Int): Boolean = height - head < least
 
 /**
  * The height of the sidebar's body (the list, with the Filter field at its foot) when the sidebar that covers the

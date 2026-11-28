@@ -1,6 +1,13 @@
 package io.github.yhzion.velo.ui
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Application
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.test.core.app.ApplicationProvider
+import org.junit.Before
+import org.robolectric.Shadows.shadowOf
 import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -13,10 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
@@ -24,7 +29,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.yhzion.velo.fidelity.HostActivityRule
@@ -55,6 +59,14 @@ class SidebarFoldTest {
     private val compose = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(HostActivityRule()).around(compose)
     private lateinit var view: View
+
+    /** A screen reader is on, before anything is composed: Compose gives the tree to a service only then. */
+    @Before fun screenReaderOn() {
+        val manager = ApplicationProvider.getApplicationContext<Application>().getSystemService(AccessibilityManager::class.java)
+        shadowOf(manager).setEnabled(true)
+        shadowOf(manager).setTouchExplorationEnabled(true)
+        shadowOf(manager).setEnabledAccessibilityServiceList(listOf(AccessibilityServiceInfo()))
+    }
 
     private fun show(width: Dp, height: () -> Dp, notices: (@Composable ColumnScope.() -> Unit)? = null) = compose.setContent {
         view = LocalView.current
@@ -88,63 +100,83 @@ class SidebarFoldTest {
         assertTrue("the Filter field is shown to a screen reader", input!!.isVisibleToUser)
     }
 
+    /** Puts a screen reader's focus on the node tagged [tag] (merged), as TalkBack does; returns its id. */
+    private fun focus(tag: String): Int {
+        val id = compose.onNodeWithTag(tag).fetchSemanticsNode().id
+        compose.runOnIdle { view.accessibilityNodeProvider.performAction(id, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
+        compose.waitForIdle()
+        return id
+    }
+
+    private fun focused(id: Int) = compose.runOnIdle { view.accessibilityNodeProvider.createAccessibilityNodeInfo(id)?.isAccessibilityFocused == true }
+
+    private val filterField get() = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("sidebar-filter")))
+
     @Test fun aTallSidebarKeepsItsHeadAboveTheList() {
         show(393.dp, { 800.dp })
         compose.waitForIdle()
-        assertTrue("the head is not in the list", !folded())
         assertEquals(compose.onNodeWithTag("sidebar").getBoundsInRoot().top, compose.onNodeWithTag("sidebar-toolbar").getBoundsInRoot().top)
         assertTheFilterHasItsRow()
+        assertTrue("the head is not in the list", !folded())
     }
 
-    @Test fun landscapeWithTheKeyboardUpFoldsTheHeadAndKeepsTheFilterRow() {
+    @Test fun landscapeWithTheKeyboardUpKeepsTheFilterRowAndTheToolbar() {
         // The Velvet in landscape with the keyboard up: about 130 dp, less than the head and the band.
         show(800.dp, { 130.dp })
         compose.waitForIdle()
-        assertTrue("the head is folded into the list", folded())
         assertTheFilterHasItsRow()
         // The toolbar opens the list, so Toggle Sidebar is the first thing a screen reader reaches.
         val toggle = info("sidebar-toggle")
         assertNotNull("Toggle Sidebar is in what a screen reader sees", toggle)
         assertEquals(listOf("Toggle Sidebar"), Speech.said(view, toggle!!))
         assertEquals(1, compose.onAllNodesWithTag("sidebar-toggle").fetchSemanticsNodes().size)
+        assertTrue("the head is folded into the list", folded())
     }
 
-    @Test fun theFilterKeepsItsFocusAsTheKeyboardShortensTheSidebar() {
+    @Test fun theFilterKeepsTheScreenReaderFocusAsTheKeyboardShortensTheSidebar() {
         var height by mutableStateOf(330.dp)
         show(800.dp, { height })
         compose.waitForIdle()
-        assertTrue("the head is above the list at first", !folded())
-        val field = compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("sidebar-filter")))
-        field.performSemanticsAction(SemanticsActions.RequestFocus)
+        val field = filterField.fetchSemanticsNode().id
+        compose.runOnIdle { view.accessibilityNodeProvider.performAction(field, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
         compose.waitForIdle()
-        val before = field.fetchSemanticsNode().id
+        assertTrue("the Filter field has the focus at first", focused(field))
         height = 130.dp
         compose.waitForIdle()
-        assertTrue("the head is folded into the list", folded())
-        field.assertIsFocused()
-        assertEquals("the same field, not a new one", before, field.fetchSemanticsNode().id)
+        assertTrue("the Filter field keeps the screen reader's focus", focused(field))
         assertTheFilterHasItsRow()
-        // And back: the keyboard goes down, the head comes out of the list, and the field keeps its focus.
+        // And back: the keyboard goes down, the head comes out of the list, and the field keeps the focus.
         height = 330.dp
         compose.waitForIdle()
-        assertTrue("the head is above the list again", !folded())
-        field.assertIsFocused()
-        assertEquals(before, field.fetchSemanticsNode().id)
+        assertTrue("the Filter field keeps the focus as the keyboard goes", focused(field))
     }
 
-    @Test fun aShortSidebarWithANoticeKeepsTheToolbarClearOfIt() {
-        // Upright, about 240 dp tall (#209's comment, 237 to 300 dp): with the head above the list, the notice ended
-        // just above the Filter band and lay over Toggle Sidebar, which left what a screen reader sees.
+    @Test fun aShortSidebarHasItsNoticesUnderTheFilterBand() {
+        // Upright, about 240 dp tall (#209's comment, 237 to 300 dp): with the head above the list, the notices ended
+        // just above the Filter band, over This Device.
         show(393.dp, { 240.dp }, notices = { ToastSurface("Uploading x…") })
         compose.waitForIdle()
-        assertTrue("the head is folded into the list", folded())
         val toast = compose.onNodeWithTag("toast").getBoundsInRoot()
-        val toggle = compose.onNodeWithTag("sidebar-toggle").getBoundsInRoot()
-        assertTrue("Toggle Sidebar $toggle is clear of the notice $toast", toggle.bottom <= toast.top)
-        assertNotNull("Toggle Sidebar is in what a screen reader sees", info("sidebar-toggle"))
-        assertTheFilterHasItsRow()
         val filter = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
         assertTrue("the notice $toast lies under the Filter band $filter", toast.top >= filter.bottom)
+        val toggle = compose.onNodeWithTag("sidebar-toggle").getBoundsInRoot()
+        assertTrue("Toggle Sidebar $toggle is clear of the notice $toast", toggle.bottom <= toast.top)
+        assertTheFilterHasItsRow()
+    }
+
+    @Test fun theToolbarKeepsTheScreenReaderFocusAsANoticeFoldsTheHead() {
+        // 280 dp: a notice folds the head into the list. The head is moved there, nodes and all, so the focus on one of
+        // its controls stays (#209's review). Its going unfolds the head anew, and the focus goes: a known limit.
+        var notice by mutableStateOf(false)
+        show(393.dp, { 280.dp }, notices = { if (notice) Box(Modifier.fillMaxWidth().height(60.dp)) })
+        compose.waitForIdle()
+        val toggle = focus("sidebar-toggle")
+        assertTrue("Toggle Sidebar has the focus at first", focused(toggle))
+        notice = true
+        compose.waitForIdle()
+        assertEquals("the same Toggle Sidebar", toggle, compose.onNodeWithTag("sidebar-toggle").fetchSemanticsNode().id)
+        assertTrue("Toggle Sidebar keeps the focus as the head folds", focused(toggle))
+        assertTrue("the head is folded into the list", folded())
     }
 
     private fun actions() = SidebarActions(

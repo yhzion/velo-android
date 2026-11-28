@@ -130,15 +130,20 @@ class NoticePlaceTest {
 
     @Test
     fun aSidebarFoldsItsHeadWhereTheHeadAndTheNoticesLeaveTheBodyLessThanTheBand() {
+        // The head and the body get what the notices leave under the band, or all of it ([sidebarBodyHeight] with no head).
+        fun folds(height: Int, notices: Int) = sidebarFoldsHead(sidebarBodyHeight(height, 0, notices, band), head, band)
         // Upright, with or without the keyboard: the head stays above the list.
-        assertFalse(sidebarFoldsHead(2400, head, notices, band))
-        assertFalse(sidebarFoldsHead(1400, head, 0, band))
+        assertFalse(folds(2400, notices))
+        assertFalse(folds(1400, 0))
         // Just room for the band beside the notices: it stays; one px less, and it folds (#209).
-        assertFalse(sidebarFoldsHead(head + band + notices, head, notices, band))
-        assertTrue(sidebarFoldsHead(head + band + notices - 1, head, notices, band))
+        assertFalse(folds(head + band + notices, notices))
+        assertTrue(folds(head + band + notices - 1, notices))
+        // Without notices, just room for the band: it stays; one px less, and it folds.
+        assertFalse(folds(head + band, 0))
+        assertTrue(folds(head + band - 1, 0))
         // Landscape with the keyboard up (358 px, 130 dp): it folds, with or without notices.
-        assertTrue(sidebarFoldsHead(358, head, 0, band))
-        assertTrue(sidebarFoldsHead(358, head, notices, band))
+        assertTrue(folds(358, 0))
+        assertTrue(folds(358, notices))
         // Folded, the notices go under the band where the column has room for both.
         assertEquals(358, sidebarBodyHeight(358, 0, 0, band))
         assertEquals(800 - notices, sidebarBodyHeight(800, 0, notices, band))
