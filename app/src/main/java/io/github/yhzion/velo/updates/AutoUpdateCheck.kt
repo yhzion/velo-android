@@ -15,6 +15,13 @@ internal fun installedVersionCode(context: Context): Long =
     context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
 
 /**
+ * Blocking I/O. The Updates page's check of [channel]: every release newer than [installed]. What the API
+ * says of its limit is stored as of this check's start (#274): the time it is called (#289).
+ */
+internal fun manualCheck(context: Context, channel: UpdateChannel, installed: Long): List<AppRelease> =
+    ReleaseFeed.newer(channel, installed, UpdateSettings.apiLimit(context.applicationContext, UpdateSettings.clock()))
+
+/**
  * "Check for updates automatically": when Velo comes to the foreground, a feed check of the
  * selected channel if one is due ([foregroundCheckDue]). It runs off the main thread, outlives
  * the activity that asked for it, and fails silently; its result is what [UpdateSettings.status]
@@ -24,12 +31,14 @@ internal fun installedVersionCode(context: Context): Long =
 internal object AutoUpdateCheck {
     // The process's own scope: a check that started is not tied to one activity instance.
     private val scope = MainScope()
-    private var running = false
+    /** A check is under way; read by tests to wait for it (#289). */
+    internal var running = false
+        private set
     private var lastAttempt = 0L
 
     fun onForeground(context: Context) {
         val app = context.applicationContext
-        val now = System.currentTimeMillis()
+        val now = UpdateSettings.clock()
         // Release APKs are arm64 only: another device has no update to be told about.
         if (running || "arm64-v8a" !in Build.SUPPORTED_ABIS) return
         if (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) return

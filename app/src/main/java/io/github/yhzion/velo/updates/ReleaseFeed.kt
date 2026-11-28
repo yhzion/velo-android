@@ -80,14 +80,14 @@ object ReleaseFeed {
      * [limit] is told what each of the API's answers says of its limit.
      */
     fun newer(channel: UpdateChannel, installedCode: Long, limit: ApiLimit): List<AppRelease> =
-        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, Network, limit = limit)
+        check(channel, installedCode, everyRelease = true, apiBlockedUntil = 0L, source, limit = limit)
 
     /**
      * Blocking I/O. The update, if any, for an automatic check: a stable one from the update manifest
      * alone, which is outside the API's limit. While [apiBlockedUntil] is ahead the API is not asked.
      */
     fun update(channel: UpdateChannel, installedCode: Long, apiBlockedUntil: Long, limit: ApiLimit): AppRelease? =
-        check(channel, installedCode, everyRelease = false, apiBlockedUntil, Network, limit = limit).firstOrNull()
+        check(channel, installedCode, everyRelease = false, apiBlockedUntil, source, limit = limit).firstOrNull()
 
     /**
      * Stable checks read the latest release's update manifest first: a release download, so not under
@@ -288,7 +288,19 @@ object ReleaseFeed {
 
     private fun JsonObject.text(key: String) = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 
-    private object Network : FeedSource {
+    /** Where [newer] and [update] read from: GitHub, or a fake in the tests of their callers (#289). */
+    @Volatile internal var source: FeedSource = network()
+
+    /**
+     * GitHub, read through the connections [open] makes (a fake in tests: #289). A limit an answer's
+     * headers report counts from [clock]'s time.
+     */
+    internal fun network(
+        open: (URI) -> HttpURLConnection = { it.toURL().openConnection() as HttpURLConnection },
+        clock: () -> Long = System::currentTimeMillis,
+    ): FeedSource = Network(open, clock)
+
+    private class Network(private val open: (URI) -> HttpURLConnection, private val clock: () -> Long) : FeedSource {
         override fun page(page: Int) = fetch("$API?per_page=$PER_PAGE&page=$page", MAX_PAGE_BYTES, api = true)
             .let { ApiPage(it.text, it.usedUpUntil) }
 
@@ -300,67 +312,67 @@ object ReleaseFeed {
         }
 
         override fun asset(tag: String, name: String) = fetch(downloadUrl(tag, name), MAX_CHECKSUM_BYTES, api = false).text
-    }
 
-    /** What [fetch] read: the text, the redirects followed to it, and for the API until when no request is left (0: some are). */
-    private class Fetched(val text: String, val via: List<String>, val usedUpUntil: Long)
+        /** What [fetch] read: the text, the redirects followed to it, and for the API until when no request is left (0: some are). */
+        private class Fetched(val text: String, val via: List<String>, val usedUpUntil: Long)
 
-    /**
-     * The text at [address] and the redirects followed to it. The API is read without redirects; a
-     * download follows a few, as [downloadRedirect] allows.
-     */
-    private fun fetch(address: String, maxBytes: Int, api: Boolean): Fetched {
-        var uri = URI(address)
-        val via = mutableListOf<String>()
-        for (hop in 0..MAX_REDIRECTS) {
-            val connection = uri.toURL().openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 15_000
-                connection.instanceFollowRedirects = false
-                connection.setRequestProperty("User-Agent", "Velo-Update-Check")
-                if (api) {
-                    connection.setRequestProperty("Accept", "application/vnd.github+json")
-                    connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+        /**
+         * The text at [address] and the redirects followed to it. The API is read without redirects; a
+         * download follows a few, as [downloadRedirect] allows.
+         */
+        private fun fetch(address: String, maxBytes: Int, api: Boolean): Fetched {
+            var uri = URI(address)
+            val via = mutableListOf<String>()
+            for (hop in 0..MAX_REDIRECTS) {
+                val connection = open(uri)
+                try {
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 15_000
+                    connection.instanceFollowRedirects = false
+                    connection.setRequestProperty("User-Agent", "Velo-Update-Check")
+                    if (api) {
+                        connection.setRequestProperty("Accept", "application/vnd.github+json")
+                        connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+                    }
+                    val status = connection.responseCode
+                    if (status == HttpURLConnection.HTTP_OK) {
+                        val usedUp = if (!api) 0L else usedUpUntil(connection.getHeaderField("X-RateLimit-Remaining"),
+                            connection.getHeaderField("X-RateLimit-Reset"), connection.date, clock())
+                        return Fetched(read(connection, maxBytes), via, usedUp)
+                    }
+                    if (!api && status in setOf(301, 302, 303, 307, 308)) {
+                        val location = connection.getHeaderField("Location") ?: throw IOException("Redirect without a location.")
+                        uri = downloadRedirect(uri, location)
+                        via += uri.toString()
+                        continue
+                    }
+                    if (api) {
+                        rateLimit(status, connection.getHeaderField("X-RateLimit-Remaining"),
+                            connection.getHeaderField("X-RateLimit-Reset"), connection.date, clock())
+                            ?.let { throw it }
+                        throw IOException("Could not fetch the release list.")
+                    }
+                    throw IOException("Could not fetch the update manifest.")
+                } finally {
+                    connection.disconnect()
                 }
-                val status = connection.responseCode
-                if (status == HttpURLConnection.HTTP_OK) {
-                    val usedUp = if (!api) 0L else usedUpUntil(connection.getHeaderField("X-RateLimit-Remaining"),
-                        connection.getHeaderField("X-RateLimit-Reset"), connection.date, System.currentTimeMillis())
-                    return Fetched(read(connection, maxBytes), via, usedUp)
-                }
-                if (!api && status in setOf(301, 302, 303, 307, 308)) {
-                    val location = connection.getHeaderField("Location") ?: throw IOException("Redirect without a location.")
-                    uri = downloadRedirect(uri, location)
-                    via += uri.toString()
-                    continue
-                }
-                if (api) {
-                    rateLimit(status, connection.getHeaderField("X-RateLimit-Remaining"),
-                        connection.getHeaderField("X-RateLimit-Reset"), connection.date, System.currentTimeMillis())
-                        ?.let { throw it }
-                    throw IOException("Could not fetch the release list.")
-                }
-                throw IOException("Could not fetch the update manifest.")
-            } finally {
-                connection.disconnect()
             }
+            throw IOException("Too many download redirects.")
         }
-        throw IOException("Too many download redirects.")
-    }
 
-    private fun read(connection: HttpURLConnection, maxBytes: Int): String {
-        if (connection.contentLengthLong > maxBytes) throw IOException("Response exceeds the size limit.")
-        return connection.inputStream.use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            val bytes = ByteArrayOutputStream()
-            while (true) {
-                val count = input.read(buffer)
-                if (count == -1) break
-                if (count > maxBytes - bytes.size()) throw IOException("Response exceeds the size limit.")
-                bytes.write(buffer, 0, count)
+        private fun read(connection: HttpURLConnection, maxBytes: Int): String {
+            if (connection.contentLengthLong > maxBytes) throw IOException("Response exceeds the size limit.")
+            return connection.inputStream.use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val bytes = ByteArrayOutputStream()
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count == -1) break
+                    if (count > maxBytes - bytes.size()) throw IOException("Response exceeds the size limit.")
+                    bytes.write(buffer, 0, count)
+                }
+                bytes.toString("UTF-8")
             }
-            bytes.toString("UTF-8")
         }
     }
 }

@@ -19,9 +19,8 @@ import io.github.yhzion.velo.core.ForwardInfo
 import io.github.yhzion.velo.core.Remote
 import io.github.yhzion.velo.readNotice
 import io.github.yhzion.velo.updates.AppRelease
-import io.github.yhzion.velo.updates.ReleaseFeed
 import io.github.yhzion.velo.updates.UpdateChannel
-import io.github.yhzion.velo.updates.UpdateSettings
+import io.github.yhzion.velo.updates.manualCheck
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
 
@@ -130,7 +129,7 @@ internal class AppSettingsHost(private val app: AppController, context: Context)
     override fun setTailnetName(name: String) = app.setTailnetName(name)
     override fun logoutTailnet() = app.logoutTailnet()
     override val sshSecrets get() = app.sshSecrets
-    override fun newerReleases(channel: UpdateChannel, installed: Long) = ReleaseFeed.newer(channel, installed, UpdateSettings.apiLimit(appContext, System.currentTimeMillis()))
+    override fun newerReleases(channel: UpdateChannel, installed: Long) = manualCheck(appContext, channel, installed)
     override val installsReleases get() = "arm64-v8a" in android.os.Build.SUPPORTED_ABIS
     override fun readNotice(asset: String) = readNotice(asset, appContext.assets::open)
 }

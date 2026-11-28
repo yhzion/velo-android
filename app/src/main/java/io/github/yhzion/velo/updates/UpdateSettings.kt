@@ -26,6 +26,9 @@ internal object UpdateSettings {
     // The start time of the check whose answer from the API set that, or 0 (#274).
     private const val API_SEEN_BY = "apiSeenBy"
 
+    /** The time update checks start and store by: the system's, a fake in tests (#289). */
+    @Volatile internal var clock: () -> Long = System::currentTimeMillis
+
     private fun prefs(context: Context) = context.getSharedPreferences("app_updates", Context.MODE_PRIVATE)
 
     fun channel(context: Context): UpdateChannel {
@@ -113,7 +116,7 @@ internal object UpdateSettings {
      */
     @Synchronized fun apiSeen(context: Context, startedAt: Long, blockedUntil: Long) {
         val prefs = prefs(context)
-        if (!replacesStoredCheck(startedAt, prefs.getLong(API_SEEN_BY, 0L), System.currentTimeMillis())) return
+        if (!replacesStoredCheck(startedAt, prefs.getLong(API_SEEN_BY, 0L), clock())) return
         val edit = prefs.edit().putLong(API_SEEN_BY, startedAt)
         if (blockedUntil > 0) edit.putLong(API_BLOCKED_UNTIL, blockedUntil) else edit.remove(API_BLOCKED_UNTIL)
         edit.apply()
@@ -126,13 +129,13 @@ internal object UpdateSettings {
     @Synchronized fun record(context: Context, channel: UpdateChannel, startedAt: Long, release: AppRelease?) {
         if (channel(context) != channel) return
         val prefs = prefs(context)
-        val edit = prefs.edit().putLong(LAST_CHECK, System.currentTimeMillis())
+        val edit = prefs.edit().putLong(LAST_CHECK, clock())
         remember(prefs, edit, startedAt, release)
         edit.apply()
     }
 
     private fun remember(prefs: SharedPreferences, edit: SharedPreferences.Editor, startedAt: Long, release: AppRelease?) {
-        if (!replacesStoredCheck(startedAt, prefs.getLong(CHECK_STARTED, 0L), System.currentTimeMillis())) return
+        if (!replacesStoredCheck(startedAt, prefs.getLong(CHECK_STARTED, 0L), clock())) return
         edit.putLong(CHECK_STARTED, startedAt)
         if (release == null) edit.remove(AVAILABLE_TAG).remove(AVAILABLE_CODE)
         else edit.putString(AVAILABLE_TAG, release.tag).putLong(AVAILABLE_CODE, release.versionCode)
@@ -152,7 +155,7 @@ internal object UpdateSettings {
     /** Commit a successful poll that started at [startedAt] only if it still belongs to the same subscription. */
     @Synchronized internal fun finish(context: Context, generation: Long, startedAt: Long, release: AppRelease?) {
         val prefs = prefs(context)
-        val edit = prefs.edit().putLong(LAST_CHECK, System.currentTimeMillis())
+        val edit = prefs.edit().putLong(LAST_CHECK, clock())
         // Applied only past the stale check below: the same generation means the same channel.
         remember(prefs, edit, startedAt, release)
         // A stable build can be found through any subscription. Remember its release stream,

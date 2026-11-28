@@ -22,7 +22,7 @@ class UpdateCheckJobService : JobService() {
         val channel = UpdateSettings.jobChannel(this, generation) ?: return false
         work?.cancel()
         runningGeneration = generation
-        val startedAt = System.currentTimeMillis()
+        val startedAt = UpdateSettings.clock()
         work = scope.launch {
             try {
                 val release = runInterruptible(Dispatchers.IO) {
