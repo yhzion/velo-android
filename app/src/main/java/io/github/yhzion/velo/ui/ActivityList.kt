@@ -132,18 +132,18 @@ private fun leadReport(state: UiState, row: TabRow): Pair<String, String>? {
 private fun String.oneLine() = lines().joinToString(" ") { it.trim() }.trim()
 
 /**
- * The words the program of [row] reports with its state (OSC 7501 `msg`); null without any, and when they are the
- * name the row already shows.
+ * The words the program of [row] reports with its state (OSC 7501 `msg`) on one line; null without any. A waiting or
+ * failed tab's well says them even when they also name the row (a tab with no title is named by them): the well has
+ * room for two lines, the name one.
  */
-internal fun tabWords(state: UiState, row: TabRow): String? =
-    leadReport(state, row)?.first?.oneLine()?.takeIf { it.isNotEmpty() && it != row.name }
+internal fun tabWords(state: UiState, row: TabRow): String? = leadReport(state, row)?.first?.oneLine()?.takeIf { it.isNotEmpty() }
 
 /**
  * What a working row's capsule says (#249): its program's words ([tabWords]), else the title it reports (OSC 7501
- * `title`); null when it reports neither, or only the name the row already shows.
+ * `title`); null when it reports neither, and when that is the name the row already shows: a capsule would only repeat it.
  */
 internal fun workingMessage(state: UiState, row: TabRow): String? =
-    tabWords(state, row) ?: leadReport(state, row)?.second?.oneLine()?.takeIf { it.isNotEmpty() && it != row.name }
+    (tabWords(state, row) ?: leadReport(state, row)?.second?.oneLine())?.takeIf { it.isNotEmpty() && it != row.name }
 
 /**
  * How long ago a tab came into its group, as Activity's second line says it (#248): "now" within the minute, then

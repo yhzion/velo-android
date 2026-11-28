@@ -454,20 +454,11 @@ private fun LazyListScope.activityList(hosts: List<SidebarHost>, query: String, 
     for (group in groups) {
         item(key = "p:${group.priority}") { ActivityGroupHeader(group.priority, Modifier.activityItem(this, motion)) }
         for (entry in group.entries) item(key = "a:${entry.key}") {
-            val host = byId.getValue(entry.host)
-            val remote = host.remote
-            val row = entry.row
-            val id = entry.key
-            val order = sessionTabOrder(host.state, row.session)
-            Box(Modifier.zIndex(if (rememberLifted(entry.priority)) 1f else 0f).activityItem(this, motion)) {
-                TabRowView(row, true, entry.drawn, tabMessage(host.state, row), sidebar.revealed == id,
-                    forward = tabStep(order, row.tab, true) != null, backward = tabStep(order, row.tab, false) != null,
-                    onReveal = { show -> if (show) sidebar.revealed = id else if (sidebar.revealed == id) sidebar.revealed = null },
-                    onSelect = { sidebar.revealed = null; actions.selectTab(remote, row) },
-                    onRename = { actions.renameTab(remote, row) },
-                    onMove = { forward -> actions.moveTab(remote, row, forward) },
-                    onClose = { sidebar.revealed = null; actions.closeTab(remote, row) })
-            }
+            val remote = byId.getValue(entry.host).remote
+            ActivityRow(entry, motion, Modifier.zIndex(if (rememberLifted(entry.priority)) 1f else 0f).activityItem(this, motion),
+                onSelect = { actions.selectTab(remote, entry.row) },
+                onRename = { actions.renameTab(remote, entry.row) },
+                onClose = { actions.closeTab(remote, entry.row) })
         }
     }
     if (groups.isEmpty()) item(key = "e:activity") {

@@ -151,6 +151,9 @@ class ActivityGroupsTest {
         assertNull("only the name it shows", message(tab("title" to "alpha").copy(label = "alpha")))
         assertNull("done", message(tab("msg" to "Finished").copy(activity = "done")))
         assertEquals("Tests failed", message(tab("msg" to "Tests failed").copy(activity = "error")))
+        // A waiting tab with no title of its own is named by its words; its well still says them, in two lines.
+        val unnamed = tab("msg" to "Allow writing the notes?").copy(label = "", program = "bash", activity = "blocked", kind = "permission")
+        assertEquals("Allow writing the notes?", message(unnamed))
     }
 
     @Test

@@ -15,6 +15,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 
 ### Changed
 - With the eye on, the sidebar lists the busy and finished tabs of every remote in one list: Blocked, Failed, Working, Done. The newest in each comes first, and a tab that moves slides to its new group.
+- In the eye's list a row shows its session and how long ago it changed state, such as now or 7m. A waiting or failed tab shows what it waits for and its program's message in a box under it.
 
 ## 2.15.1 - 2026-11-28
 
