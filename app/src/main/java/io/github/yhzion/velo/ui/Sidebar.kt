@@ -94,12 +94,13 @@ internal class SidebarHost private constructor(
  */
 data class DeviceRow(val name: String, val line: String, val state: String, val chip: TailnetChip) {
     /**
-     * What the row says to a screen reader before its dot: its name and the line's address, not
-     * the line's state word, so that the state is said once, in the dot's word (#134).
+     * What the row says to a screen reader: its name, the line's address and the dot's word, not the
+     * line's state word, so that the state is said once, in the dot's word (#134). The row says the
+     * dot's word itself, so that it stays with the row half under the Filter field (#287).
      */
     val description: String get() {
         val address = if (line == state) "" else line.removeSuffix(" · $state")
-        return listOfNotNull("This Device", name.takeUnless { it == "This Device" }, address.ifBlank { null }).joinToString(", ")
+        return listOfNotNull("This Device", name.takeUnless { it == "This Device" }, address.ifBlank { null }, chip.text).joinToString(", ")
     }
 }
 
@@ -598,14 +599,21 @@ private fun rememberLifted(priority: ActivityPriority, motion: Float): Boolean {
 /** About as long as the spring takes to settle. */
 private const val ActivityLiftMs = 450L
 
-/** The title of one of Activity's groups: small and grey, as in Rex for Mac; Blocked's has a red dot beside it. */
+/**
+ * The title of one of Activity's groups: small and grey, as in Rex for Mac; Blocked's has a red dot beside it. The
+ * heading says the title itself, the text hidden (#287): Compose leaves out a node that a later one covers whole, so a
+ * title half under the Filter field was a heading with no name. Only a merging node cut by the list's edge keeps its covered
+ * parts, as a working row with its capsule is there; the title is too short for that.
+ */
 @Composable
 private fun ActivityGroupHeader(priority: ActivityPriority, modifier: Modifier = Modifier) {
     val c = VeloTheme.surface
-    Row(modifier.testTag("activity-group-${priority.title}").fillMaxWidth().heightIn(min = 36.bd).semantics(mergeDescendants = true) { heading() }
+    Row(modifier.testTag("activity-group-${priority.title}").fillMaxWidth().heightIn(min = 36.bd)
+        .semantics(mergeDescendants = true) { contentDescription = priority.title; heading() }
         .padding(start = 20.bd, end = 20.bd, top = 12.bd, bottom = 4.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.bd)) {
-        Text(priority.title, style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium).naturalLines(), color = c.secondary,
+        Text(priority.title, Modifier.testTag("activity-group-title-${priority.title}").saidBy(priority.title),
+            style = VeloTheme.type.caption.copy(fontWeight = FontWeight.Medium).naturalLines(), color = c.secondary,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (priority == ActivityPriority.Blocked) Box(Modifier.size(6.bd).background(c.danger, CircleShape))
     }
@@ -774,8 +782,9 @@ internal fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
     Row(Modifier.padding(horizontal = 12.bd).testTag("this-device-row").fillMaxWidth()
         .drawBehind { drawRect(c.divider, Offset(0f, size.height - line.toPx()), Size(size.width, line.toPx())) }
         .clickable(role = Role.Button, onClickLabel = "Tailscale settings", onClick = onClick)
-        // The row says the name and address, and the dot after it says the state; the two texts
-        // are hidden from accessibility, or a screen reader would say them as well (#134).
+        // The row says the name, the address and the dot's state; the texts and the dot are hidden from
+        // accessibility, or a screen reader would say them as well (#134). Compose leaves out a node that a
+        // later one covers whole: folded into the list (#209), the row half under the Filter field lost the dot (#287).
         .semantics { contentDescription = device.description }.heightIn(min = 53.bd).padding(start = 4.bd, end = 4.bd, top = 6.bd, bottom = 12.bd),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.bd)) {
         Icon(Icons.Outlined.Smartphone, null, Modifier.size(20.bd), tint = c.secondary)
@@ -785,7 +794,7 @@ internal fun DeviceHeader(device: DeviceRow, onClick: () -> Unit) {
             Text(device.line, Modifier.testTag("this-device-status").fillMaxWidth().semantics { hideFromAccessibility() }, color = c.secondary, style = type.caption.naturalLines(),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        StatusMark(device.chip.status, device.chip.text, Modifier.testTag("this-device-dot"))
+        StatusMark(device.chip.status, device.chip.text, Modifier.testTag("this-device-dot").saidBy(device.chip.text))
     }
 }
 

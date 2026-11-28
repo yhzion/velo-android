@@ -175,7 +175,9 @@ internal fun ActivityRow(
  * What an Activity row says (#279), in the order it shows them: its [tile]'s words, its [name] (null where the tile
  * says it already, #150), its [session] line (a pie's percent first, #251), its [age] and its [third] line's words.
  * Compose leaves out a node that a later one covers whole, so a row half under the sidebar's Filter field lost all
- * but what showed above the field while these were said by its parts.
+ * but what showed above the field while these were said by its parts. A working row with its capsule did not: the
+ * list's edge cuts it there, and Compose keeps all that a merging node cut by its scrolling parent's edge holds (#287). A
+ * row with no line under it, such as a finished tab's, is short enough to stay inside and lost them.
  */
 internal fun activityRowDescription(tile: List<String>, name: String?, session: String, age: String?, third: List<String>): String =
     (tile + listOfNotNull(name, session, age) + third).joinToString(", ")

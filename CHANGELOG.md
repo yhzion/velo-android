@@ -22,6 +22,7 @@ What changes for Velo users in each release. The format follows [Keep a Changelo
 - After GitHub's hourly limit, Velo keeps it even when the last request of the hour succeeds or a later page is refused, and a slow check no longer brings back a limit a newer check cleared.
 - A screen reader says a session's name in the sidebar even when the Filter field covers part of its header.
 - An error notice that waits behind the upload's notice keeps its time until it shows, so it no longer ends unseen during a long upload.
+- A screen reader says This Device's state, an Activity group's title and an Activity row with no line under it even when the Filter field covers part of them.
 
 ## 2.16.1 - 2026-11-28
 

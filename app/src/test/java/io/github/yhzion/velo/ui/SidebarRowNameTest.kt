@@ -46,7 +46,8 @@ import org.robolectric.annotation.GraphicsMode
  * A sidebar row keeps its name while the Filter field covers its words (#202): TalkBack said "unlabeled" for "Add
  * Remote…" half under the field, as it did for a radio button half under a header (#203). Compose leaves out a node
  * that a later one covers, and the row's name was only in its words. The row now carries its name. A remote's row and a
- * tab's row carry all they say (#238): the remote's name and connection, the tab's tile, title and status line.
+ * tab's row carry all they say (#238): the remote's name and connection, the tab's tile, title and status line. So do
+ * a session's header and an Activity row (#279), Activity's group titles and This Device (#287).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -71,19 +72,61 @@ class SidebarRowNameTest {
 
     /**
      * A working row of Activity with a progress pie and its program's words (#279): the percent is said with the session
-     * (#251). Each tab has a pie, so no row has working dots, which never rest.
+     * (#251). Each tab has a pie, so no row has working dots, which never rest. With its capsule the row is tall enough
+     * that the list's edge cuts it here, and Compose keeps all a merging node cut by its scrolling parent's edge holds, covered
+     * or not (#287): the row kept its words before #279 too. [aFinishedActivityRowHalfUnderTheFilterFieldKeepsItsWords]
+     * is the one that lost them.
      */
     @Test fun anActivityRowHalfUnderTheFilterFieldKeepsItsWords() {
-        val tabs = (1..10).map { n ->
-            TabInfo("t$n", label = "Build release $n", program = "htop", cwd = "~/src/api", block = "block:t$n", active = n == 1,
-                activity = "working", since = System.currentTimeMillis() - 120_000 - n * 1_000L, progress = 30, statusSummary = "Reading part $n")
-        }
-        val host = SidebarHost(Remote("remote:a", "a", "https://a.example.ts.net"),
-            UiState(status = "connected", server = "a", sessions = listOf(SessionInfo("session:s", "Build", tabs)), session = "session:s", window = "t1"),
-            ActivityReadState(), active = true, removed = false)
         val id = "remote:a/session:s/t5"
         assertScrolledRowKeepsItsWords("activity-row-$id", "activity-title-$id", listOf("htop, Build release 5, 30% · Build, 2m, Reading part 5"),
-            listOf(host), activity = true)
+            listOf(activityHost(10) { "working" }), activity = true)
+    }
+
+    /** A finished tab's row of Activity has no line under it: short, it stays inside the list and lost all but its tile (#287). */
+    @Test fun aFinishedActivityRowHalfUnderTheFilterFieldKeepsItsWords() {
+        val id = "remote:a/session:s/t10"
+        assertScrolledRowKeepsItsWords("activity-row-$id", "activity-title-$id", listOf("htop, Unread, Completed, Build release 10, Build, 2m"),
+            listOf(activityHost(16) { "done" }), activity = true)
+    }
+
+    /** The title of Activity's Done group, under six working rows, was a heading with no name there (#287). */
+    @Test fun anActivityGroupTitleHalfUnderTheFilterFieldKeepsItsName() =
+        assertScrolledRowKeepsItsWords("activity-group-Done", "activity-group-title-Done", listOf("Done"),
+            listOf(activityHost(12) { n -> if (n <= 6) "working" else "done" }), activity = true)
+
+    /**
+     * This Device in a sidebar too short for its head, which folds into the list (#209): the list's foot, the Filter
+     * field, covers the row's dot: the field's own node, inside its band's padding, from about 15 dp above the dot's top,
+     * the row's top above that node. The row lost the dot's word, the connection's state, there (#287); it says it, once,
+     * as shown whole.
+     */
+    @Test fun thisDeviceHalfUnderTheFilterFieldKeepsItsState() {
+        var height by mutableStateOf(800.dp)
+        compose.setContent {
+            view = LocalView.current
+            VeloTheme {
+                Box(Modifier.width(393.dp).height(height)) {
+                    Sidebar(DeviceRow("velo-phone", "100.64.0.9 · Running", "Running", TailnetChip("Connected", Status.Ok)), emptyList(),
+                        Modifier.fillMaxSize(), actions())
+                }
+            }
+        }
+        compose.waitForIdle()
+        val row = compose.onNodeWithTag("this-device-row")
+        fun saidNow() = compose.runOnIdle { Speech.saidAt(view, row.fetchSemanticsNode().id) }
+        val whole = saidNow()
+        val dot = compose.onNodeWithTag("this-device-dot", useUnmergedTree = true).getBoundsInRoot()
+        val band = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot().let { it.bottom - it.top }
+        height = dot.top - 1.dp + band
+        compose.waitForIdle()
+        compose.onNode(hasTestTag("this-device-row") and hasAnyAncestor(hasScrollAction())).assertExists("the head folds into the list")
+        val now = compose.onNodeWithTag("this-device-dot", useUnmergedTree = true).getBoundsInRoot()
+        val filter = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
+        assertTrue("the Filter band $filter covers the dot $now", filter.top < now.top && filter.bottom > now.bottom)
+        assertTrue("the row's top is in sight", row.getBoundsInRoot().top < filter.top - 2.dp)
+        assertEquals("half under the Filter field as shown whole", whole, saidNow())
+        assertEquals("each part once, in the row's own words", listOf("This Device, velo-phone, 100.64.0.9, Connected"), whole)
     }
 
     /**
@@ -154,6 +197,22 @@ class SidebarRowNameTest {
         assertTrue("the Filter band $filter covers the words $words", filter.top < words.top && filter.bottom > words.bottom)
         val said = compose.runOnIdle { Speech.saidAt(view, row.fetchSemanticsNode().id) }
         assertEquals("$name said once, among $said", 1, said.count { it == name })
+    }
+
+    /**
+     * One remote whose one session has [count] tabs, each in Activity's group [state] says for its number, its program's
+     * words and, working, a progress pie, so that no row has working dots, which never rest.
+     */
+    private fun activityHost(count: Int, state: (Int) -> String): SidebarHost {
+        val tabs = (1..count).map { n ->
+            val activity = state(n)
+            TabInfo("t$n", label = "Build release $n", program = "htop", cwd = "~/src/api", block = "block:t$n", active = n == 1,
+                activity = activity, since = System.currentTimeMillis() - 120_000 - n * 1_000L, progress = if (activity == "working") 30 else null,
+                statusSummary = "Reading part $n")
+        }
+        return SidebarHost(Remote("remote:a", "a", "https://a.example.ts.net"),
+            UiState(status = "connected", server = "a", sessions = listOf(SessionInfo("session:s", "Build", tabs)), session = "session:s", window = "t1"),
+            ActivityReadState(), active = true, removed = false)
     }
 
     private fun remotes() = (1..8).map { n ->
