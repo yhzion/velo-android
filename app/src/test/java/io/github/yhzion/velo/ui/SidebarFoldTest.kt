@@ -166,7 +166,7 @@ class SidebarFoldTest {
 
     @Test fun theToolbarKeepsTheScreenReaderFocusAsANoticeFoldsTheHead() {
         // 280 dp: a notice folds the head into the list. The head is moved there, nodes and all, so the focus on one of
-        // its controls stays (#209's review). Its going unfolds the head anew, and the focus goes: a known limit.
+        // its controls stays (#209's review). Its going moves the head back above the list, and the focus stays (#239).
         var notice by mutableStateOf(false)
         show(393.dp, { 280.dp }, notices = { if (notice) Box(Modifier.fillMaxWidth().height(60.dp)) })
         compose.waitForIdle()
@@ -177,6 +177,37 @@ class SidebarFoldTest {
         assertEquals("the same Toggle Sidebar", toggle, compose.onNodeWithTag("sidebar-toggle").fetchSemanticsNode().id)
         assertTrue("Toggle Sidebar keeps the focus as the head folds", focused(toggle))
         assertTrue("the head is folded into the list", folded())
+        notice = false
+        compose.waitForIdle()
+        assertTrue("the head is above the list again", !folded())
+        assertEquals("the same Toggle Sidebar as the head unfolds", toggle, compose.onNodeWithTag("sidebar-toggle").fetchSemanticsNode().id)
+        assertTrue("Toggle Sidebar keeps the focus as the head unfolds", focused(toggle))
+        // Back before the list, in the order a keyboard's focus follows.
+        val order = compose.runOnIdle { Speech.focusableNodes(view).map { it.second } }
+        assertEquals("the toolbar first, among $order", listOf("Toggle Sidebar"), order.first())
+        // Again, so the list's row for the head serves the next fold too.
+        notice = true
+        compose.waitForIdle()
+        assertTrue("the head folds again", folded())
+        assertEquals("the same Toggle Sidebar as the head folds again", toggle, compose.onNodeWithTag("sidebar-toggle").fetchSemanticsNode().id)
+        assertTrue("Toggle Sidebar keeps the focus as the head folds again", focused(toggle))
+        notice = false
+        compose.waitForIdle()
+        assertTrue("Toggle Sidebar keeps the focus as the head unfolds again", focused(toggle))
+    }
+
+    @Test fun thisDeviceKeepsTheScreenReaderFocusAsANoticeComesAndGoes() {
+        var notice by mutableStateOf(false)
+        show(393.dp, { 280.dp }, notices = { if (notice) Box(Modifier.fillMaxWidth().height(60.dp)) })
+        compose.waitForIdle()
+        val device = focus("this-device-row")
+        notice = true
+        compose.waitForIdle()
+        assertTrue("This Device keeps the focus as the head folds", focused(device))
+        notice = false
+        compose.waitForIdle()
+        assertEquals("the same This Device", device, compose.onNodeWithTag("this-device-row").fetchSemanticsNode().id)
+        assertTrue("This Device keeps the focus as the head unfolds", focused(device))
     }
 
     private fun actions() = SidebarActions(

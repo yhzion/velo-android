@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -274,15 +275,27 @@ internal fun Sidebar(
 
         DeviceHeader(device, actions.openDevice)
     } }, body = { head, folded ->
-        // A list shown from its top shows the head from its top as the head folds into it, not the first remote.
-        val seen = remember { booleanArrayOf(folded) }
+        // Whether the head was folded, and whether its row was in the list, as the list was last composed.
+        val seen = remember { booleanArrayOf(folded, false) }
+        // The head's row stays, empty, for the pass that unfolds the head (#239): a row that leaves the list keeps its
+        // composition for reuse, head and all. Its new content type has the list compose it anew as it measures, so it
+        // lets the head go then, and [SidebarHeadAndBody] composes the place above the list after.
+        val headRow = folded || seen[0]
+        // Each fold's row has a key of its own: a row that comes back by the key of one the list keeps for reuse is
+        // composed in that one again, which takes the head anew rather than moving it there (#239).
+        val folds = remember { intArrayOf(0) }
+        if (folded && !seen[0]) folds[0]++
         if (seen[0] != folded) {
-            if (folded && list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0) list.requestScrollToItem(0)
+            // A list shown from its top shows the head from its top as the head folds into it, not the first remote. The
+            // empty row the head left has no height, so the list's top may be the row after it.
+            val top = list.firstVisibleItemIndex <= (if (seen[1]) 1 else 0) && list.firstVisibleItemScrollOffset == 0
+            if (folded && top) list.requestScrollToItem(0)
             seen[0] = folded
         }
+        seen[1] = headRow
         Box {
             LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = VeloTheme.sizes.field + 28.bd)) {
-                if (folded) item(key = "head") { head() }
+                if (headRow) item(key = "head:${folds[0]}", contentType = if (folded) HeadRow.Head else HeadRow.Left) { if (folded) head() }
                 // Activity on: Rex for Mac lists every remote's reporting tabs in one list, by priority (#247).
                 if (activityOnly) activityList(hosts, query, motion, actions)
                 else for (host in hosts) {
@@ -389,8 +402,7 @@ internal fun Sidebar(
 private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: @Composable () -> Unit,
                           body: @Composable (head: @Composable () -> Unit, folded: Boolean) -> Unit, notices: (@Composable () -> Unit)?) {
     // One head, moved between its place above the list and the list's first row, so that its nodes, and a screen
-    // reader's focus on one of them, stay as it folds. Unfolding makes them anew: the list keeps its row's composition
-    // for reuse, so the head is not free to move back.
+    // reader's focus on one of them, stay as it folds and unfolds (#239, [SidebarHeadAndBody]).
     val current = rememberUpdatedState(head)
     val moving = remember { movableContentOf { current.value() } }
     Layout(listOf({ SidebarHeadAndBody(least, headHeight, moving, body) }, notices ?: {}), modifier) { (inner, notes), constraints ->
@@ -417,19 +429,40 @@ private fun SidebarColumn(least: Dp, modifier: Modifier, headHeight: Int, head: 
  * The head over the body in the height [SidebarColumn] gives them, or, where the head would leave the body less than
  * the Filter's band ([least]), the body alone with the head folded into its list ([sidebarFoldsHead]). Composed where
  * it measures, so the head goes where the height of this very pass says.
+ *
+ * The head moves, nodes and all, only where the part that has it lets it go before the other takes it. So a folding
+ * pass composes the place above the list first, and an unfolding pass the body first: the list's row then lets the head
+ * go as the list measures, and the place above takes it, in the height it had ([headHeight], #239). The pass after puts
+ * the head before the body again, in the order a keyboard's focus follows.
  */
 @Composable
 private fun SidebarHeadAndBody(least: Dp, headHeight: Int, head: @Composable () -> Unit,
                                body: @Composable (head: @Composable () -> Unit, folded: Boolean) -> Unit) {
+    // Whether the last pass had the head folded.
+    val last = remember { booleanArrayOf(false) }
+    // Read where it measures: an unfolding pass changes it, so that the next pass puts the head first again.
+    val settle = remember { mutableIntStateOf(0) }
     SubcomposeLayout { constraints ->
+        settle.intValue
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val folded = headHeight >= 0 && sidebarFoldsHead(height, headHeight, least.roundToPx())
-        // The place above the list lets the head go before the list takes it, so a folding head is moved, nodes and all.
-        val top = subcompose(SidebarSlot.Head) { if (!folded) head() }.map { it.measure(Constraints(maxWidth = width, maxHeight = height)) }
-        val bodyHeight = (height - top.sumOf { it.height }).coerceAtLeast(0)
-        val inside = subcompose(SidebarSlot.Body) { body(head, folded) }
+        val unfolding = last[0] && !folded
+        last[0] = folded
+        fun body(bodyHeight: Int) = subcompose(SidebarSlot.Body) { body(head, folded) }
             .map { it.measure(Constraints(maxWidth = width, minHeight = bodyHeight, maxHeight = bodyHeight)) }
+        fun top() = subcompose(SidebarSlot.Head) { if (!folded) head() }.map { it.measure(Constraints(maxWidth = width, maxHeight = height)) }
+        val top: List<Placeable>
+        val inside: List<Placeable>
+        if (unfolding) {
+            inside = body((height - headHeight).coerceAtLeast(0))
+            top = top()
+            settle.intValue++
+        } else {
+            // The place above the list lets the head go before the list takes it, so a folding head is moved too.
+            top = top()
+            inside = body((height - top.sumOf { it.height }).coerceAtLeast(0))
+        }
         layout(width, height) {
             var y = 0
             (top + inside).forEach { it.placeRelative(0, y); y += it.height }
@@ -439,6 +472,9 @@ private fun SidebarHeadAndBody(least: Dp, headHeight: Int, head: @Composable () 
 
 /** The parts of [SidebarHeadAndBody], each composed where it measures. */
 private enum class SidebarSlot { Head, Body }
+
+/** What the list's first row holds: the folded head, or nothing in the pass the head leaves it ([SidebarHeadAndBody]). */
+private enum class HeadRow { Head, Left }
 
 /**
  * Activity's list (#247): every reporting tab of every connected remote of [hosts] in one list with no remote headers,
