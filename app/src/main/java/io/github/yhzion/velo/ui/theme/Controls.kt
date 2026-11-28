@@ -534,14 +534,17 @@ fun <T> VeloSegmented(
 
 /**
  * One cell of a segmented control: the tap takes its whole height, the lighter glass is drawn
- * [VeloSizes.cellInset] inside it. [tag] names the drawn cell, inside the track's rim.
+ * [VeloSizes.cellInset] inside it. [tag] names the drawn cell, inside the track's rim. The radio
+ * button carries its name, and its words are hidden: a screen reader skips the words of a child it
+ * does not see, so a cell half under the page's header was said with no name (#203).
  */
 @Composable
 private fun SegmentCell(text: String, current: Boolean, modifier: Modifier, tag: Modifier = Modifier, padding: Dp = VeloTheme.space.s12, onClick: () -> Unit) {
     val c = VeloTheme.surface
     val s = VeloTheme.sizes
     Box(
-        modifier.heightIn(min = s.control).selectable(current, role = Role.RadioButton, onClick = onClick).padding(vertical = s.cellInset),
+        modifier.heightIn(min = s.control).selectable(current, role = Role.RadioButton, onClick = onClick)
+            .semantics { contentDescription = text }.padding(vertical = s.cellInset),
         contentAlignment = Alignment.Center,
     ) {
         // A node of its own: a tag on the selectable node would take that node's bounds, the whole height.
@@ -549,7 +552,7 @@ private fun SegmentCell(text: String, current: Boolean, modifier: Modifier, tag:
             Modifier.matchParentSize().then(tag).clip(Capsule).background(if (current) c.glassSelected else Color.Transparent),
         )
         Text(
-            text, Modifier.padding(horizontal = padding), style = VeloTheme.type.control, fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
+            text, Modifier.padding(horizontal = padding).saidBy(text), style = VeloTheme.type.control, fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
             color = if (current) c.onGlass else c.secondary, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
         )
     }
@@ -568,8 +571,8 @@ private fun <T> SettingsChoices(
 }
 
 /**
- * Hides visible words from a screen reader when [description], set on the control around them,
- * says them already: Compose gives a merging control's description as a child beside its texts,
+ * Hides visible words from a screen reader when [description], set on the control around them
+ * or on a control beside them, says them already: Compose gives a merging control's description as a child beside its texts,
  * so a service would say both (#134, #148). The words stay in the semantics tree for tests. It
  * hides only the node it is set on, whose children are still said: set it on each text.
  */

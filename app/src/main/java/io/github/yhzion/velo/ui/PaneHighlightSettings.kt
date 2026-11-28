@@ -3,6 +3,7 @@ package io.github.yhzion.velo.ui
 import androidx.compose.foundation.Canvas
 import io.github.yhzion.velo.ui.theme.groupBleed
 import io.github.yhzion.velo.ui.theme.groupInset
+import io.github.yhzion.velo.ui.theme.saidBy
 import io.github.yhzion.velo.ui.theme.Capsule
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -188,18 +189,19 @@ private fun Swatches(highlight: PaneHighlight, onPick: (PaneHighlight) -> Unit) 
     }
 }
 
+/** One swatch: it carries its name, as a segmented control's cell does, so a cell half off screen is still named (#203). */
 @Composable
 private fun SwatchCell(choice: SwatchChoice, modifier: Modifier) {
     val c = VeloTheme.surface
     Column(
         // The cell, not only the disc, takes the tap: a quarter of the card wide.
         modifier.testTag("appearance-highlight-${choice.label.lowercase()}").selectable(choice.selected, role = Role.RadioButton, onClick = choice.pick)
-            .padding(vertical = VeloTheme.space.s4),
+            .semantics { contentDescription = choice.label }.padding(vertical = VeloTheme.space.s4),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(VeloTheme.medium(6.dp)),
     ) {
         Swatch(choice.fill, choice.ring, choice.selected, empty = choice.ring != null && choice.fill == null)
-        Text(choice.label, style = VeloTheme.type.caption, color = if (choice.selected) c.text else c.secondary, maxLines = 1)
+        Text(choice.label, Modifier.saidBy(choice.label), style = VeloTheme.type.caption, color = if (choice.selected) c.text else c.secondary, maxLines = 1)
     }
 }
 

@@ -3,6 +3,22 @@ package io.github.yhzion.velo.fidelity
 import android.app.Application
 import android.view.View
 import androidx.compose.foundation.background
+import io.github.yhzion.velo.ui.theme.VeloSegmented
+import io.github.yhzion.velo.ui.PaneHighlightSettings
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -57,7 +73,9 @@ import org.robolectric.annotation.GraphicsMode
  * Controls whose description sits over visible words say the description alone to a screen
  * reader: the menu buttons (#148), and the alert rows, the key-order keys, Compose's attachment
  * and the SSH key actions (#149), SSH details' Forget, the sidebar's tab rows (#150), and Compose's
- * draft (#174), the highlight swatches' places (#204), the slider rows (#200) and the remote rows' connection (#201). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
+ * draft (#174), the slider rows (#200) and the remote rows' connection (#201). The radio buttons of a segmented
+ * control and the highlight swatches carry their names themselves (#203), and the swatches say their places in order
+ * (#204). Each reads the AccessibilityNodeInfo tree a service gets ([Speech]).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -236,6 +254,58 @@ class ReadOnceTest {
             assertEquals("$name is ${place + 1} of ${swatches.size}", listOf(0, place), listOf(item.rowIndex, item.columnIndex))
             assertTrue("$name is named, said $said", name in said)
         }
+    }
+
+    // #203: a radio button keeps its name while a header covers its words. TalkBack said "Selected, radio button, 1 of 2"
+    // for a Pane style cell half under the page's header: Compose leaves out a node that a later one covers, and the
+    // name was only in the cell's words. The button now carries its name, which Compose gives as a child as big as it.
+
+    @Test fun aSegmentedRadioButtonHalfUnderAHeaderKeepsItsName() {
+        var cover by mutableStateOf(0.dp)
+        show {
+            VeloTheme(UiSize.Medium) {
+                Box(Modifier.fillMaxWidth()) {
+                    VeloSegmented(listOf("Comfortable", "Compact"), "Comfortable", { it }, Modifier.testTag("styles"), optionTag = { "style-$it" }) {}
+                    // The page's header, drawn over the top of the control as a scrolled page draws it.
+                    Box(Modifier.fillMaxWidth().height(cover).background(Color.Black).semantics { heading() })
+                }
+            }
+        }
+        assertHalfCoveredRadioKeepsItsName("style-Comfortable", "Comfortable") { cover = it }
+    }
+
+    @Test fun aHighlightSwatchHalfUnderAHeaderKeepsItsName() {
+        var cover by mutableStateOf(0.dp)
+        show {
+            val context = LocalContext.current
+            val settings = remember { FakeSettingsHost(context).settings }
+            VeloTheme(UiSize.Medium) {
+                Box(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    Column { PaneHighlightSettings(settings) }
+                    Box(Modifier.fillMaxWidth().height(cover).background(Color.Black).semantics { heading() })
+                }
+            }
+        }
+        assertHalfCoveredRadioKeepsItsName("appearance-highlight-cyan", "Cyan") { cover = it }
+    }
+
+    /**
+     * Covers the words of the radio button whose part is tagged [tag] down to their bottom with a header ([setCover] sets
+     * its height), leaving the button's lower part in sight. The button still says [name], once, with its state.
+     */
+    private fun assertHalfCoveredRadioKeepsItsName(tag: String, name: String, setCover: (androidx.compose.ui.unit.Dp) -> Unit) {
+        compose.waitForIdle()
+        var radio = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        while (SemanticsProperties.Role !in radio.config) radio = checkNotNull(radio.parent) { "$tag has no radio button" }
+        val words = compose.onNode(hasText(name), useUnmergedTree = true).fetchSemanticsNode()
+        val density = compose.density
+        val bottom = words.boundsInRoot.bottom
+        assertTrue("the button reaches below its words", radio.boundsInRoot.bottom > bottom + 2)
+        setCover(with(density) { (bottom + 1).toDp() })
+        compose.waitForIdle()
+        val said = compose.runOnIdle { Speech.saidAt(view, radio.id) }
+        assertEquals("$name said once, among $said", 1, said.count { it == name })
+        assertTrue("$tag still says its state, among $said", said.any { it == "Selected" || it == "Not selected" })
     }
 
     // #200: a slider row says its name and its value on the slider alone: the words beside it are no stops.
