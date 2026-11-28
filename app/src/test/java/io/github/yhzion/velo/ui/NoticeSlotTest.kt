@@ -605,6 +605,63 @@ class NoticeSlotTest {
         }
     }
 
+    // #240: the sidebar's real notices in landscape with the keyboard up, about 130 dp, where the Filter band takes 85.
+
+    /** The real upload toast and error notice in a sidebar 800 dp wide and [height] dp tall, as [Workspace] gives them. */
+    private fun realSidebarNotices(height: Int, upload: Boolean, error: String?): HostConnection {
+        val c = fakeConnection(ApplicationProvider.getApplicationContext(), moved).also { conn = it }
+        compose.setContent {
+            VeloTheme {
+                Box(Modifier.width(800.dp).height(height.dp)) {
+                    val heard = remember { HeardNotices() }
+                    Sidebar(DeviceRow("velo-phone", "Running", "Running", TailnetChip("Connected", Status.Ok)), emptyList(),
+                        Modifier.fillMaxSize(), actions(), notices = {
+                            UploadToast(c, heard, waits = true, Modifier.testTag("upload"))
+                            ErrorNotice(c, Modifier.testTag("error"), heard = heard, waits = true)
+                        })
+                }
+            }
+        }
+        compose.waitForIdle()
+        if (upload) c.uploading = "Uploading $uploadName…"
+        compose.waitForIdle()
+        if (error != null) c.error = error
+        compose.waitForIdle()
+        return c
+    }
+
+    /** The notice tagged [tag] ends above the Filter field, which shows whole. */
+    private fun assertClearOfTheFilterField(tag: String) {
+        val notice = bounds(tag)
+        val field = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
+        val sidebar = bounds("sidebar")
+        assertTrue("the notice $notice ends above the Filter field $field", notice.bottom <= field.top + 0.5.dp)
+        assertTrue("the Filter field $field shows whole in the sidebar $sidebar", field.top >= notice.bottom && field.bottom <= sidebar.bottom)
+    }
+
+    @Test fun inLandscapeWithTheKeyboardUpTheNewerOfTwoNoticesShowsOverTheFilterField() {
+        realSidebarNotices(130, upload = true, error = errorText)
+        assertEquals("the older notice waits", 0, compose.onAllNodesWithTag("upload").fetchSemanticsNodes().count { node ->
+            node.layoutInfo.isPlaced })
+        assertClearOfTheFilterField("error")
+    }
+
+    /** [longerError], as an SSH failure gives it, takes two lines in a notice 800 dp wide. */
+    @Test fun inLandscapeWithTheKeyboardUpALongErrorShowsOneLineAndIsHeardWhole() {
+        realSidebarNotices(130, upload = true, error = longerError)
+        val error = bounds("error")
+        assertTrue("one line: $error", error.bottom - error.top <= 48.5.dp)
+        assertClearOfTheFilterField("error")
+        assertEquals("Error: $longerError", compose.onNodeWithTag("error").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].single())
+    }
+
+    @Test fun aLongErrorKeepsItsTwoLinesWhereTheSidebarHasRoom() {
+        realSidebarNotices(600, upload = false, error = longerError)
+        val error = bounds("error")
+        assertTrue("two lines: $error", error.bottom - error.top >= 67.5.dp)
+    }
+
     private fun actions() = SidebarActions(
         toggleSidebar = {}, openSettings = {}, openPalette = {}, openDevice = {},
         selectRemote = {}, newSession = {}, renameRemote = {}, removeRemote = {}, sshDetails = {}, addRemote = {},

@@ -221,10 +221,11 @@ internal fun PaneNotices(pane: () -> Rect?, keyBar: () -> Rect?, padding: Dp, ga
 }
 
 /**
- * A notice without a control in the pane column, which waits behind newer ones where the notices do not fit
- * ([PaneNotices], #192): the upload toast or the error notice, one showing of it ([key] in [heard]). Its age, by
- * which the oldest waits first, is when a node was first made for it ([HeardNotices.age]), so a move to the sidebar
- * and back keeps it. [PaneNotices] says as it places the notices whether this one is on screen.
+ * A notice without a control, which waits behind newer ones where the notices do not fit: in the pane column
+ * ([PaneNotices], #192) and in the sidebar that covers the panes (#240). The upload toast or the error notice, one
+ * showing of it ([key] in [heard]). Its age, by which the oldest waits first, is when a node was first made for it
+ * ([HeardNotices.age]), so a move to the sidebar and back keeps it. The layout that places the notices says whether
+ * this one is on screen.
  */
 @Stable
 internal class NoticeWait(private val heard: HeardNotices?, private val key: Any) {
@@ -268,8 +269,8 @@ internal class NoticeWait(private val heard: HeardNotices?, private val key: Any
 internal fun rememberNoticeWait(heard: HeardNotices?, key: Any): NoticeWait = remember(heard, key) { NoticeWait(heard, key) }
 
 /**
- * Lets the notice wait in [PaneNotices] as [wait] says ([NoticeWait]), and leaves it out of what a screen reader finds
- * while it waits: Compose keeps a node it no longer places in that tree. Nothing without [wait] (the sidebar's notices).
+ * Lets the notice wait in [PaneNotices] or the sidebar as [wait] says ([NoticeWait]), and leaves it out of what a
+ * screen reader finds while it waits: Compose keeps a node it no longer places in that tree. Nothing without [wait].
  */
 internal fun Modifier.waitsIn(wait: NoticeWait?): Modifier = when {
     wait == null -> this
@@ -379,9 +380,9 @@ internal class HeardNotices {
 /**
  * Whether this node of the notice [key] is a live region ([HeardNotices]). It is decided once, when the node is made
  * for the key, so a node keeps it while it shows the notice, and a node made later for the same notice has none.
- * New words are a new key: they are read. Without [heard] every node is one. A node in the pane column that [wait]s
- * counts as showing the notice only once it has been on screen (#192): one that waited from the start leaves the
- * notice to be read where it first shows, there or in the sidebar. Once it comes back from waiting it is none.
+ * New words are a new key: they are read. Without [heard] every node is one. A node that [wait]s, in the pane column
+ * or the sidebar, counts as showing the notice only once it has been on screen (#192, #240): one that waited from the
+ * start leaves the notice to be read where it first shows. Once it comes back from waiting it is none.
  */
 @Composable
 internal fun liveNotice(heard: HeardNotices?, key: Any, wait: NoticeWait? = null): Boolean {

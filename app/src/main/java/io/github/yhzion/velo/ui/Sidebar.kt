@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.onSizeChanged
@@ -388,27 +389,35 @@ internal fun Sidebar(
  * from the Filter field moves them together, and a screen reader does not read a live region again (#195). The height
  * they are given is the room above the Filter's band. Where two or more are taller, those without a control
  * ([waitsIn]) wait, the oldest first, until the rest fit or one is left (#240): the rule of the pane column's notices
- * (#192). A waiting notice is not placed, and its [NoticeWait] says so. Notices still taller than the room keep their
- * height and run on below it, over the band, as one alone does.
+ * (#192). A waiting notice is not placed, and its [NoticeWait] says so. They fit where they end above the field itself,
+ * over the band's padding at most. One left that is still taller has an error notice show one line
+ * ([LocalErrorNoticeLines]), the screen reader still hearing all of it, as #227 cuts a long error over the key bar; a
+ * notice that still does not fit keeps its height and runs on over the band.
  */
 @Composable
 private fun SidebarNotices(padding: Dp, gap: Dp, content: @Composable () -> Unit) {
+    // Whether the notice left alone is taller than the room: an error notice then shows one line. Its height as asked
+    // stays that of its full lines, so this does not change as it shrinks.
+    var short by remember { mutableStateOf(false) }
     // No modifier: a node around them would be taller than it was let be too, and Compose would centre them in it.
-    Layout(content) { measurables, constraints ->
+    Layout({ CompositionLocalProvider(LocalErrorNoticeLines provides if (short) 1 else ErrorNoticeLines, content = content) }) { measurables, constraints ->
         val side = padding.roundToPx()
         val width = (constraints.maxWidth - side * 2).coerceAtLeast(0)
         val between = gap.roundToPx()
         // With the padding under them; nothing for none.
         fun heightOf(heights: List<Int>) = if (heights.isEmpty()) 0 else heights.sum() + between * (heights.size - 1) + side
+        // The room above the band, and the band's top padding: the field itself starts under that.
+        val room = if (constraints.hasBoundedHeight) constraints.maxHeight + side else Constraints.Infinity
+        fun fits(notices: List<Measurable>) = heightOf(notices.map { it.maxIntrinsicHeight(width) }) - side <= room
         // Only by their intrinsic heights until the notices that wait are known, since each is measured once.
         var shown = measurables
-        if (constraints.hasBoundedHeight) {
-            for (m in measurables.filter { it.parentData is NoticeWait }.sortedBy { (it.parentData as NoticeWait).since }) {
-                if (shown.size < 2 || heightOf(shown.map { it.maxIntrinsicHeight(width) }) <= constraints.maxHeight) break
-                shown = shown.filter { it !== m }
-            }
+        for (m in measurables.filter { it.parentData is NoticeWait }.sortedBy { (it.parentData as NoticeWait).since }) {
+            if (shown.size < 2 || fits(shown)) break
+            shown = shown.filter { it !== m }
         }
         measurables.forEach { m -> (m.parentData as? NoticeWait)?.onScreen(shown.any { it === m }) }
+        val tooTall = shown.size == 1 && !fits(shown)
+        if (short != tooTall) short = tooTall
         val notices = shown.map { it.measure(Constraints(maxWidth = width)) }
         val height = heightOf(notices.map { it.height })
         // Their own height, even past the room: [SidebarColumn] places them by it.

@@ -226,11 +226,12 @@ class SidebarFoldTest {
         assertTrue("the Filter field has the focus at first", focused(field))
         error = true
         compose.waitForIdle()
-        val input = compose.onNodeWithTag("sidebar-filter-input", useUnmergedTree = true).getBoundsInRoot()
+        // The field itself, not only its line of text: the real notices are in NoticeSlotTest.
+        val fieldBox = compose.onNodeWithTag("sidebar-filter").getBoundsInRoot()
         val shown = listOf("upload-notice", "error-notice").filter { info(it)?.isVisibleToUser == true }
         for (tag in shown) {
             val n = compose.onNodeWithTag(tag, useUnmergedTree = true).getBoundsInRoot()
-            assertTrue("the notice $tag $n is clear of the Filter field $input", n.bottom <= input.top || n.top >= input.bottom)
+            assertTrue("the notice $tag $n is clear of the Filter field $fieldBox", n.bottom <= fieldBox.top + 0.5.dp || n.top >= fieldBox.bottom)
         }
         assertEquals("the newer notice shows, the older waits", listOf("error-notice"), shown)
         assertTheFilterHasItsRow()

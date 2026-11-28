@@ -117,14 +117,16 @@ internal fun ErrorNoticeTimer(conn: HostConnection) {
  * notice on screen already says the same (#280). The core's own retries do not renew it, so they
  * are read as before. A notice that only moved to another place, which [heard] knows, is made anew
  * there too, but it is no live region: it was read where it first showed (#195). Where it [waits] behind
- * newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again either.
+ * newer notices in the pane column or the sidebar ([NoticeWait], #192, #240), one that comes back is not read again either.
  *
- * Its text shows [ErrorNoticeLines] lines at most and ends with an ellipsis where it is longer, so that a long error
- * at a large text size does not cover the key bar (#227). A screen reader hears all of it.
+ * Its text shows [lines] lines at most and ends with an ellipsis where it is longer, so that a long error at a large
+ * text size does not cover the key bar (#227). That is [ErrorNoticeLines], unless the sidebar that holds it has less
+ * room above its Filter field (#240, [LocalErrorNoticeLines]). A screen reader hears all of it.
  */
 @Composable
 internal fun ErrorNotice(
     conn: HostConnection, modifier: Modifier = Modifier, text: (String) -> String = { it }, heard: HeardNotices? = null, waits: Boolean = false,
+    lines: Int = LocalErrorNoticeLines.current,
 ) {
     conn.error?.let { msg ->
         val reports = conn.errorReports
@@ -151,7 +153,7 @@ internal fun ErrorNotice(
                         contentDescription = errorNoticeSaid(msg, said)
                     }
                 }, containerColor = VeloTheme.surface.surface, contentColor = VeloTheme.surface.text) {
-                    Text(said, maxLines = ErrorNoticeLines, overflow = TextOverflow.Ellipsis)
+                    Text(said, maxLines = lines, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -175,6 +177,13 @@ internal fun snackbarHeight(measurer: TextMeasurer, text: String, style: TextSty
 
 /** The most lines the error notice's text shows (#227): the rest ends in an ellipsis. */
 internal const val ErrorNoticeLines = 2
+
+/**
+ * The most lines an error notice shows where it is drawn ([ErrorNotice]): [ErrorNoticeLines], or one where the sidebar
+ * holds it alone and it would cover the Filter field (#240). Its height as asked ([snackbarHeight]) stays that of
+ * [ErrorNoticeLines] lines, so the sidebar's choice does not change with it.
+ */
+internal val LocalErrorNoticeLines = compositionLocalOf { ErrorNoticeLines }
 
 /** The widest a Material Snackbar draws itself ([snackbarHeight]). */
 private val SnackbarMaxWidth = 624.dp

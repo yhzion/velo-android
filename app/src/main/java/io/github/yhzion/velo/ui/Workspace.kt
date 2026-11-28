@@ -1194,7 +1194,7 @@ internal fun Workspace(
 /**
  * A clipboard file's toast, beside the error notice wherever that is drawn. No timer: it stays until the send ends (#109).
  * A toast that only moved there, which [heard] knows, is no live region: it was read where it first showed (#195).
- * Where it [waits] behind newer notices in the pane column ([NoticeWait], #192), one that comes back is not read again.
+ * Where it [waits] behind newer notices in the pane column or the sidebar ([NoticeWait], #192, #240), one that comes back is not read again.
  */
 @Composable
 internal fun UploadToast(conn: HostConnection, heard: HeardNotices? = null, waits: Boolean = false, modifier: Modifier = Modifier) {
